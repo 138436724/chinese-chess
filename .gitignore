@@ -361,3 +361,16 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# vcpkg
+vcpkg_installed/
+
+# shaders
+*.spv
+
+# generated files
+*.hash
+
+# blender files
+*.blend
+*.blend1

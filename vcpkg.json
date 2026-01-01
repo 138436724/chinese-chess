@@ -1,0 +1,22 @@
+{
+  "dependencies": [
+    "fastgltf",
+    "glfw3",
+    "glm",
+    {
+      "name": "openssl",
+      "features": [
+        "ssl3"
+      ]
+    },
+    "shader-slang",
+    "vulkan-headers",
+    "vulkan-utility-libraries",
+    {
+      "name": "freetype",
+      "features": [
+        "error-strings"
+      ]
+    }
+  ]
+}
