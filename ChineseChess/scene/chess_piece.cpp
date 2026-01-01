@@ -106,7 +106,7 @@ void chess_piece::resize(const vulkan_application* _app, uint32_t _width, uint32
 
 	// load font and transition to image
 	constexpr float font_resolution = 1.5f;
-	character_info font_info = std::move(font_loader::get_font_loader().load_font(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), L"俥").front());
+	character_info font_info = std::move(font_loader::get_font_loader().load_font(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), piece_name).front());
 
 	vk::ImageCreateInfo font_image_info({}, vk::ImageType::e2D, vk::Format::eR8Unorm, vk::Extent3D(font_info.advance, font_info.height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo font_view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
@@ -158,7 +158,11 @@ void chess_piece::resize(const vulkan_application* _app, uint32_t _width, uint32
 
 void chess_piece::update(const scene_camera* _camera)
 {
-	chess_piece::UBO ubo_(glm::translate(glm::mat4(1.f), glm::vec3(0.75f, 1.125f, 0.3f)), _camera->get_view_matrix(), _camera->get_projection_matrix(), _camera->get_position());
+	chess_piece::UBO ubo_(glm::translate(glm::mat4(1.f), glm::vec3(model_location, 0.3f)), _camera->get_view_matrix(), _camera->get_projection_matrix(), _camera->get_position(), glm::vec3(0.f, 0.f, 0.f));
+	if (piece_color)
+	{
+		ubo_.piece_color = std::move(glm::vec3(1.f, 0.f, 0.f));
+	}
 	memcpy(ubos.at(current_frame).get_buffer_address(), &ubo_, sizeof(chess_piece::UBO));
 }
 
@@ -171,4 +175,54 @@ void chess_piece::render(const vk::raii::CommandBuffer& _commandbuffer)
 	_commandbuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+}
+
+glm::vec2 chess_piece::transform_location(bool _use_color, bool _piece_color, uint8_t _x, uint8_t _y)
+{
+	// 棋盘中心为坐标的(0, 0)点，但以左上方作为一九定位的原点。
+	// 棋谱上并没有Y轴的数值定义，这里将Y轴从0计算，而横向从1计算。
+	// Y值分别从底线算起，红从红的底线，黑从黑的底线
+	// 先以棋盘左上角作为原点，进行一九定位。
+	// 计算完成距离后，再平移回原味，因为实际左边原点是中心点。
+
+	glm::vec2 location;
+	if (_use_color)
+	{
+		if (_piece_color)
+		{
+			// 红方红子从右到左是一到九，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(10 - _x - 1);
+			location.y = static_cast<float>(9 - _y);
+		}
+		else
+		{
+			// 红方黑子从左到右是1到9，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(_x - 1);
+			location.y = static_cast<float>(_y);
+		}
+	}
+	else
+	{
+		if (_piece_color)
+		{
+			// 黑方红子从左到右是一到九，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(_x - 1);
+			location.y = static_cast<float>(_y);
+		}
+		else
+		{
+			// 黑方黑子从右到左是1到9，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(10 - _x - 1);
+			location.y = static_cast<float>(9 - _y);
+		}
+	}
+
+	location = (location - glm::vec2(4, 4.5)) * board_unit_distance;
+	return location;
+}
+
+void chess_piece::set_piece_location(const glm::u8vec2& _location)
+{
+	piece_location = _location;
+	model_location = transform_location(use_color, piece_color, piece_location.x, piece_location.y);
 }
