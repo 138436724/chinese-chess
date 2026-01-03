@@ -9,6 +9,7 @@
 import std;
 import scene_manager;
 import vulkan_application;
+import record_loader;
 
 struct window_info
 {
@@ -18,6 +19,8 @@ struct window_info
 	double last_mouse_y = 0.0;
 	float all_mouse_x = 0.f;
 	float all_mouse_y = 0.f;
+	bool parse_before = false;
+	bool parse_next = false;
 };
 
 static void resize_callback(GLFWwindow* window, int width, int height)
@@ -25,6 +28,25 @@ static void resize_callback(GLFWwindow* window, int width, int height)
 	if (width > 0 && height > 0)
 	{
 		static_cast<window_info*>(glfwGetWindowUserPointer(window))->need_resize = true;
+	}
+}
+
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	if (action == GLFW_PRESS || action == GLFW_REPEAT)
+	{
+		// WASD处理
+		switch (key)
+		{
+		case GLFW_KEY_W:
+			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_before = true;
+			break;
+		case GLFW_KEY_S:
+			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_next = true;
+			break;
+		default:
+			break;
+		}
 	}
 }
 
@@ -51,7 +73,7 @@ int main()
 	//glfwSetCursorPosCallback(window, cursorPositionCallback);
 	//glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
-	//glfwSetKeyCallback(window, keyCallback);
+	glfwSetKeyCallback(window, key_callback);
 
 	// init application
 	uint32_t count = 0;
@@ -73,6 +95,9 @@ int main()
 	std::unique_ptr<scene_manager> scene = std::make_unique<scene_manager>();
 	scene->create(app.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
+	chess_pieces* piece_manager = scene->get_piece_manager();
+	piece_manager->load_record(std::string(RECORDS_PATH) + "棋谱1.txt");
+
 	// render loop
 	while (!glfwWindowShouldClose(window))
 	{
@@ -80,6 +105,17 @@ int main()
 			glfwWaitEvents();
 
 		glfwPollEvents();
+
+		if (info.parse_before)
+		{
+			info.parse_before = false;
+		}
+		else if (info.parse_next)
+		{
+			piece_manager->parse_next();
+			info.parse_next = false;
+		}
+
 
 		// write here is keep resize before render
 		if (info.need_resize)

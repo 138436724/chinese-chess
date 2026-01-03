@@ -1,0 +1,53 @@
+﻿module piece_guard;
+
+void piece_guard::create(const vulkan_application* _app, bool _use_color, bool _piece_color)
+{
+	piece_base::create(_app, _use_color, _piece_color);
+
+	if (piece_color)
+	{
+		piece_name = L'仕';
+	}
+	else
+	{
+		piece_name = L'士';
+	}
+}
+
+glm::u8vec2 piece_guard::move_by(wchar_t _direction, uint8_t _move_number)
+{
+	switch (_direction)
+	{
+	case L'进':
+		piece_location.x = _move_number;
+		piece_location.y += 1;
+		break;
+	case L'退':
+		piece_location.x = _move_number;
+		piece_location.y -= 1;
+		break;
+	default:
+		break;
+	}
+	return piece_location;
+}
+
+std::pair<wchar_t, uint8_t> piece_guard::move_to(const glm::u8vec2& _new_location)
+{
+	std::pair<wchar_t, uint8_t> record;
+
+	if (piece_location.y < _new_location.y)
+	{
+		record.first = L'进';
+		record.second = _new_location.x;
+	}
+	else if (piece_location.y > _new_location.y)
+	{
+		record.first = L'退';
+		record.second = _new_location.x;
+	}
+
+	piece_location = _new_location;
+
+	return record;
+}

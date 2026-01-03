@@ -52,7 +52,7 @@ void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFla
 		throw std::runtime_error("read model failed!");
 	}
 
-	vk::DeviceSize vertices_size = sizeof(vertices[0]) * vertices.size();
+	vk::DeviceSize vertices_size = sizeof(vertices.front()) * vertices.size();
 	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer vertices_staging_buffer;
@@ -61,7 +61,7 @@ void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFla
 	memcpy(vertices_staging_buffer.get_buffer_address(), vertices.data(), vertices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), 0, 0, vertices_size);
 
-	vk::DeviceSize indices_size = sizeof(indices[0]) * indices.size();
+	vk::DeviceSize indices_size = sizeof(indices.front()) * indices.size();
 	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer indices_staging_buffer;

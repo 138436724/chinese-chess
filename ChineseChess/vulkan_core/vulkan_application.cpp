@@ -10,10 +10,10 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 	constexpr vk::ApplicationInfo app_info("Hello World", VK_MAKE_VERSION(1, 0, 0), "Little Engine", VK_MAKE_VERSION(1, 0, 0), vk::ApiVersion14, nullptr);
 
 	auto layer_properties = context.enumerateInstanceLayerProperties();
-	for (auto const& required_layer : required_instance_layers)
+	for (const auto& required_layer : required_instance_layers)
 	{
 		if (std::ranges::none_of(layer_properties,
-			[required_layer](auto const& layer_property)
+			[required_layer](const auto& layer_property)
 			{ return strcmp(layer_property.layerName, required_layer) == 0; }))
 		{
 			throw std::runtime_error("One or more required layers are not supported!");
@@ -22,7 +22,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 
 #ifndef NDEBUG
 	if (std::ranges::any_of(layer_properties,
-		[](auto const& layer_property)
+		[](const auto& layer_property)
 		{ return strcmp(layer_property.layerName, "VK_LAYER_KHRONOS_validation") == 0; }))
 	{
 		required_instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
@@ -30,10 +30,10 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 #endif // NDEBUG
 
 	auto extension_properties = context.enumerateInstanceExtensionProperties();
-	for (auto const& required_extension : required_instance_extensions)
+	for (const auto& required_extension : required_instance_extensions)
 	{
 		if (std::ranges::none_of(extension_properties,
-			[required_extension](auto const& extension_property)
+			[required_extension](const auto& extension_property)
 			{ return strcmp(extension_property.extensionName, required_extension) == 0; }))
 		{
 			throw std::runtime_error(std::format("Required extension not supported: {}", required_extension));
@@ -42,7 +42,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 
 #ifndef NDEBUG
 	if (std::ranges::any_of(extension_properties,
-		[](auto const& extension_property)
+		[](const auto& extension_property)
 		{ return strcmp(extension_property.extensionName, vk::EXTDebugUtilsExtensionName) == 0; }))
 	{
 		required_instance_extensions.push_back(vk::EXTDebugUtilsExtensionName);
@@ -64,20 +64,20 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 {
 	auto all_physical_devices = instance.enumeratePhysicalDevices();
 	auto filtered_physical_devices = all_physical_devices
-		| std::views::filter([this](auto const& the_physical_device)
+		| std::views::filter([this](const auto& the_physical_device)
 			{
 				bool support_vulkan_1_3 = the_physical_device.getProperties().apiVersion >= vk::ApiVersion13;
 
 				auto queue_families = the_physical_device.getQueueFamilyProperties();
-				bool support_graphics = std::ranges::any_of(queue_families, [](auto const& qfp)
+				bool support_graphics = std::ranges::any_of(queue_families, [](const auto& qfp)
 					{ return static_cast<bool>(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
 
 				auto available_device_extensions = the_physical_device.enumerateDeviceExtensionProperties();
 				bool has_all_required_extensions = std::ranges::all_of(required_device_extensions,
-					[&available_device_extensions](auto const& required_device_extension)
+					[&available_device_extensions](const auto& required_device_extension)
 					{
 						return std::ranges::any_of(available_device_extensions,
-							[required_device_extension](auto const& available_device_extension)
+							[required_device_extension](const auto& available_device_extension)
 							{ return strcmp(available_device_extension.extensionName, required_device_extension) == 0; });
 					});
 

@@ -9,6 +9,7 @@ import vulkan_application;
 import vulkan_commandbuffer;
 import scene_node;
 import scene_camera;
+import chess_pieces;
 
 export class scene_manager
 {
@@ -21,6 +22,8 @@ public:
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
 	void render();
+
+	chess_pieces* get_piece_manager() const;
 
 private:
 	const vk::Format color_format = vk::Format::eR16G16B16A16Sfloat;
@@ -39,4 +42,5 @@ private:
 	scene_camera active_camera;
 
 	std::vector<std::unique_ptr<scene_node>> nodes;
+	chess_pieces* piece_manager = nullptr;
 };

@@ -114,7 +114,7 @@
     <ClCompile Include="scene\chess_board_line.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\chess_piece.cpp">
+    <ClCompile Include="scene\chess_pieces.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="scene\scene_node.cpp">
@@ -123,7 +123,7 @@
     <ClCompile Include="scene\chess_board_line.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\chess_piece.ixx">
+    <ClCompile Include="scene\chess_pieces.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
     <ClCompile Include="tools\font_loader.ixx">
@@ -132,46 +132,58 @@
     <ClCompile Include="scene\scene_node.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_general.cpp">
+    <ClCompile Include="scene\chess_piece\piece_general.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_guard.cpp">
+    <ClCompile Include="scene\chess_piece\piece_guard.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_general.ixx">
+    <ClCompile Include="scene\chess_piece\piece_general.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_guard.ixx">
+    <ClCompile Include="scene\chess_piece\piece_guard.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_elephant.cpp">
+    <ClCompile Include="scene\chess_piece\piece_elephant.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_horse.cpp">
+    <ClCompile Include="scene\chess_piece\piece_horse.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_chariot.cpp">
+    <ClCompile Include="scene\chess_piece\piece_chariot.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_cannon.cpp">
+    <ClCompile Include="scene\chess_piece\piece_cannon.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_pawn.cpp">
+    <ClCompile Include="scene\chess_piece\piece_pawn.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_cannon.ixx">
+    <ClCompile Include="scene\chess_piece\piece_cannon.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_chariot.ixx">
+    <ClCompile Include="scene\chess_piece\piece_chariot.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_elephant.ixx">
+    <ClCompile Include="scene\chess_piece\piece_elephant.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_horse.ixx">
+    <ClCompile Include="scene\chess_piece\piece_horse.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\piece_pawn.ixx">
+    <ClCompile Include="scene\chess_piece\piece_pawn.ixx">
+      <Filter>头文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tools\record_loader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\chess_piece\piece_base.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\chess_piece\piece_base.ixx">
+      <Filter>头文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tools\record_loader.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -179,10 +191,10 @@
     <None Include="resources\shaders\chess_board.slang">
       <Filter>资源文件</Filter>
     </None>
-    <None Include="resources\shaders\chess_piece.slang">
+    <None Include="resources\shaders\chess_board_line.slang">
       <Filter>资源文件</Filter>
     </None>
-    <None Include="resources\shaders\chess_board_line.slang">
+    <None Include="resources\shaders\chess_pieces.slang">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

@@ -2,14 +2,6 @@
 
 import chess_board;
 import chess_board_line;
-//import chess_piece;
-import piece_general;
-import piece_guard;
-import piece_elephant;
-import piece_horse;
-import piece_chariot;
-import piece_cannon;
-import piece_pawn;
 
 void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
@@ -24,174 +16,9 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	nodes.emplace_back(std::make_unique<chess_board>());
 	nodes.emplace_back(std::make_unique<chess_board_line>());
 
-
-	const bool use_red = true;
-	// 帅
-	auto red_general = std::make_unique<piece_general>();
-	red_general->set_piece_color(use_red, true);
-	red_general->set_piece_location(glm::u8vec2(5, 0));
-	nodes.push_back(std::move(red_general));
-
-	auto black_general = std::make_unique<piece_general>();
-	black_general->set_piece_color(use_red, false);
-	black_general->set_piece_location(glm::u8vec2(5, 0));
-	nodes.push_back(std::move(black_general));
-
-	// 士
-	auto red_guard1 = std::make_unique<piece_guard>();
-	red_guard1->set_piece_color(use_red, true);
-	red_guard1->set_piece_location(glm::u8vec2(4, 0));
-	nodes.push_back(std::move(red_guard1));
-
-	auto red_guard2 = std::make_unique<piece_guard>();
-	red_guard2->set_piece_color(use_red, true);
-	red_guard2->set_piece_location(glm::u8vec2(6, 0));
-	nodes.push_back(std::move(red_guard2));
-
-	auto black_guard1 = std::make_unique<piece_guard>();
-	black_guard1->set_piece_color(use_red, false);
-	black_guard1->set_piece_location(glm::u8vec2(4, 0));
-	nodes.push_back(std::move(black_guard1));
-
-	auto black_guard2 = std::make_unique<piece_guard>();
-	black_guard2->set_piece_color(use_red, false);
-	black_guard2->set_piece_location(glm::u8vec2(6, 0));
-	nodes.push_back(std::move(black_guard2));
-
-	// 象
-	auto red_elephant1 = std::make_unique<piece_elephant>();
-	red_elephant1->set_piece_color(use_red, true);
-	red_elephant1->set_piece_location(glm::u8vec2(3, 0));
-	nodes.push_back(std::move(red_elephant1));
-
-	auto red_elephant2 = std::make_unique<piece_elephant>();
-	red_elephant2->set_piece_color(use_red, true);
-	red_elephant2->set_piece_location(glm::u8vec2(7, 0));
-	nodes.push_back(std::move(red_elephant2));
-
-	auto black_elephant1 = std::make_unique<piece_elephant>();
-	black_elephant1->set_piece_color(use_red, false);
-	black_elephant1->set_piece_location(glm::u8vec2(3, 0));
-	nodes.push_back(std::move(black_elephant1));
-
-	auto black_elephant2 = std::make_unique<piece_elephant>();
-	black_elephant2->set_piece_color(use_red, false);
-	black_elephant2->set_piece_location(glm::u8vec2(7, 0));
-	nodes.push_back(std::move(black_elephant2));
-
-	// 马
-	auto red_horse1 = std::make_unique<piece_horse>();
-	red_horse1->set_piece_color(use_red, true);
-	red_horse1->set_piece_location(glm::u8vec2(2, 0));
-	nodes.push_back(std::move(red_horse1));
-
-	auto red_horse2 = std::make_unique<piece_horse>();
-	red_horse2->set_piece_color(use_red, true);
-	red_horse2->set_piece_location(glm::u8vec2(8, 0));
-	nodes.push_back(std::move(red_horse2));
-
-	auto black_horse1 = std::make_unique<piece_horse>();
-	black_horse1->set_piece_color(use_red, false);
-	black_horse1->set_piece_location(glm::u8vec2(2, 0));
-	nodes.push_back(std::move(black_horse1));
-
-	auto black_horse2 = std::make_unique<piece_horse>();
-	black_horse2->set_piece_color(use_red, false);
-	black_horse2->set_piece_location(glm::u8vec2(8, 0));
-	nodes.push_back(std::move(black_horse2));
-
-	// 車
-	auto red_chariot1 = std::make_unique<piece_chariot>();
-	red_chariot1->set_piece_color(use_red, true);
-	red_chariot1->set_piece_location(glm::u8vec2(1, 0));
-	nodes.push_back(std::move(red_chariot1));
-
-	auto red_chariot2 = std::make_unique<piece_chariot>();
-	red_chariot2->set_piece_color(use_red, true);
-	red_chariot2->set_piece_location(glm::u8vec2(9, 0));
-	nodes.push_back(std::move(red_chariot2));
-
-	auto black_chariot1 = std::make_unique<piece_chariot>();
-	black_chariot1->set_piece_color(use_red, false);
-	black_chariot1->set_piece_location(glm::u8vec2(1, 0));
-	nodes.push_back(std::move(black_chariot1));
-
-	auto black_chariot2 = std::make_unique<piece_chariot>();
-	black_chariot2->set_piece_color(use_red, false);
-	black_chariot2->set_piece_location(glm::u8vec2(9, 0));
-	nodes.push_back(std::move(black_chariot2));
-
-	// 炮
-	auto red_cannon1 = std::make_unique<piece_cannon>();
-	red_cannon1->set_piece_color(use_red, true);
-	red_cannon1->set_piece_location(glm::u8vec2(2, 2));
-	nodes.push_back(std::move(red_cannon1));
-
-	auto red_cannon2 = std::make_unique<piece_cannon>();
-	red_cannon2->set_piece_color(use_red, true);
-	red_cannon2->set_piece_location(glm::u8vec2(8, 2));
-	nodes.push_back(std::move(red_cannon2));
-
-	auto black_cannon1 = std::make_unique<piece_cannon>();
-	black_cannon1->set_piece_color(use_red, false);
-	black_cannon1->set_piece_location(glm::u8vec2(2, 2));
-	nodes.push_back(std::move(black_cannon1));
-
-	auto black_cannon2 = std::make_unique<piece_cannon>();
-	black_cannon2->set_piece_color(use_red, false);
-	black_cannon2->set_piece_location(glm::u8vec2(8, 2));
-	nodes.push_back(std::move(black_cannon2));
-
-	// 兵
-	auto red_pawn1 = std::make_unique<piece_pawn>();
-	red_pawn1->set_piece_color(use_red, true);
-	red_pawn1->set_piece_location(glm::u8vec2(1, 3));
-	nodes.push_back(std::move(red_pawn1));
-
-	auto red_pawn2 = std::make_unique<piece_pawn>();
-	red_pawn2->set_piece_color(use_red, true);
-	red_pawn2->set_piece_location(glm::u8vec2(3, 3));
-	nodes.push_back(std::move(red_pawn2));
-
-	auto red_pawn3 = std::make_unique<piece_pawn>();
-	red_pawn3->set_piece_color(use_red, true);
-	red_pawn3->set_piece_location(glm::u8vec2(5, 3));
-	nodes.push_back(std::move(red_pawn3));
-
-	auto red_pawn4 = std::make_unique<piece_pawn>();
-	red_pawn4->set_piece_color(use_red, true);
-	red_pawn4->set_piece_location(glm::u8vec2(7, 3));
-	nodes.push_back(std::move(red_pawn4));
-
-	auto red_pawn5 = std::make_unique<piece_pawn>();
-	red_pawn5->set_piece_color(use_red, true);
-	red_pawn5->set_piece_location(glm::u8vec2(9, 3));
-	nodes.push_back(std::move(red_pawn5));
-
-	auto black_pawn1 = std::make_unique<piece_pawn>();
-	black_pawn1->set_piece_color(use_red, false);
-	black_pawn1->set_piece_location(glm::u8vec2(1, 3));
-	nodes.push_back(std::move(black_pawn1));
-
-	auto black_pawn2 = std::make_unique<piece_pawn>();
-	black_pawn2->set_piece_color(use_red, false);
-	black_pawn2->set_piece_location(glm::u8vec2(3, 3));
-	nodes.push_back(std::move(black_pawn2));
-
-	auto black_pawn3 = std::make_unique<piece_pawn>();
-	black_pawn3->set_piece_color(use_red, false);
-	black_pawn3->set_piece_location(glm::u8vec2(5, 3));
-	nodes.push_back(std::move(black_pawn3));
-
-	auto black_pawn4 = std::make_unique<piece_pawn>();
-	black_pawn4->set_piece_color(use_red, false);
-	black_pawn4->set_piece_location(glm::u8vec2(7, 3));
-	nodes.push_back(std::move(black_pawn4));
-
-	auto black_pawn5 = std::make_unique<piece_pawn>();
-	black_pawn5->set_piece_color(use_red, false);
-	black_pawn5->set_piece_location(glm::u8vec2(9, 3));
-	nodes.push_back(std::move(black_pawn5));
+	auto pieces = std::make_unique<chess_pieces>();
+	piece_manager = pieces.get();
+	nodes.emplace_back(std::move(pieces));
 
 
 	for (auto& _node : nodes)
@@ -325,4 +152,9 @@ void scene_manager::render()
 	}
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+}
+
+chess_pieces* scene_manager::get_piece_manager() const
+{
+	return piece_manager;
 }

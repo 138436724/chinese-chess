@@ -47,7 +47,7 @@ void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::rai
 		{
 			return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
 		});
-	format = format_iter != available_formats.end() ? format_iter->format : available_formats[0].format;
+	format = format_iter != available_formats.end() ? format_iter->format : available_formats.front().format;
 
 	auto available_present_modes = _physical_device.getSurfacePresentModesKHR(surface);
 	present_mode = std::ranges::any_of(available_present_modes, [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; })

@@ -134,26 +134,28 @@
   <ItemGroup>
     <ClCompile Include="..\vcpkg_installed\x64-windows\x64-windows\include\glm\glm.cppm" />
     <ClCompile Include="..\vcpkg_installed\x64-windows\x64-windows\include\vulkan\vulkan.cppm" />
+    <ClCompile Include="scene\chess_piece\piece_base.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_base.ixx" />
     <ClCompile Include="scene\chess_board.cpp" />
     <ClCompile Include="scene\chess_board.ixx" />
     <ClCompile Include="scene\chess_board_line.cpp" />
     <ClCompile Include="scene\chess_board_line.ixx" />
-    <ClCompile Include="scene\chess_piece.cpp" />
-    <ClCompile Include="scene\chess_piece.ixx" />
-    <ClCompile Include="scene\piece_cannon.cpp" />
-    <ClCompile Include="scene\piece_cannon.ixx" />
-    <ClCompile Include="scene\piece_chariot.cpp" />
-    <ClCompile Include="scene\piece_chariot.ixx" />
-    <ClCompile Include="scene\piece_elephant.cpp" />
-    <ClCompile Include="scene\piece_elephant.ixx" />
-    <ClCompile Include="scene\piece_general.cpp" />
-    <ClCompile Include="scene\piece_general.ixx" />
-    <ClCompile Include="scene\piece_guard.cpp" />
-    <ClCompile Include="scene\piece_guard.ixx" />
-    <ClCompile Include="scene\piece_horse.cpp" />
-    <ClCompile Include="scene\piece_horse.ixx" />
-    <ClCompile Include="scene\piece_pawn.cpp" />
-    <ClCompile Include="scene\piece_pawn.ixx" />
+    <ClCompile Include="scene\chess_pieces.cpp" />
+    <ClCompile Include="scene\chess_pieces.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_cannon.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_cannon.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_chariot.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_chariot.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_elephant.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_elephant.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_general.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_general.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_guard.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_guard.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_horse.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_horse.ixx" />
+    <ClCompile Include="scene\chess_piece\piece_pawn.cpp" />
+    <ClCompile Include="scene\chess_piece\piece_pawn.ixx" />
     <ClCompile Include="scene\scene_camera.cpp" />
     <ClCompile Include="scene\scene_camera.ixx" />
     <ClCompile Include="scene\scene_manager.cpp" />
@@ -167,6 +169,8 @@
     <ClCompile Include="tools\font_loader.ixx" />
     <ClCompile Include="tools\model_loader.cpp" />
     <ClCompile Include="tools\model_loader.ixx" />
+    <ClCompile Include="tools\record_loader.cpp" />
+    <ClCompile Include="tools\record_loader.ixx" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\shader_compiler.ixx" />
     <ClCompile Include="vulkan_core\vulkan_application.cpp" />
@@ -188,7 +192,7 @@
   <ItemGroup>
     <None Include="resources\shaders\chess_board.slang" />
     <None Include="resources\shaders\chess_board_line.slang" />
-    <None Include="resources\shaders\chess_piece.slang" />
+    <None Include="resources\shaders\chess_pieces.slang" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

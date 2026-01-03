@@ -34,7 +34,7 @@ public:
 
 	static vk::Format find_supported_format(const vk::raii::PhysicalDevice& _physical_device, const std::vector<vk::Format>& _candidates, vk::ImageTiling _tiling, vk::FormatFeatureFlags _features)
 	{
-		auto format_iter = std::ranges::find_if(_candidates, [&](auto const format)
+		auto format_iter = std::ranges::find_if(_candidates, [&](const auto format)
 			{
 				vk::FormatProperties props = _physical_device.getFormatProperties(format);
 				return (_tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & _features) == _features) ||
