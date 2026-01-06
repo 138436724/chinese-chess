@@ -1,12 +1,4 @@
-﻿#ifdef __INTELLISENSE__
-#include <ranges>
-#include <algorithm>
-#include <chrono>
-#include  <array>
-#endif // __INTELLISENSE__
-
-
-module piece_horse;
+﻿module piece_horse;
 
 void piece_horse::create(const vulkan_application* _app, bool _use_color, bool _piece_color)
 {

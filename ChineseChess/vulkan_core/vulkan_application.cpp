@@ -1,6 +1,11 @@
-﻿module vulkan_application;
+﻿module;
 
-import <vulkan/vulkan_core.h>;
+#include <vulkan/vulkan_core.h>
+#include <vulkan/utility/vk_format_utils.h>
+
+module vulkan_application;
+
+import vulkan_buffer;
 
 void vulkan_application::create_instance(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags)
 {

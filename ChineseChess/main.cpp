@@ -108,6 +108,7 @@ int main()
 
 		if (info.parse_before)
 		{
+			piece_manager->parse_back();
 			info.parse_before = false;
 		}
 		else if (info.parse_next)

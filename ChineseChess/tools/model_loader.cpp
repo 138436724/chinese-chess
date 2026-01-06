@@ -11,7 +11,7 @@ import glm;
 
 model_loader model_loader::loader;
 
-bool model_loader::load_model_file(const std::filesystem::path& _file_path, std::vector<model_vertex>& _vertices, std::vector<uint32_t>& _indices)
+bool model_loader::load_model(const std::filesystem::path& _file_path, std::vector<model_vertex>& _vertices, std::vector<uint32_t>& _indices)
 {
 	auto read_data = fastgltf::GltfDataBuffer::FromPath(_file_path);
 	if (read_data.error() != fastgltf::Error::None)

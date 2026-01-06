@@ -1,6 +1,9 @@
-﻿module piece_base;
+﻿module;
 
-import <glm/gtc/matrix_transform.hpp>;
+#include <glm/gtc/matrix_transform.hpp>
+
+module piece_base;
+
 import vulkan_common;
 import font_loader;
 

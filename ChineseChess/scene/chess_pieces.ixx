@@ -13,6 +13,7 @@ import scene_node;
 import scene_camera;
 import piece_base;
 import model_loader;
+import record_loader;
 
 export class chess_pieces : public scene_node
 {
@@ -26,20 +27,17 @@ public:
 	void render(const vk::raii::CommandBuffer& _commandbuffer) override;
 
 	bool load_record(const std::filesystem::path& _record_path);
+	void parse_back();
 	void parse_next();
 
-	std::vector<piece_base*> find_piece_by_name(bool _use_color, wchar_t _name);
+	board_state capture_board_state();
+	void restore_board_state(const board_state& _state);
 
-	std::vector<piece_base*> find_piece_on_x(bool _use_color, uint8_t _x);
-	std::vector<piece_base*> find_piece_on_y(bool _use_color, uint8_t _y);
-	piece_base* find_piece_on_x_y(bool _use_color, uint8_t _x, uint8_t _y);
-
-	static bool character_is_digit_number(wchar_t _character);
-	static bool character_is_chinese_number(wchar_t _character);
-	static bool character_is_number(wchar_t _character);
-	static uint8_t character_to_number(wchar_t _character);
-
-	static wchar_t character_map(wchar_t _character);
+	// _on_board true is find only on board, false is find all chess
+	std::vector<piece_base*> find_piece_by_name(bool _use_color, bool _only_on_borad, wchar_t _name);
+	std::vector<piece_base*> find_piece_on_x(bool _use_color, bool _only_on_borad, uint8_t _x);
+	std::vector<piece_base*> find_piece_on_y(bool _use_color, bool _only_on_borad, uint8_t _y);
+	piece_base* find_piece_on_x_y(bool _use_color, bool _only_on_borad, uint8_t _x, uint8_t _y);
 
 private:
 	vulkan_pipeline pipeline;
@@ -50,8 +48,7 @@ private:
 	std::vector<uint32_t> indices;
 	vulkan_buffer indices_buffer;
 
-	std::array<std::unique_ptr<piece_base>, 16> red, black;
-
 	uint32_t now_record_index = 0;
-	std::vector<std::array<wchar_t, 4>> all_records;
+	std::vector<board_state> all_board_state;
+	std::array<std::array<std::unique_ptr<piece_base>, 16>, 2> all_pieces;
 };

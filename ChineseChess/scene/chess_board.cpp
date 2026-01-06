@@ -1,6 +1,9 @@
-﻿module chess_board;
+﻿module;
 
-import <glm/gtc/matrix_transform.hpp>;
+#include <glm/gtc/matrix_transform.hpp>
+
+module chess_board;
+
 import std;
 import vulkan_commandbuffer;
 import font_loader;
@@ -49,7 +52,7 @@ void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits
 
 
 	// vertex and index buffer
-	if (!model_loader::get_model_loader().load_model_file(std::string(MODELS_PATH) + "chess_board.glb", vertices, indices))
+	if (!model_loader::get_model_loader().load_model(std::string(MODELS_PATH) + "chess_board.glb", vertices, indices))
 	{
 		throw std::runtime_error("read model failed!");
 	}

@@ -51,7 +51,7 @@ void* vulkan_buffer::get_buffer_address() const
 void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, uint64_t _src_offset, uint64_t _dst_offset, uint64_t _copy_size)
 {
 	vk::BufferCopy2 copy_regions(_src_offset, _dst_offset, _copy_size);
-	return commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, copy_regions));
+	commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, copy_regions));
 }
 
 void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent)

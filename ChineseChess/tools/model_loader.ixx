@@ -34,7 +34,7 @@ export struct model_vertex
 export class model_loader
 {
 public:
-	bool load_model_file(const std::filesystem::path& _file_path, std::vector<model_vertex>& _vertices, std::vector<uint32_t>& _indices);
+	bool load_model(const std::filesystem::path& _file_path, std::vector<model_vertex>& _vertices, std::vector<uint32_t>& _indices);
 	static model_loader& get_model_loader() noexcept;
 
 private:
