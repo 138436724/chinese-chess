@@ -370,6 +370,7 @@ vcpkg_installed/
 
 # generated files
 *.hash
+*.exr
 
 # blender files
 *.blend

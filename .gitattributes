@@ -67,3 +67,6 @@
 
 # font files
 *.ttf   binary
+
+# capture files
+*.exr   binary

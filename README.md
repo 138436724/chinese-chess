@@ -10,3 +10,5 @@
 module不支持宏定义，宏定义在项目属性中管理。
 
 字体使用[LXGW WenKai GB / 霞鹜文楷 GB](https://github.com/lxgw/LxgwWenkaiGB)。
+
+按W/S或者A/D查看上一步/下一步，按C保存当前帧到captures文件夹下。

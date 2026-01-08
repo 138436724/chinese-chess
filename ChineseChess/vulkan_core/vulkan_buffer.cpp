@@ -48,14 +48,14 @@ void* vulkan_buffer::get_buffer_address() const
 	return buffer_address;
 }
 
-void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, uint64_t _src_offset, uint64_t _dst_offset, uint64_t _copy_size)
+void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, uint64_t _src_offset, uint64_t _dst_offset, uint64_t _copy_size)
 {
 	vk::BufferCopy2 copy_regions(_src_offset, _dst_offset, _copy_size);
-	commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, copy_regions));
+	_commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, copy_regions));
 }
 
-void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent)
+void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent)
 {
 	vk::BufferImageCopy2 copy_regions(0, 0, 0, _subresource_layers, _image_offset, _image_extent);
-	commandbuffer.copyBufferToImage2(vk::CopyBufferToImageInfo2(_buffer, _image, vk::ImageLayout::eTransferDstOptimal, copy_regions));
+	_commandbuffer.copyBufferToImage2(vk::CopyBufferToImageInfo2(_buffer, _image, vk::ImageLayout::eTransferDstOptimal, copy_regions));
 }

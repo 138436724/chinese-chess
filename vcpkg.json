@@ -4,6 +4,12 @@
     "glfw3",
     "glm",
     {
+      "name": "openimageio",
+      "features": [
+        "opencolorio"
+      ]
+    },
+    {
       "name": "openssl",
       "features": [
         "ssl3"

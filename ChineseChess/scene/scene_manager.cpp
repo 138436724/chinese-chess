@@ -71,7 +71,7 @@ void scene_manager::update()
 	}
 }
 
-void scene_manager::render()
+void scene_manager::render(bool _save)
 {
 	update();
 
@@ -133,7 +133,12 @@ void scene_manager::render()
 
 	commandbuffer.end_record();
 
-	commandbuffer.submit({ vk::SemaphoreSubmitInfo(waited_semaphore, {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) }, { vk::SemaphoreSubmitInfo(*(app->get_swapchain().get_current_waited_semaphore()), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) }, false);
+	commandbuffer.submit({ vk::SemaphoreSubmitInfo(waited_semaphore, {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) }, { vk::SemaphoreSubmitInfo(*(app->get_swapchain().get_current_waited_semaphore()), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) }, _save);
+
+	if (_save)
+	{
+		app->save_image(render_output);
+	}
 
 	try
 	{

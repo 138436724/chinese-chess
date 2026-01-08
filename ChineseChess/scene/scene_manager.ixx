@@ -21,7 +21,7 @@ public:
 	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
-	void render();
+	void render(bool _save = false);
 
 	chess_pieces* get_piece_manager() const;
 

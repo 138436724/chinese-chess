@@ -132,3 +132,9 @@ vk::ImageMemoryBarrier2 vulkan_image::transition_image_layout(const vk::Image& _
 {
 	return vk::ImageMemoryBarrier2(get_pipeline_stage_for_layout(_old_layout), get_access_flags_from_image_layout(_old_layout), get_pipeline_stage_for_layout(_new_layout), get_access_flags_from_image_layout(_new_layout), _old_layout, _new_layout, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, _image, _resource_range);
 }
+
+void vulkan_image::copy_image_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image, const vk::Buffer& _buffer, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent, vk::ImageLayout _layout)
+{
+	vk::BufferImageCopy2 copy_regions(0, _image_extent.width, _image_extent.height, _subresource_layers, _image_offset, _image_extent);
+	_commandbuffer.copyImageToBuffer2(vk::CopyImageToBufferInfo2(_image, _layout, _buffer, copy_regions));
+}

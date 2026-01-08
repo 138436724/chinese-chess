@@ -21,6 +21,7 @@ struct window_info
 	float all_mouse_y = 0.f;
 	bool parse_before = false;
 	bool parse_next = false;
+	bool need_save = false;
 };
 
 static void resize_callback(GLFWwindow* window, int width, int height)
@@ -39,10 +40,15 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		switch (key)
 		{
 		case GLFW_KEY_W:
+		case GLFW_KEY_A:
 			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_before = true;
 			break;
 		case GLFW_KEY_S:
+		case GLFW_KEY_D:
 			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_next = true;
+			break;
+		case GLFW_KEY_C:
+			static_cast<window_info*>(glfwGetWindowUserPointer(window))->need_save = true;
 			break;
 		default:
 			break;
@@ -128,7 +134,12 @@ int main()
 
 		auto start = std::chrono::high_resolution_clock::now();
 
-		scene->render();
+		scene->render(info.need_save);
+
+		if (info.need_save)
+		{
+			info.need_save = false;
+		}
 
 		auto end = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration<float>(end - start).count();

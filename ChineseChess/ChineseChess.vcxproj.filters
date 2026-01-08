@@ -186,6 +186,12 @@
     <ClCompile Include="tools\record_loader.ixx">
       <Filter>头文件</Filter>
     </ClCompile>
+    <ClCompile Include="tools\image_help.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tools\image_help.ixx">
+      <Filter>头文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\chess_board.slang">

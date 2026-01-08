@@ -51,6 +51,9 @@ public:
 	const vk::raii::Queue& get_queue(vk::QueueFlagBits _queue_type) const; // default is present
 	const vk::raii::CommandPool& get_command_pool(vk::QueueFlagBits _queue_type) const; // default is present
 
+	// other to use
+	void save_image(vulkan_image& _image);
+
 #ifndef NDEBUG
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT _severity, vk::DebugUtilsMessageTypeFlagsEXT _type, const vk::DebugUtilsMessengerCallbackDataEXT* _pCallbackData, void*);
 #endif // NDEBUG

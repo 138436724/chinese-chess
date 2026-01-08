@@ -1,11 +1,10 @@
 ﻿module;
 
-#include <vulkan/vulkan_core.h>
-#include <vulkan/utility/vk_format_utils.h>
-
 module vulkan_application;
 
+import <vulkan/vulkan_core.h>;
 import vulkan_buffer;
+import image_help;
 
 void vulkan_application::create_instance(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags)
 {
@@ -353,6 +352,48 @@ const vk::raii::CommandPool& vulkan_application::get_command_pool(vk::QueueFlagB
 		break;
 	}
 	return present_queue.get_command_pool();
+}
+
+void vulkan_application::save_image(vulkan_image& _image)
+{
+	vulkan_commandbuffer commandbuffer = std::move(create_commandbuffers(vk::QueueFlagBits::eGraphics, 1).front());
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	vulkan_image save_image;
+	vk::ImageCreateInfo save_image_info({}, vk::ImageType::e2D, vk::Format::eR16G16B16A16Sfloat, vk::Extent3D(_image.get_extent().width, _image.get_extent().height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo save_view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR16G16B16A16Sfloat, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	save_image.create(physical_device, device, save_image_info, save_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+
+	vulkan_buffer save_buffer;
+	save_buffer.create(physical_device, device, save_image.get_extent().width * save_image.get_extent().height * 8, vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+	auto old_layout = _image.get_layout();
+
+	std::vector<vk::ImageMemoryBarrier2> blit_begin_barrier;
+	blit_begin_barrier.emplace_back(_image.transition_to_layout(vk::ImageLayout::eTransferSrcOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	blit_begin_barrier.emplace_back(save_image.transition_to_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, blit_begin_barrier));
+
+	std::array<vk::Offset3D, 2> srcOffsets = { vk::Offset3D(0, 0, 0), vk::Offset3D(_image.get_extent().width, _image.get_extent().height, 1) };
+	std::array<vk::Offset3D, 2> dstOffsets = { vk::Offset3D(0, 0, 0), vk::Offset3D(save_image.get_extent().width,save_image.get_extent().height, 1) };
+	vk::ImageBlit2 blit(vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), srcOffsets, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), dstOffsets);
+	(*commandbuffer).blitImage2(vk::BlitImageInfo2(_image.get_image(), vk::ImageLayout::eTransferSrcOptimal, save_image.get_image(), vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear));
+
+	std::vector<vk::ImageMemoryBarrier2> blit_end_barrier;
+	blit_end_barrier.emplace_back(_image.transition_to_layout(old_layout, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	blit_end_barrier.emplace_back(save_image.transition_to_layout(vk::ImageLayout::eTransferSrcOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, blit_end_barrier));
+
+	vulkan_image::copy_image_to_buffer(*commandbuffer, save_image.get_image(), save_buffer.get_buffer(), vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(save_image.get_extent().width, save_image.get_extent().height, 1), save_image.get_layout());
+
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
+
+
+	auto now = std::chrono::system_clock::now();
+	auto now_us = std::chrono::floor<std::chrono::seconds>(now);
+	std::string save_path = std::string(CAPTURES_PATH) + std::format("{:%Y%m%d%H%M%S}.exr", now_us);
+	image_help::get_image_help().save_to_local(save_path, save_image.get_extent().width, save_image.get_extent().height, 4, OpenImageIO_v3_0::TypeDesc::HALF, save_buffer.get_buffer_address());
 }
 
 #ifndef NDEBUG

@@ -18,8 +18,8 @@ public:
 	const vk::raii::Buffer& get_buffer() const;
 	void* get_buffer_address() const;
 
-	static void copy_buffer_to_buffer(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, uint64_t _src_offset, uint64_t _dst_offset, uint64_t _copy_size);
-	static void copy_buffer_to_image(const vk::raii::CommandBuffer& commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent);
+	static void copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, uint64_t _src_offset, uint64_t _dst_offset, uint64_t _copy_size);
+	static void copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent);
 
 private:
 	vk::raii::Buffer buffer = nullptr;

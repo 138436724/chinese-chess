@@ -28,6 +28,8 @@ public:
 	static vk::PipelineStageFlags2 get_pipeline_stage_for_layout(vk::ImageLayout _layout);
 	[[nodiscard("transition barrier need submit!")]] static vk::ImageMemoryBarrier2 transition_image_layout(const vk::Image& _image, vk::ImageLayout _old_layout, vk::ImageLayout _new_layout, const vk::ImageSubresourceRange& _resource_range);
 
+	static void copy_image_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image, const vk::Buffer& _buffer, const vk::ImageSubresourceLayers& _subresource_layers, const vk::Offset3D& _image_offset, const vk::Extent3D& _image_extent, vk::ImageLayout _layout);
+
 private:
 	vk::Format format = vk::Format::eUndefined;
 	vk::Extent2D extent = vk::Extent2D{ 0, 0 };
