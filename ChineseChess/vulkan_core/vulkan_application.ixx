@@ -48,6 +48,7 @@ public:
 	const vk::raii::Instance& get_instance() const;
 	const vk::raii::PhysicalDevice& get_physical_device() const;
 	const vk::raii::Device& get_device() const;
+	uint32_t get_queue_family(vk::QueueFlagBits _queue_type) const; // default is present
 	const vk::raii::Queue& get_queue(vk::QueueFlagBits _queue_type) const; // default is present
 	const vk::raii::CommandPool& get_command_pool(vk::QueueFlagBits _queue_type) const; // default is present
 

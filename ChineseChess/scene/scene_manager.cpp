@@ -1,9 +1,11 @@
 ﻿module scene_manager;
 
+import vulkan_buffer;
 import chess_board;
 import chess_board_line;
+import image_help;
 
-void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
+void scene_manager::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
 	app = _app;
 	commandbuffers = app->create_commandbuffers(vk::QueueFlagBits::eGraphics, vulkan_common::MAX_FRAMES_IN_FLIGHT);
@@ -20,10 +22,16 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	piece_manager = pieces.get();
 	nodes.emplace_back(std::move(pieces));
 
+	// create ui
+	std::unique_ptr<ui> UI = std::make_unique<ui>();
+	ui_manager = UI.get();
+	nodes.emplace_back(std::move(UI));
+
+	ui_manager->set_chess_manager(piece_manager);
 
 	for (auto& _node : nodes)
 	{
-		_node->create(_app, vulkan_common::MASS_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
+		_node->create(_window, _app, vulkan_common::MASS_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
 	}
 
 	resize(_width, _height);
@@ -73,9 +81,6 @@ void scene_manager::update()
 
 void scene_manager::render(bool _save)
 {
-	update();
-
-
 	vk::Result result = vk::Result::eSuccess;
 	vk::Semaphore waited_semaphore = nullptr;
 
@@ -120,10 +125,23 @@ void scene_manager::render(bool _save)
 
 	(*commandbuffer).beginRendering(renderingInfo);
 
-
-	for (auto& _node : nodes)
+	if (_save)
 	{
-		_node->render((*commandbuffer));
+		for (auto& _node : nodes)
+		{
+			if (_node.get() != ui_manager)
+			{
+				_node->render((*commandbuffer));
+			}
+		}
+		ui_manager->render_end();
+	}
+	else
+	{
+		for (auto& _node : nodes)
+		{
+			_node->render((*commandbuffer));
+		}
 	}
 
 
@@ -157,6 +175,14 @@ void scene_manager::render(bool _save)
 	}
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+}
+
+void scene_manager::destroy()
+{
+	for (auto& _node : nodes)
+	{
+		_node->destroy();
+	}
 }
 
 chess_pieces* scene_manager::get_piece_manager() const

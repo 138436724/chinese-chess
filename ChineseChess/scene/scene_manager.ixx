@@ -1,4 +1,9 @@
-﻿export module scene_manager;
+﻿module;
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+export module scene_manager;
 
 import <cstdint>;
 import std;
@@ -10,6 +15,7 @@ import vulkan_commandbuffer;
 import scene_node;
 import scene_camera;
 import chess_pieces;
+import ui;
 
 export class scene_manager
 {
@@ -18,10 +24,11 @@ public:
 	~scene_manager() = default;
 
 	// in the scene, all object's pipeline only need one color format and one depth format
-	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
+	void create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
 	void render(bool _save = false);
+	void destroy();
 
 	chess_pieces* get_piece_manager() const;
 
@@ -42,5 +49,7 @@ private:
 	scene_camera active_camera;
 
 	std::vector<std::unique_ptr<scene_node>> nodes;
+
 	chess_pieces* piece_manager = nullptr;
+	ui* ui_manager = nullptr;
 };

@@ -1,4 +1,9 @@
-﻿export module chess_board_line;
+﻿module;
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+export module chess_board_line;
 
 import <glm/ext/matrix_float4x4.hpp>;
 import std;
@@ -19,10 +24,11 @@ public:
 	chess_board_line() = default;
 	~chess_board_line() = default;
 
-	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
+	void create(GLFWwindow* _window, const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
 	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height) override;
 	void update(const scene_camera* _camera) override;
 	void render(const vk::raii::CommandBuffer& _commandbuffer) override;
+	void destroy() override;
 
 private:
 	vk::raii::DescriptorPool descriptor_pool = nullptr;

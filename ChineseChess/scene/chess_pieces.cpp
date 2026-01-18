@@ -16,7 +16,7 @@ import piece_pawn;
 import font_loader;
 import shader_compiler;
 
-void chess_pieces::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
+void chess_pieces::create(GLFWwindow* _window, const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	constexpr bool use_red = true;
 	// 帅
@@ -246,6 +246,10 @@ void chess_pieces::render(const vk::raii::CommandBuffer& _commandbuffer)
 	}
 }
 
+void chess_pieces::destroy()
+{
+}
+
 bool chess_pieces::load_record(const std::filesystem::path& _record_path)
 {
 	all_board_state = std::move(record_loader::get_record_loader().load_records(_record_path));
@@ -254,7 +258,7 @@ bool chess_pieces::load_record(const std::filesystem::path& _record_path)
 
 void chess_pieces::parse_back()
 {
-	if (now_record_index == 0)
+	if (now_record_index <= 0)
 	{
 		return;
 	}
@@ -267,7 +271,7 @@ void chess_pieces::parse_back()
 
 void chess_pieces::parse_next()
 {
-	if (now_record_index == all_board_state.size() - 1)
+	if (now_record_index >= all_board_state.size() - 1)
 	{
 		return;
 	}
@@ -276,6 +280,15 @@ void chess_pieces::parse_next()
 	restore_board_state(all_board_state.at(now_record_index));
 
 	return;
+}
+
+void chess_pieces::set_now_record_index(uint32_t _index)
+{
+	if (0 <= _index && _index < all_board_state.size())
+	{
+		now_record_index = _index;
+		restore_board_state(all_board_state.at(now_record_index));
+	}
 }
 
 board_state chess_pieces::capture_board_state()

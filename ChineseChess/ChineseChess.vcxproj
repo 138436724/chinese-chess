@@ -175,6 +175,10 @@
     <ClCompile Include="tools\record_loader.ixx" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\shader_compiler.ixx" />
+    <ClCompile Include="tools\string_helper.cpp" />
+    <ClCompile Include="tools\string_helper.ixx" />
+    <ClCompile Include="ui\ui.cpp" />
+    <ClCompile Include="ui\ui.ixx" />
     <ClCompile Include="vulkan_core\vulkan_application.cpp" />
     <ClCompile Include="vulkan_core\vulkan_application.ixx" />
     <ClCompile Include="vulkan_core\vulkan_buffer.cpp" />

@@ -1,8 +1,22 @@
 {
   "dependencies": [
     "fastgltf",
+    {
+      "name": "freetype",
+      "features": [
+        "error-strings"
+      ]
+    },
     "glfw3",
     "glm",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "glfw-binding",
+        "vulkan-binding"
+      ]
+    },
     {
       "name": "openimageio",
       "features": [
@@ -18,11 +32,6 @@
     "shader-slang",
     "vulkan-headers",
     "vulkan-utility-libraries",
-    {
-      "name": "freetype",
-      "features": [
-        "error-strings"
-      ]
-    }
+    "icu"
   ]
 }

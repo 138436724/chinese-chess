@@ -7,8 +7,8 @@
 #endif // __INTELLISENSE__
 
 import std;
-import scene_manager;
 import vulkan_application;
+import scene_manager;
 import record_loader;
 
 struct window_info
@@ -95,14 +95,14 @@ int main()
 
 	int width, height;
 	glfwGetFramebufferSize(window, &width, &height);
-	app->create(_surface, true, false, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	app->create(_surface, true, true, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
 	// create scene manager
 	std::unique_ptr<scene_manager> scene = std::make_unique<scene_manager>();
-	scene->create(app.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	scene->create(window, app.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
 	chess_pieces* piece_manager = scene->get_piece_manager();
-	piece_manager->load_record(std::string(RECORDS_PATH) + "棋谱1.txt");
+	// piece_manager->load_record(std::string(RECORDS_PATH) + "棋谱1.txt");
 
 	// render loop
 	while (!glfwWindowShouldClose(window))
@@ -134,6 +134,8 @@ int main()
 
 		auto start = std::chrono::high_resolution_clock::now();
 
+		scene->update();
+
 		scene->render(info.need_save);
 
 		if (info.need_save)
@@ -148,6 +150,8 @@ int main()
 
 	// wait and destroy
 	app->wait_idle();
+
+	scene->destroy();
 
 	glfwDestroyWindow(window);
 	glfwTerminate();

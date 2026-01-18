@@ -9,7 +9,7 @@ import vulkan_commandbuffer;
 import font_loader;
 import shader_compiler;
 
-void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
+void chess_board_line::create(GLFWwindow* _window, const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	// begin a commandbuffer
 	vulkan_commandbuffer commandbuffer = std::move(_app->create_commandbuffers(vk::QueueFlagBits::eGraphics, 1).front());
@@ -125,4 +125,8 @@ void chess_board_line::render(const vk::raii::CommandBuffer& _commandbuffer)
 	_commandbuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+}
+
+void chess_board_line::destroy()
+{
 }

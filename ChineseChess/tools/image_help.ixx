@@ -10,7 +10,7 @@ export constexpr std::string_view CAPTURES_PATH = "resources\\captures\\";
 export class image_help
 {
 public:
-	bool save_to_local(const std::filesystem::path& _save_path, uint32_t _width, uint32_t _height, uint32_t _channel = 4, OpenImageIO_v3_0::TypeDesc _format = OpenImageIO_v3_0::TypeDesc::UINT8, void* _data = nullptr);
+	void save_to_local(const std::filesystem::path& _save_path, uint32_t _width, uint32_t _height, uint32_t _channel = 4, OIIO::TypeDesc _format = OIIO::TypeDesc::UINT8, void* _data = nullptr);
 	static image_help& get_image_help() noexcept;
 
 private:

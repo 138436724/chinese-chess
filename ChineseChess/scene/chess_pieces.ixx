@@ -1,4 +1,9 @@
-﻿export module chess_pieces;
+﻿module;
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+export module chess_pieces;
 
 import <glm/ext/matrix_float4x4.hpp>;
 import std;
@@ -21,14 +26,16 @@ public:
 	chess_pieces() = default;
 	virtual ~chess_pieces() = default;
 
-	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
+	void create(GLFWwindow* _window, const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
 	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height) override;
 	void update(const scene_camera* _camera) override;
 	void render(const vk::raii::CommandBuffer& _commandbuffer) override;
+	void destroy() override;
 
 	bool load_record(const std::filesystem::path& _record_path);
 	void parse_back();
 	void parse_next();
+	void set_now_record_index(uint32_t _index);
 
 	board_state capture_board_state();
 	void restore_board_state(const board_state& _state);
@@ -49,6 +56,6 @@ private:
 	vulkan_buffer indices_buffer;
 
 	uint32_t now_record_index = 0;
-	std::vector<board_state> all_board_state;
+	std::vector<board_state> all_board_state = { record_loader::init_board_state };
 	std::array<std::array<std::unique_ptr<piece_base>, 16>, 2> all_pieces;
 };

@@ -21,8 +21,8 @@ vulkan_queue& vulkan_queue::operator=(vulkan_queue&& _other) noexcept
 void vulkan_queue::create(const vk::raii::Device& _device)
 {
 	queue = vk::raii::Queue(_device, index, 0);
-	vk::CommandPoolCreateInfo graphicsPoolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, index, nullptr);
-	command_pool = vk::raii::CommandPool(_device, graphicsPoolInfo);
+	vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, index, nullptr);
+	command_pool = vk::raii::CommandPool(_device, pool_info);
 }
 
 void vulkan_queue::set_index(uint32_t _index)

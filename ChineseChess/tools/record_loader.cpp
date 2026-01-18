@@ -1,4 +1,8 @@
-﻿module record_loader;
+﻿module;
+
+#include <unicode/utypes.h>
+
+module record_loader;
 
 record_loader record_loader::loader;
 
@@ -6,96 +10,78 @@ std::vector<board_state> record_loader::load_records(const std::filesystem::path
 {
 	std::vector<board_state> all_board_state = { init_board_state };
 
-	std::ifstream f(_record_path.generic_string());
-	if (!f.is_open())
-	{
-		throw std::runtime_error("Can not open file!");
-	}
+	auto all_records = std::move(record_loader::get_record_loader().load_records<std::wstring>(_record_path));
 
-	std::string line;
-	while (std::getline(f, line))
+	for (auto& w_field : all_records)
 	{
-		std::wstring w_field = std::filesystem::path(line).generic_wstring();
-		std::wstringstream w_ss(w_field);
+		board_state now_board_state = all_board_state.back();
+		bool use_red = is_chinese_number(w_field.at(3));
+		std::wstring& now_names = now_board_state.at(static_cast<size_t>(use_red)).name;
+		std::string& now_positions = now_board_state.at(static_cast<size_t>(use_red)).position;
 
-		while (std::getline(w_ss, w_field, L'，'))
+		std::optional<uint8_t> now_piece = std::nullopt;
+
+		if (is_number(w_field.at(1)))
 		{
-			auto start = std::find_if(w_field.begin(), w_field.end(), [](const auto& _c) {return !std::iswspace(_c); });
-			auto end = std::find_if(w_field.rbegin(), w_field.rend(), [](const auto& _c) {return !std::iswspace(_c); }).base();
-			w_field.erase(w_field.begin(), start);
-			w_field.erase(end, w_field.end());
+			std::vector<uint8_t> pieces_on_x = find_piece_on_x(use_red, to_number(w_field.at(1)), now_board_state);
+			auto iter = std::ranges::find_if(pieces_on_x,
+				[&](const auto& _x) {
+					return to_character(now_names.at(_x)) == to_character(w_field.at(0));
+				});
 
-			board_state now_board_state = all_board_state.back();
-			bool use_red = is_chinese_number(w_field.at(3));
-			std::wstring& now_names = now_board_state.at(static_cast<size_t>(use_red)).name;
-			std::string& now_positions = now_board_state.at(static_cast<size_t>(use_red)).position;
-
-			std::optional<uint8_t> now_piece = std::nullopt;
-
-			if (is_number(w_field.at(1)))
+			if (iter != pieces_on_x.end())
 			{
-				std::vector<uint8_t> pieces_on_x = find_piece_on_x(use_red, to_number(w_field.at(1)), now_board_state);
-				auto iter = std::ranges::find_if(pieces_on_x,
-					[&](const auto& _x) {
-						return to_character(now_names.at(_x)) == to_character(w_field.at(0));
-					});
-
-				if (iter != pieces_on_x.end())
+				now_piece = *iter;
+			}
+		}
+		else
+		{
+			std::vector<uint8_t> pieces = find_piece_by_name(use_red, w_field.at(1), now_board_state);
+			if (w_field.at(0) == L'前')
+			{
+				auto iter = std::ranges::max_element(pieces, {}, [&](const auto& _piece) { return now_positions.at(_piece) & 0x0F; });
+				if (iter != pieces.end())
 				{
 					now_piece = *iter;
 				}
 			}
-			else
+			else if (w_field.at(0) == L'后')
 			{
-				std::vector<uint8_t> pieces = find_piece_by_name(use_red, w_field.at(1), now_board_state);
-				if (w_field.at(0) == L'前')
+				auto iter = std::ranges::min_element(pieces, {}, [&](const auto& _piece) { return now_positions.at(_piece) & 0x0F; });
+				if (iter != pieces.end())
 				{
-					auto iter = std::ranges::max_element(pieces, {}, [&](const auto& _piece) { return now_positions.at(_piece) & 0x0F; });
-					if (iter != pieces.end())
-					{
-						now_piece = *iter;
-					}
-				}
-				else if (w_field.at(0) == L'后')
-				{
-					auto iter = std::ranges::min_element(pieces, {}, [&](const auto& _piece) { return now_positions.at(_piece) & 0x0F; });
-					if (iter != pieces.end())
-					{
-						now_piece = *iter;
-					}
+					now_piece = *iter;
 				}
 			}
-
-
-			if (!now_piece.has_value())
-			{
-				continue;
-			}
-
-
-			uint8_t now_piece_position = now_positions.at(now_piece.value());
-			uint8_t now_piece_position_x = (now_piece_position >> 4) & 0x0F;
-			uint8_t now_piece_position_y = now_piece_position & 0x0F;
-
-			now_positions.at(now_piece.value()) = move(now_names.at(now_piece.value()), now_piece_position, w_field.at(2), to_number(w_field.at(3)));
-
-			now_piece_position = now_positions.at(now_piece.value());
-			now_piece_position_x = (now_piece_position >> 4) & 0x0F;
-			now_piece_position_y = now_piece_position & 0x0F;
-
-			std::optional<uint8_t> piece = find_piece_on_x_y(!use_red, 10 - now_piece_position_x, 9 - now_piece_position_y, now_board_state); // 红方和黑方的Y是相反的
-			if (piece.has_value())
-			{
-				now_board_state.at(static_cast<size_t>(!use_red)).name.erase(piece.value(), 1);
-				now_board_state.at(static_cast<size_t>(!use_red)).position.erase(piece.value(), 1);
-			}
-
-
-			all_board_state.push_back(std::move(now_board_state));
 		}
-	}
 
-	f.close();
+
+		if (!now_piece.has_value())
+		{
+			continue;
+		}
+
+
+		uint8_t now_piece_position = now_positions.at(now_piece.value());
+		uint8_t now_piece_position_x = (now_piece_position >> 4) & 0x0F;
+		uint8_t now_piece_position_y = now_piece_position & 0x0F;
+
+		now_positions.at(now_piece.value()) = move(now_names.at(now_piece.value()), now_piece_position, w_field.at(2), to_number(w_field.at(3)));
+
+		now_piece_position = now_positions.at(now_piece.value());
+		now_piece_position_x = (now_piece_position >> 4) & 0x0F;
+		now_piece_position_y = now_piece_position & 0x0F;
+
+		std::optional<uint8_t> piece = find_piece_on_x_y(!use_red, 10 - now_piece_position_x, 9 - now_piece_position_y, now_board_state); // 红方和黑方的Y是相反的
+		if (piece.has_value())
+		{
+			now_board_state.at(static_cast<size_t>(!use_red)).name.erase(piece.value(), 1);
+			now_board_state.at(static_cast<size_t>(!use_red)).position.erase(piece.value(), 1);
+		}
+
+
+		all_board_state.push_back(std::move(now_board_state));
+	}
 
 	return all_board_state;
 }

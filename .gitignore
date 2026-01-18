@@ -375,3 +375,6 @@ vcpkg_installed/
 # blender files
 *.blend
 *.blend1
+
+#imgui setting
+imgui.ini
