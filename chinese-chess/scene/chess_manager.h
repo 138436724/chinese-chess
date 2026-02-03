@@ -20,8 +20,6 @@ public:
 	void destroy() noexcept;
 
 	bool load_record(const std::filesystem::path& _record_path);
-	void parse_back() noexcept;
-	void parse_next() noexcept;
 	void set_now_record_index(uint32_t _index) noexcept;
 
 	all_board_state capture_board_state();

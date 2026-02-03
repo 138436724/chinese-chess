@@ -344,27 +344,6 @@ bool chess_manager::load_record(const std::filesystem::path& _record_path)
 	return board_state.size() > 1;
 }
 
-void chess_manager::parse_back() noexcept
-{
-	if (now_record_index <= 0)
-	{
-		return;
-	}
-
-	now_record_index--;
-	restore_board_state(board_state.at(now_record_index));
-}
-
-void chess_manager::parse_next() noexcept
-{
-	if (now_record_index >= board_state.size() - 1)
-	{
-		return;
-	}
-
-	now_record_index++;
-	restore_board_state(board_state.at(now_record_index));
-}
 
 void chess_manager::set_now_record_index(uint32_t _index) noexcept
 {
