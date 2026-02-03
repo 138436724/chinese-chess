@@ -1,0 +1,34 @@
+{
+  "dependencies": [
+    "fastgltf",
+    {
+      "name": "freetype",
+      "features": [
+        "error-strings"
+      ]
+    },
+    "glfw3",
+    "glm",
+    "icu",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "glfw-binding",
+        "vulkan-binding"
+      ]
+    },
+    "openimageio",
+    {
+      "name": "openssl",
+      "features": [
+        "ssl3"
+      ]
+    },
+    "proxy",
+    "shader-slang",
+    "vulkan-headers",
+    "vulkan-utility-libraries",
+    "opencolorio"
+  ]
+}
