@@ -19,6 +19,7 @@ public:
 	void begin_record(vk::CommandBufferUsageFlags _usage) const;
 	void end_record() const;
 	void submit(const std::vector<vk::SemaphoreSubmitInfo>& _waited, const std::vector<vk::SemaphoreSubmitInfo>& _signal, bool _immediately) const;
+	void wait() const;
 
 	const vk::raii::CommandBuffer& operator*() const noexcept;
 

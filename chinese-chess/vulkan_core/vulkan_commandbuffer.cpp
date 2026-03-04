@@ -57,9 +57,7 @@ void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage) cons
 {
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
-		while (vk::Result::eTimeout == device->waitForFences(*fence, vk::True, std::numeric_limits<uint64_t>::max()))
-		{
-		};
+		wait();
 		device->resetFences(*fence);
 	}
 	commandbuffer.reset();
@@ -79,12 +77,26 @@ void vulkan_commandbuffer::submit(const std::vector<vk::SemaphoreSubmitInfo>& _w
 
 	queue->submit2(submit_info, *fence);
 
-	if (_immediately && commandbuffer_level == vk::CommandBufferLevel::ePrimary)
+	if (_immediately)
+	{
+		wait();
+	}
+}
+
+void vulkan_commandbuffer::wait() const
+{
+	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
 		while (vk::Result::eTimeout == device->waitForFences(*fence, vk::True, std::numeric_limits<uint64_t>::max()))
 		{
 		};
 	}
+#ifndef NDEBUG
+	else
+	{
+		throw std::runtime_error("Secondary commandbuffer can not wait!");
+	}
+#endif // !NDEBUG
 }
 
 const vk::raii::CommandBuffer& vulkan_commandbuffer::operator*() const noexcept
