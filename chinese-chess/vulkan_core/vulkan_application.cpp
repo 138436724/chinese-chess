@@ -102,9 +102,9 @@ void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _u
 		vk::DescriptorImageInfo sampler_info(image_sampler, nullptr, vk::ImageLayout::eUndefined);
 
 		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, 1, vk::DescriptorType::eSampledImage, &scene_info, nullptr),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, 1, vk::DescriptorType::eSampledImage, &ui_info, nullptr),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 2, 0, 1, vk::DescriptorType::eSampler, &sampler_info, nullptr),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eSampledImage, scene_info, nullptr),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eSampledImage, ui_info, nullptr),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 2, 0, vk::DescriptorType::eSampler, sampler_info, nullptr),
 		};
 
 		device.updateDescriptorSets(descriptorWrite, {});
@@ -208,8 +208,10 @@ void vulkan_application::end_frame(bool _immediately)
 
 void vulkan_application::save_image(vulkan_image& _image) const
 {
+	VkFormat image_format = static_cast<VkFormat>(_image.get_format());
+
 	vulkan_buffer save_buffer;
-	save_buffer.create(physical_device, device, _image.get_extent().width * _image.get_extent().height * 8, vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	save_buffer.create(physical_device, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &device, &(get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -233,8 +235,6 @@ void vulkan_application::save_image(vulkan_image& _image) const
 
 	std::u8string save_path = std::u8string(CAPTURES_PATH);
 	save_path += STRING_HELPER::convert_to<std::u8string, std::string>(std::format("{:%Y_%m_%d_%H_%M_%S}", now_second), "utf8");
-
-	VkFormat image_format = static_cast<VkFormat>(_image.get_format());
 
 	OIIO::TypeDesc desc;
 
@@ -263,6 +263,22 @@ void vulkan_application::save_image(vulkan_image& _image) const
 		else
 		{
 			desc = OIIO::TypeDesc::INT16;
+		}
+		save_path += u8".exr";
+	}
+	else if (vkuFormatIs32bit(image_format))
+	{
+		if (vkuFormatIsSFLOAT(image_format))
+		{
+			desc = OIIO::TypeDesc::FLOAT;
+		}
+		else if (vkuFormatIsUINT(image_format))
+		{
+			desc = OIIO::TypeDesc::UINT32;
+		}
+		else
+		{
+			desc = OIIO::TypeDesc::INT32;
 		}
 		save_path += u8".exr";
 	}

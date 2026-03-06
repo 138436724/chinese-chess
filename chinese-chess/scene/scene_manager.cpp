@@ -1,6 +1,8 @@
 #include "chess_board.h"
 #include "chess_board_line.h"
 #include "scene_manager.h"
+#include "skybox/scene_skybox.h"
+#include "tools/image_helper.h"
 #include "vulkan_core/vulkan_common.h"
 
 void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -13,6 +15,16 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	active_camera.set_position(glm::vec3(0.f, 0.f, 1.1f));
 	active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));
 	active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
+
+
+	// sort by draw index
+	// skybox first
+	cubemap = std::make_unique<scene_cubemap>();
+	cubemap->create(app, std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr");
+
+	auto skybox = std::make_unique<scene_skybox>();
+	skybox->set_cubemap(cubemap.get());
+	nodes.emplace_back(std::move(skybox));
 
 	nodes.emplace_back(pro::make_proxy<scene_node, chess_board>());
 	nodes.emplace_back(pro::make_proxy<scene_node, chess_board_line>());
@@ -37,7 +49,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 	// camera projection
 	constexpr float camera_height = 1.3f;
-	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 1.f, 0.f);
+	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 1.f, -10.f);
 
 	// render_output
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive, 0);
@@ -47,7 +59,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	// msaa color
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MASS_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.41015625f, 0.234375f, 0.0859375f, 1.f));
+	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	// depth
 	vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MASS_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, 0);

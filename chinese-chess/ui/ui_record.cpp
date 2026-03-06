@@ -91,7 +91,10 @@ void ui_record::update()
 	ImGui::NewFrame();
 
 	bool show_demo_window = true;
+
+#ifndef NDEBUG
 	ImGui::ShowDemoWindow(&show_demo_window);
+#endif // !NDEBUG
 
 	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
 

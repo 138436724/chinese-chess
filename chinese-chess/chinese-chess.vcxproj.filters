@@ -87,6 +87,15 @@
     <ClCompile Include="scene\chess_piece.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="scene\skybox\scene_skybox.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\skybox\scene_brdflut.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\skybox\scene_cubemap.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -158,6 +167,15 @@
     <ClInclude Include="scene\chess_piece.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="scene\skybox\scene_skybox.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\skybox\scene_brdflut.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\skybox\scene_cubemap.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang">
@@ -169,6 +187,17 @@
     <None Include="resources\shaders\chess_board_line.slang">
       <Filter>资源文件</Filter>
     </None>
-    <None Include="resources\shaders\chess_manager.slang" />
+    <None Include="resources\shaders\chess_manager.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\scene_skybox.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\scene_brdflut.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\scene_cubemap.slang">
+      <Filter>资源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

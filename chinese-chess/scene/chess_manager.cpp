@@ -166,7 +166,7 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 	};
 
 	auto binding = model_vertex::get_binding_description();
-	auto attribute = model_vertex::get_attribute_descriptions();
+	auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
 	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"chess_manager.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
 	if (spirv_code.empty())
@@ -290,8 +290,8 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 		vk::DescriptorImageInfo image_info(font_sampler, font_images.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &image_info, nullptr),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eUniformBuffer, nullptr, buffer_info),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eCombinedImageSampler, image_info, nullptr),
 		};
 
 		_app->get_device().updateDescriptorSets(descriptorWrite, {});

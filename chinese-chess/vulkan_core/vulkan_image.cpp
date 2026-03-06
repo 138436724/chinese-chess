@@ -97,6 +97,11 @@ void vulkan_image::copy_image_to_buffer(const vk::raii::CommandBuffer& _commandb
 	_commandbuffer.copyImageToBuffer2(vk::CopyImageToBufferInfo2(_image, _layout, _buffer, _copy_info));
 }
 
+void vulkan_image::copy_image_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image_src, const vk::Image& _image_dst, vk::ImageLayout _src_layout, vk::ImageLayout _dst_layout, const vk::ImageCopy2& _copy_info) noexcept
+{
+	_commandbuffer.copyImage2(vk::CopyImageInfo2(_image_src, _src_layout, _image_dst, _dst_layout, _copy_info));
+}
+
 vk::AccessFlags2 vulkan_image::get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept
 {
 	switch (_layout)

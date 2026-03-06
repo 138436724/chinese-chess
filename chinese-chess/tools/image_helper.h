@@ -7,10 +7,12 @@
 
 #define IMAGE_HELPER image_helper::get_image_help()
 constexpr std::u8string_view CAPTURES_PATH = u8"resources\\captures\\";
+constexpr std::u8string_view TEXTURES_PATH = u8"resources\\textures\\";
 
 class image_helper
 {
 public:
+	void read_hdr_image(const std::filesystem::path& _hdr_path, uint32_t& _width, uint32_t& _height, std::vector<float>& _hdr_data);
 	void save_to_local(const std::filesystem::path& _save_path, uint32_t _width, uint32_t _height, uint32_t _channel = 4, OIIO::TypeDesc _format = OIIO::TypeDesc::UINT8, void* _data = nullptr);
 	static image_helper& get_image_help() noexcept;
 

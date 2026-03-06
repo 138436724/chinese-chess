@@ -29,6 +29,7 @@ public:
 	static vk::ImageMemoryBarrier2 transition_image_layout(const vk::Image& _image, vk::ImageLayout _old_layout, vk::ImageLayout _new_layout, const vk::ImageSubresourceRange& _resource_range) noexcept;
 
 	static void copy_image_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image, const vk::Buffer& _buffer, vk::ImageLayout _layout, const vk::BufferImageCopy2& _copy_info) noexcept;
+	static void copy_image_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image_src, const vk::Image& _image_dst, vk::ImageLayout _src_layout, vk::ImageLayout _dst_layout, const vk::ImageCopy2& _copy_info) noexcept;
 
 private:
 	static vk::AccessFlags2 get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept;

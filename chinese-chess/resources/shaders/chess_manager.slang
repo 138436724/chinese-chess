@@ -1,7 +1,6 @@
 ﻿struct VSInput
 {
     float3 position;
-    float3 normal;
     float2 uv;
 };
 
@@ -37,7 +36,6 @@ VSOutput vertMain(VSInput input, uint32_t instance_id: SV_InstanceID)
     output.position =
         mul(ubos.ubo[instance_id].projection,
             mul(ubos.ubo[instance_id].view, mul(ubos.ubo[instance_id].model, float4(input.position, 1.0))));
-    output.color = input.normal; // todo
     output.color = ubos.ubo[instance_id].piece_color;
     output.sampler_layer = ubos.ubo[instance_id].piece_type + uint32_t(abs(ubos.ubo[instance_id].piece_color.x - 1)) * 7;
     output.uv = input.uv;

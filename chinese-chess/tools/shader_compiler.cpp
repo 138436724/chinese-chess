@@ -67,7 +67,7 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::
 	std::filesystem::path spirv_path = _shader_path;
 	spirv_path.replace_extension(".spv");
 
-	if (!FILE_WATCHER.is_file_modified(_shader_path) && std::filesystem::exists(spirv_path))
+	if ((!std::filesystem::exists(_shader_path) || !FILE_WATCHER.is_file_modified(_shader_path)) && std::filesystem::exists(spirv_path))
 	{
 		std::ifstream in_file(spirv_path.generic_string(), std::ios::ate | std::ios::binary);
 

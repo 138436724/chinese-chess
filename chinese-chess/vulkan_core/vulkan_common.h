@@ -9,6 +9,7 @@ public:
 	inline static vk::SampleCountFlagBits MASS_SAMPLE_COUNT = vk::SampleCountFlagBits::e1;
 	inline static vk::Format DEPTH_FORMAT = vk::Format::eUndefined;
 	inline static const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+	inline static bool USE_HDR = false;
 
 	static uint32_t find_memory_type(const vk::raii::PhysicalDevice& _physical_device, uint32_t _type_filter, vk::MemoryPropertyFlags _properties);
 	static vk::Format find_supported_format(const vk::raii::PhysicalDevice& _physical_device, const std::vector<vk::Format>& _candidates, vk::ImageTiling _tiling, vk::FormatFeatureFlags _features);

@@ -73,6 +73,12 @@
   <PropertyGroup Label="Vcpkg">
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <VcpkgUseStatic>false</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgUseStatic>false</VcpkgUseStatic>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -142,6 +148,9 @@
     <ClCompile Include="scene\scene_camera.cpp" />
     <ClCompile Include="scene\scene_manager.cpp" />
     <ClCompile Include="scene\scene_node.cpp" />
+    <ClCompile Include="scene\skybox\scene_brdflut.cpp" />
+    <ClCompile Include="scene\skybox\scene_cubemap.cpp" />
+    <ClCompile Include="scene\skybox\scene_skybox.cpp" />
     <ClCompile Include="tools\file_watcher.cpp" />
     <ClCompile Include="tools\font_loader.cpp" />
     <ClCompile Include="tools\image_helper.cpp" />
@@ -167,6 +176,9 @@
     <ClInclude Include="scene\scene_camera.h" />
     <ClInclude Include="scene\scene_manager.h" />
     <ClInclude Include="scene\scene_node.h" />
+    <ClInclude Include="scene\skybox\scene_brdflut.h" />
+    <ClInclude Include="scene\skybox\scene_cubemap.h" />
+    <ClInclude Include="scene\skybox\scene_skybox.h" />
     <ClInclude Include="tools\file_watcher.h" />
     <ClInclude Include="tools\font_loader.h" />
     <ClInclude Include="tools\image_helper.h" />
@@ -189,6 +201,9 @@
     <None Include="resources\shaders\chess_board.slang" />
     <None Include="resources\shaders\chess_board_line.slang" />
     <None Include="resources\shaders\chess_manager.slang" />
+    <None Include="resources\shaders\scene_brdflut.slang" />
+    <None Include="resources\shaders\scene_cubemap.slang" />
+    <None Include="resources\shaders\scene_skybox.slang" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

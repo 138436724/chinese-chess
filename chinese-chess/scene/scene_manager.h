@@ -3,6 +3,7 @@
 #include "chess_manager.h"
 #include "scene_camera.h"
 #include "scene_node.h"
+#include "skybox/scene_cubemap.h"
 #include "vulkan_core/vulkan_application.h"
 
 class scene_manager
@@ -38,4 +39,6 @@ private:
 
 	std::vector<pro::proxy<scene_node>> nodes;
 	chess_manager* piece_manager = nullptr;
+
+	std::unique_ptr<scene_cubemap> cubemap = nullptr;
 };

@@ -68,7 +68,7 @@ bool model_loader::load_model(const std::filesystem::path& _file_path, std::vect
 			{
 				fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors.at(uvs->accessorIndex),
 					[&](glm::vec2 _uv, size_t _index) {
-						_vertices.at(initial_vtx + _index).uv = _uv;
+						_vertices.at(initial_vtx + _index).uv = _uv; // glm::vec2(_uv.x, 1.f - _uv.y); // flip y
 					});
 			}
 		}

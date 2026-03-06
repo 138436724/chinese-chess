@@ -45,7 +45,9 @@ void vulkan_pipeline::create_pipeline(const vk::raii::Device& _device,
 	vk::PipelineColorBlendAttachmentState color_blend_attachment(vk::False, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd,
 		vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd,
 		vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
-	vk::PipelineColorBlendStateCreateInfo color_blending({}, vk::False, vk::LogicOp::eCopy, 1, &color_blend_attachment);
+
+	std::vector<vk::PipelineColorBlendAttachmentState> color_blend_attachments(_color_formats.size(), color_blend_attachment);
+	vk::PipelineColorBlendStateCreateInfo color_blending({}, vk::False, vk::LogicOp::eCopy, color_blend_attachments);
 
 	std::array dynamic_states = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
 	vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, dynamic_states, nullptr);

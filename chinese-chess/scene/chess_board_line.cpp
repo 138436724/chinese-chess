@@ -25,7 +25,7 @@ void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFla
 	};
 
 	auto binding = model_vertex::get_binding_description();
-	auto attribute = model_vertex::get_attribute_descriptions();
+	auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position>();
 
 	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"chess_board_line.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
 	if (spirv_code.empty())
@@ -98,7 +98,7 @@ void chess_board_line::resize(const vulkan_application* _app, uint32_t _width, u
 		vk::DescriptorBufferInfo buffer_info(ubos.at(i).get_buffer(), 0, sizeof(chess_board_line::UBO));
 
 		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &buffer_info),
+			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eUniformBuffer, nullptr, buffer_info),
 		};
 
 		_app->get_device().updateDescriptorSets(descriptorWrite, {});
