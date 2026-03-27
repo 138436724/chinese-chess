@@ -51,21 +51,21 @@ void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFla
 	}
 
 	vk::DeviceSize vertices_size = sizeof(vertices.front()) * vertices.size();
-	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer vertices_staging_buffer;
 	vertices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(vertices_staging_buffer.get_buffer_address(), vertices.data(), vertices_size);
+	memcpy(vertices_staging_buffer.get_buffer_address().hostAddress, vertices.data(), vertices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), vk::BufferCopy2(0, 0, vertices_size));
 
 	vk::DeviceSize indices_size = sizeof(indices.front()) * indices.size();
-	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer indices_staging_buffer;
 	indices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(indices_staging_buffer.get_buffer_address(), indices.data(), indices_size);
+	memcpy(indices_staging_buffer.get_buffer_address().hostAddress, indices.data(), indices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), indices_staging_buffer.get_buffer(), indices_buffer.get_buffer(), vk::BufferCopy2(0, 0, indices_size));
 
 
@@ -108,7 +108,7 @@ void chess_board_line::resize(const vulkan_application* _app, uint32_t _width, u
 void chess_board_line::update(const scene_camera* _camera) noexcept
 {
 	chess_board_line::UBO ubo_(glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, 0.5f)), _camera->get_view_matrix(), _camera->get_projection_matrix(), _camera->get_position());
-	memcpy(ubos.at(current_frame).get_buffer_address(), &ubo_, sizeof(chess_board_line::UBO));
+	memcpy(ubos.at(current_frame).get_buffer_address().hostAddress, &ubo_, sizeof(chess_board_line::UBO));
 }
 
 void chess_board_line::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept

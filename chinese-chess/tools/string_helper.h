@@ -36,7 +36,7 @@ namespace string_helper
 		}
 		else if constexpr (std::same_as<old_string_class, std::u8string>)
 		{
-			icu_string = std::move(icu::UnicodeString::fromUTF8(icu::StringPiece(reinterpret_cast<const char*>(_string.data()), static_cast<int32_t>(_string.size()))));
+			icu_string = icu::UnicodeString::fromUTF8(icu::StringPiece(reinterpret_cast<const char*>(_string.data()), static_cast<int32_t>(_string.size())));
 		}
 		else if constexpr (std::same_as<old_string_class, std::wstring>)
 		{

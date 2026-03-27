@@ -15,6 +15,7 @@ public:
 	void update(const scene_camera* _camera) noexcept;
 	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept;
 	void destroy() noexcept;
+	void createblasinfo(const vulkan_application* _app) noexcept;
 
 private:
 	vk::raii::DescriptorPool descriptor_pool = nullptr;
@@ -25,6 +26,9 @@ private:
 
 	std::vector<uint32_t> indices;
 	vulkan_buffer indices_buffer;
+
+	vulkan_buffer blas_buffer;
+	vk::DeviceAddress blas_handle;
 
 	std::vector<vk::raii::DescriptorSet> descriptor_sets;
 
@@ -38,7 +42,7 @@ private:
 		alignas(16) glm::vec3 camera_pos;
 	};
 	std::vector<vulkan_buffer> ubos;
-	
+
 	vulkan_image font_image;
 	vk::raii::Sampler font_sampler = nullptr;
 };

@@ -29,11 +29,10 @@ public:
 private:
 	void load_records(const std::filesystem::path& _record_path);
 
-	std::array<vk::Format, 1> color_format;
+	vk::Format color_format = vk::Format::eUndefined;
 
 	vulkan_application* app = nullptr;
 	vk::raii::DescriptorPool descriptor_pool = nullptr;
-	vk::PipelineRenderingCreateInfo create_info;
 
 	ImDrawData* draw_data = nullptr;
 

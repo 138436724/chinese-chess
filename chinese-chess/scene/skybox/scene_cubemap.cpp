@@ -93,7 +93,7 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 
 	vulkan_buffer stage_buffer;
 	stage_buffer.create(_app->get_physical_device(), _app->get_device(), hdr_data.size() * sizeof(float), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-	memcpy(stage_buffer.get_buffer_address(), hdr_data.data(), hdr_data.size() * sizeof(float));
+	memcpy(stage_buffer.get_buffer_address().hostAddress, hdr_data.data(), hdr_data.size() * sizeof(float));
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(hdr_image.set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));

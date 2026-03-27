@@ -70,6 +70,10 @@ private:
 		vk::KHRSpirv14ExtensionName,
 		vk::KHRSynchronization2ExtensionName,
 		vk::KHRCreateRenderpass2ExtensionName,
+		vk::KHRAccelerationStructureExtensionName,
+		vk::KHRRayTracingPipelineExtensionName,
+		//vk::KHRRayQueryExtensionName,
+		vk::KHRDeferredHostOperationsExtensionName
 	};
 
 	vulkan_queue graphic_queue;

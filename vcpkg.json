@@ -18,6 +18,7 @@
         "vulkan-binding"
       ]
     },
+    "opencolorio",
     "openimageio",
     {
       "name": "openssl",
@@ -28,7 +29,6 @@
     "proxy",
     "shader-slang",
     "vulkan-headers",
-    "vulkan-utility-libraries",
-    "opencolorio"
+    "vulkan-utility-libraries"
   ]
 }

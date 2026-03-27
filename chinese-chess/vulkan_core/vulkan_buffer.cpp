@@ -26,13 +26,26 @@ void vulkan_buffer::create(const vk::raii::PhysicalDevice& _physical_device, con
 
 	vk::MemoryRequirements memory_requirements = buffer.getMemoryRequirements();
 	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties));
-	buffer_memory = vk::raii::DeviceMemory(_device, memory_info);
+
+	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+	{
+		buffer_memory = vk::raii::DeviceMemory(_device, memory_info);
+	}
+	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+	{
+		vk::StructureChain<vk::MemoryAllocateInfo, vk::MemoryAllocateFlagsInfo> memory_info_chain(memory_info, vk::MemoryAllocateFlagsInfo(vk::MemoryAllocateFlagBits::eDeviceAddress));
+		buffer_memory = vk::raii::DeviceMemory(_device, memory_info_chain.get<vk::MemoryAllocateInfo>());
+	}
 
 	buffer.bindMemory(*(buffer_memory), 0);
 
 	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
 	{
 		buffer_address = buffer_memory.mapMemory(0, _buffer_size);
+	}
+	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+	{
+		buffer_address = _device.getBufferAddress(vk::BufferDeviceAddressInfo(buffer));
 	}
 }
 
@@ -41,7 +54,7 @@ const vk::raii::Buffer& vulkan_buffer::get_buffer() const noexcept
 	return buffer;
 }
 
-void* vulkan_buffer::get_buffer_address() const noexcept
+const vk::DeviceOrHostAddressKHR& vulkan_buffer::get_buffer_address() const noexcept
 {
 	return buffer_address;
 }

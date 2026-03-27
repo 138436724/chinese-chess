@@ -192,21 +192,21 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 	}
 
 	vk::DeviceSize vertices_size = sizeof(vertices.front()) * vertices.size();
-	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer vertices_staging_buffer;
 	vertices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(vertices_staging_buffer.get_buffer_address(), vertices.data(), vertices_size);
+	memcpy(vertices_staging_buffer.get_buffer_address().hostAddress, vertices.data(), vertices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), vk::BufferCopy2(0, 0, vertices_size));
 
 	vk::DeviceSize indices_size = sizeof(indices.front()) * indices.size();
-	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer indices_staging_buffer;
 	indices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(indices_staging_buffer.get_buffer_address(), indices.data(), indices_size);
+	memcpy(indices_staging_buffer.get_buffer_address().hostAddress, indices.data(), indices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), indices_staging_buffer.get_buffer(), indices_buffer.get_buffer(), vk::BufferCopy2(0, 0, indices_size));
 
 
@@ -235,7 +235,7 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 	// load font and transition to image
 	constexpr std::wstring_view all_piece_names = L"帥仕相傌俥炮兵將士象馬車砲卒";
 	constexpr float font_resolution = 1.5f;
-	std::vector<character_info> fonts_info = std::move(FONT_LOADER.load_font(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), std::wstring(all_piece_names)));
+	std::vector<character_info> fonts_info = FONT_LOADER.load_font(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), std::wstring(all_piece_names));
 	uint32_t max_bearing_height_up = 0, max_bearing_height_down = 0, all_width = 0;
 	for (const auto& _font_info : fonts_info)
 	{
@@ -259,7 +259,7 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 	{
 		vulkan_buffer stage_buffer;
 		stage_buffer.create(_app->get_physical_device(), _app->get_device(), _font_info.width * _font_info.height, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-		memcpy(stage_buffer.get_buffer_address(), _font_info.buffer.data(), _font_info.buffer.size());
+		memcpy(stage_buffer.get_buffer_address().hostAddress, _font_info.buffer.data(), _font_info.buffer.size());
 
 		vk::Offset3D copy_offset((all_width - _font_info.advance) / 2 + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height, 0);
 		vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), font_images.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(_index), 1), copy_offset, vk::Extent3D(_font_info.width, _font_info.height, 1)));
@@ -318,7 +318,7 @@ void chess_manager::update(const scene_camera* _camera) noexcept
 			})
 		| std::ranges::to<std::vector>();
 
-	memcpy(ubos.at(current_frame).get_buffer_address(), pieces_to_render.data(), pieces_to_render.size() * sizeof(chess_manager::UBO));
+	memcpy(ubos.at(current_frame).get_buffer_address().hostAddress, pieces_to_render.data(), pieces_to_render.size() * sizeof(chess_manager::UBO));
 
 	alive_piece_num = static_cast<uint32_t>(pieces_to_render.size());
 }
@@ -340,7 +340,7 @@ void chess_manager::destroy() noexcept
 
 bool chess_manager::load_record(const std::filesystem::path& _record_path)
 {
-	board_state = std::move(RECORD_LOADER.load_record(_record_path));
+	board_state = RECORD_LOADER.load_record(_record_path);
 	return board_state.size() > 1;
 }
 

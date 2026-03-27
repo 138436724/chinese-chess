@@ -54,21 +54,21 @@ void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits
 	}
 
 	vk::DeviceSize vertices_size = sizeof(vertices.front()) * vertices.size();
-	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vertices_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer vertices_staging_buffer;
 	vertices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(vertices_staging_buffer.get_buffer_address(), vertices.data(), vertices_size);
+	memcpy(vertices_staging_buffer.get_buffer_address().hostAddress, vertices.data(), vertices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), vk::BufferCopy2(0, 0, vertices_size));
 
 	vk::DeviceSize indices_size = sizeof(indices.front()) * indices.size();
-	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	indices_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer indices_staging_buffer;
 	indices_staging_buffer.create(_app->get_physical_device(), _app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(indices_staging_buffer.get_buffer_address(), indices.data(), indices_size);
+	memcpy(indices_staging_buffer.get_buffer_address().hostAddress, indices.data(), indices_size);
 	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), indices_staging_buffer.get_buffer(), indices_buffer.get_buffer(), vk::BufferCopy2(0, 0, indices_size));
 
 
@@ -105,7 +105,7 @@ void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32
 
 	// load font and transition to image
 	constexpr float font_resolution = 2.f;
-	std::vector<character_info> fonts_info = std::move(FONT_LOADER.load_font(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), L"楚河汉界"));
+	std::vector<character_info> fonts_info = FONT_LOADER.load_font(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(_height / 9 * font_resolution), L"楚河汉界");
 	uint32_t max_bearing_height_up = 0, max_bearing_height_down = 0, all_width = 0;
 	for (const auto& _font_info : fonts_info)
 	{
@@ -129,7 +129,7 @@ void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32
 	{
 		vulkan_buffer stage_buffer;
 		stage_buffer.create(_app->get_physical_device(), _app->get_device(), _font_info.width * _font_info.height, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-		memcpy(stage_buffer.get_buffer_address(), _font_info.buffer.data(), _font_info.buffer.size());
+		memcpy(stage_buffer.get_buffer_address().hostAddress, _font_info.buffer.data(), _font_info.buffer.size());
 
 		vk::Offset3D copy_offset(width_offset + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height, 0);
 		vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), font_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), copy_offset, vk::Extent3D(_font_info.width, _font_info.height, 1)));
@@ -172,7 +172,7 @@ void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32
 void chess_board::update(const scene_camera* _camera) noexcept
 {
 	chess_board::UBO ubo_(glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, 0.7f)), _camera->get_view_matrix(), _camera->get_projection_matrix(), _camera->get_position());
-	memcpy(ubos.at(current_frame).get_buffer_address(), &ubo_, sizeof(chess_board::UBO));
+	memcpy(ubos.at(current_frame).get_buffer_address().hostAddress, &ubo_, sizeof(chess_board::UBO));
 }
 
 void chess_board::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept
@@ -188,4 +188,53 @@ void chess_board::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept
 
 void chess_board::destroy() noexcept
 {
+}
+
+void chess_board::createblasinfo(const vulkan_application* _app) noexcept
+{
+	vk::AccelerationStructureBuildRangeInfoKHR range(static_cast<uint32_t>(indices.size() / 3));
+
+	vk::AccelerationStructureGeometryKHR geometry(vk::GeometryTypeKHR::eTriangles,
+		vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR16G16B16A16Sfloat, vk::DeviceOrHostAddressConstKHR(vertices_buffer.get_buffer_address().deviceAddress), sizeof(model_vertex), static_cast<uint32_t>(vertices.size()), vk::IndexType::eUint32, vk::DeviceOrHostAddressConstKHR(indices_buffer.get_buffer_address().deviceAddress)),
+		vk::GeometryFlagBitsKHR::eOpaque, nullptr);
+
+	vk::AccelerationStructureBuildGeometryInfoKHR build_info(vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, vk::BuildAccelerationStructureModeKHR::eBuild, {}, {}, geometry);
+
+	vk::AccelerationStructureBuildSizesInfoKHR size_info = _app->get_device().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, build_info, range.primitiveCount);
+
+
+	vulkan_buffer scratch_buffer;
+	scratch_buffer.create(_app->get_physical_device(), _app->get_device(), size_info.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+
+	// begin a commandbuffer
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+
+	// build bottom-level ASs
+	blas_buffer.create(_app->get_physical_device(), _app->get_device(), size_info.accelerationStructureSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	vk::AccelerationStructureCreateInfoKHR create_info({}, blas_buffer.get_buffer(), {}, size_info.accelerationStructureSize, vk::AccelerationStructureTypeKHR::eBottomLevel);
+	vk::raii::AccelerationStructureKHR acceleration_structure = _app->get_device().createAccelerationStructureKHR(create_info);
+
+
+	build_info.scratchData = scratch_buffer.get_buffer_address();
+	build_info.srcAccelerationStructure = nullptr;
+	build_info.dstAccelerationStructure = acceleration_structure;
+	(*commandbuffer).buildAccelerationStructuresKHR(build_info, &range);
+
+
+	// guard our scratch buffer
+	auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, memory_barrier, {}, {}));
+
+
+	// commandbuffer submit
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
+
+
+	// get handles
+	blas_handle = _app->get_device().getAccelerationStructureAddressKHR(vk::AccelerationStructureDeviceAddressInfoKHR(acceleration_structure));
 }

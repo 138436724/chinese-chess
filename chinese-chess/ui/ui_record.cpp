@@ -40,8 +40,11 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, pool_size);
 	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_info);
 
-	color_format = { app->get_swapchain().get_format() };
-	create_info = vk::PipelineRenderingCreateInfo({}, color_format, vk::Format::eUndefined, vk::Format::eUndefined, nullptr);
+	color_format = app->get_swapchain().get_format();
+	ImGui_ImplVulkan_PipelineInfo create_info = {
+		.MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_common::MASS_SAMPLE_COUNT),
+		.PipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo({}, color_format, vk::Format::eUndefined, vk::Format::eUndefined, nullptr),
+	};
 
 	ImGui_ImplVulkan_InitInfo init_info = {
 		.ApiVersion = vk::ApiVersion13,
@@ -53,12 +56,10 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 		.DescriptorPool = *descriptor_pool,
 		.MinImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
 		.ImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
-		.MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_common::MASS_SAMPLE_COUNT),
+		.PipelineInfoMain = create_info,
 		.UseDynamicRendering = true,
-		.PipelineRenderingCreateInfo = create_info
 	};
 	ImGui_ImplVulkan_Init(&init_info);
-	ImGui_ImplVulkan_CreateFontsTexture();
 
 	resize(_width, _height);
 }
@@ -68,13 +69,13 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
 	//ImGui_ImplVulkanH_CreateOrResizeWindow(g_Instance, g_PhysicalDevice, g_Device, wd, g_QueueFamily, g_Allocator, fb_width, fb_height, g_MinImageCount, 0);
 
 	// render_output
-	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format.front(), vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format.front(), {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	// msaa color
-	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format.front(), vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MASS_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format.front(), {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MASS_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 }
 
@@ -213,7 +214,7 @@ vulkan_image& ui_record::get_render_image() noexcept
 
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
-	all_records = std::move(RECORD_LOADER.read_record<std::u8string>(_record_path));
+	all_records = RECORD_LOADER.read_record<std::u8string>(_record_path);
 
 	all_records_c_str = all_records
 		| std::views::transform([](const auto& _record) {return reinterpret_cast<const char*>(_record.data()); })
