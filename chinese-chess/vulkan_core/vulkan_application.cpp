@@ -432,8 +432,14 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderBufferInt64Atomics
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderInt8
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderFloat16
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
+					&& features.get<vk::PhysicalDeviceVulkan11Features>().storageBuffer16BitAccess
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
+					&& features.get<vk::PhysicalDeviceVulkan11Features>().uniformAndStorageBuffer16BitAccess
 					&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
 					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
 					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructureCaptureReplay
@@ -496,8 +502,8 @@ void vulkan_application::create_device_and_queue()
 			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True)),
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True),
-			vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
+			vk::PhysicalDeviceVulkan12Features().setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).setBufferDeviceAddress(vk::True),
+			vk::PhysicalDeviceVulkan11Features().setStorageBuffer16BitAccess(vk::True).setShaderDrawParameters(vk::True).setUniformAndStorageBuffer16BitAccess(vk::True),
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),
 			vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True).setAccelerationStructureCaptureReplay(vk::True).setDescriptorBindingAccelerationStructureUpdateAfterBind(vk::True),
@@ -509,7 +515,7 @@ void vulkan_application::create_device_and_queue()
 	float queue_priority = 0.0f;
 	auto device_queue_create_info = queue_indices
 		| std::views::transform(
-			[queue_priority](const auto& index) -> vk::DeviceQueueCreateInfo
+			[&queue_priority](const auto& index) -> vk::DeviceQueueCreateInfo
 			{
 				return vk::DeviceQueueCreateInfo({}, index, 1, &queue_priority);
 			})
