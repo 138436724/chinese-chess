@@ -6,6 +6,7 @@
 #include "tools/record_loader.h"
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_descriptor.h"
 
 class chess_manager
 {
@@ -26,7 +27,6 @@ public:
 	void restore_board_state(const all_board_state& _state);
 
 private:
-	vk::raii::DescriptorPool descriptor_pool = nullptr;
 	vulkan_pipeline pipeline;
 
 	std::vector<model_vertex> vertices;
@@ -35,7 +35,7 @@ private:
 	std::vector<uint32_t> indices;
 	vulkan_buffer indices_buffer;
 
-	std::vector<vk::raii::DescriptorSet> descriptor_sets;
+	vulkan_descriptor descriptor;
 
 	uint32_t current_frame = 0;
 
@@ -56,7 +56,7 @@ private:
 
 	uint32_t alive_piece_num = 0;
 
-	vulkan_image font_images;
+	vulkan_image font_image;
 	vk::raii::Sampler font_sampler = nullptr;
 
 	uint32_t now_record_index = 0;

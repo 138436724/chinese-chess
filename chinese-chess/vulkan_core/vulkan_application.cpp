@@ -2,12 +2,12 @@
 #include "tools/shader_compiler.h"
 #include "tools/string_helper.h"
 #include "vulkan_application.h"
-#include "vulkan_buffer.h"
 #include "vulkan_common.h"
 #include <algorithm>
 #include <format>
 #include <print>
 #include <ranges>
+#include <tools/ocio_helper.h>
 #include <unordered_set>
 #include <vulkan/utility/vk_format_utils.h>
 
@@ -26,27 +26,236 @@ void vulkan_application::create(vk::SurfaceKHR _surface, bool _enable_graphics, 
 
 	swapchain.create(instance, physical_device, device, _surface, _width, _height);
 
-	// descriptor pool
-	std::array pool_size{
-		vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eSampler, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-	};
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(device, pool_info);
-
 
 	// pipeline
-	std::array bindings{
+	std::vector bindings{
 		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eSampledImage, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
 		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eSampledImage, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
 		vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
 	};
 
-	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"blend_image.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+
+	std::vector<char> spirv_code;
+	OCIO::GpuShaderDescRcPtr shader_desc = nullptr;
+
+	if constexpr (vulkan_common::USE_OCIO)
+	{
+		shader_desc = OCIO_HELPER.generate_shader_info(std::u8string(OCIOS_PATH) + u8"studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio");
+		spirv_code = OCIO_HELPER.replace_and_compile(shader_desc, std::u8string(SHADERS_PATH) + u8"blend_image.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+	}
+	else
+	{
+		spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"blend_image.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+	}
+
 	if (spirv_code.empty())
 	{
 		throw std::runtime_error("compile .spv failed!");
+	}
+
+	if constexpr (vulkan_common::USE_OCIO)
+	{
+		if (shader_desc->getNumUniforms() > 0 && shader_desc->getUniformBufferSize() > 0)
+		{
+			ocio_ubo.create(physical_device, device, shader_desc->getUniformBufferSize(), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			OCIO_HELPER.copy_uniform_to_buffer(shader_desc, ocio_ubo.get_buffer_address().hostAddress);
+		}
+
+		// todo 看能否封装到OCIO_HELPER的函数里面
+		// begin a commandbuffer
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &device, &(get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+		ocio_images.clear();
+		ocio_samplers.clear();
+		//ocio_images.resize(shader_desc->getNum3DTextures() + shader_desc->getNumTextures());
+		std::vector<vulkan_buffer> stage_buffers;
+
+		auto num_3d_textures = shader_desc->getNum3DTextures();
+		for (uint32_t i = 0; i < num_3d_textures; i++)
+		{
+			const char* texture_name = nullptr;
+			const char* sampler_name = nullptr;
+			uint32_t edge_len = 0;
+			OCIO::Interpolation interpolation = OCIO::INTERP_LINEAR;
+			shader_desc->get3DTexture(i, texture_name, sampler_name, edge_len, interpolation);
+
+			if (!texture_name || !sampler_name || edge_len == 0)
+			{
+				throw std::runtime_error("Invalid 3D texture data.");
+			}
+
+
+			const float* values = nullptr;
+			shader_desc->get3DTextureValues(i, values);
+			if (!values)
+			{
+				throw std::runtime_error("Missing 3D texture values");
+			}
+
+
+			std::vector<float> rgba_values = std::views::iota(0u, edge_len * edge_len * edge_len)
+				| std::views::transform([&](const auto& i)
+					{
+						return std::vector<float>{ values[i * 3 + 0], values[i * 3 + 1], values[i * 3 + 2], 1.f };
+					})
+				| std::views::join
+				| std::ranges::to<std::vector>();
+
+
+			vulkan_image ocio_image;
+			vk::ImageCreateInfo ocio_image_info({}, vk::ImageType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
+			vk::ImageViewCreateInfo ocio_view_info({}, {}, vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+			ocio_image.create(physical_device, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+
+
+			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
+			begin_barrier.emplace_back(ocio_image.set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+			(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+
+
+			vulkan_buffer stage_buffer;
+			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
+			stage_buffer.create(physical_device, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
+
+			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(edge_len, edge_len, edge_len)));
+
+			std::vector<vk::ImageMemoryBarrier2> end_barrier;
+			end_barrier.emplace_back(ocio_image.set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+			(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
+
+
+			stage_buffers.push_back(std::move(stage_buffer));
+			//ocio_images.at(shader_desc->getTextureShaderBindingIndex(i)) = std::move(ocio_image);
+			ocio_images.push_back(std::move(ocio_image));
+
+
+			// create sampler
+			vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+			vk::SamplerCreateInfo sampler_info({}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
+				(interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear), vk::SamplerMipmapMode::eNearest,
+				vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+				0.f, vk::False, 1.f, vk::False, vk::CompareOp::eAlways, 0.f, 0.f,
+				vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
+			ocio_samplers.push_back(std::move(vk::raii::Sampler(device, sampler_info)));
+		}
+
+
+		auto num_textures = shader_desc->getNumTextures();
+		for (uint32_t i = 0; i < num_textures; i++)
+		{
+			const char* texture_name = nullptr;
+			const char* sampler_name = nullptr;
+			uint32_t width = 0;
+			uint32_t height = 0;
+			OCIO::GpuShaderDesc::TextureType channel = OCIO::GpuShaderDesc::TEXTURE_RGB_CHANNEL;
+			OCIO::Interpolation interpolation = OCIO::INTERP_LINEAR;
+			OCIO::GpuShaderDesc::TextureDimensions dimensions = OCIO::GpuShaderDesc::TEXTURE_1D;
+			shader_desc->getTexture(i, texture_name, sampler_name, width, height, channel, dimensions, interpolation);
+
+			if (!texture_name || !sampler_name || width == 0)
+			{
+				throw std::runtime_error("Invalid texture data.");
+			}
+
+
+			const float* values = nullptr;
+			shader_desc->getTextureValues(i, values);
+			if (!values)
+			{
+				throw std::runtime_error("Missing texture values");
+			}
+
+			height = (height > 0) ? height : 1;
+
+			vk::ImageType image_type;
+			vk::ImageViewType image_view_type;
+			vk::Format format;
+			std::vector<float> rgba_values;
+
+			if (height == 1)
+			{
+				image_type = vk::ImageType::e1D;
+				image_view_type = vk::ImageViewType::e1D;
+			}
+			else
+			{
+				image_type = vk::ImageType::e2D;
+				image_view_type = vk::ImageViewType::e2D;
+			}
+
+			if (channel == OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL)
+			{
+				format = vk::Format::eR32Sfloat;
+				rgba_values = std::vector<float>(values, values + width * height);
+			}
+			else
+			{
+				format = vk::Format::eR32G32B32A32Sfloat;
+				rgba_values = std::views::iota(0u, width * height)
+					| std::views::transform([&](const auto& i)
+						{
+							return std::vector<float>{ values[i * 3 + 0], values[i * 3 + 1], values[i * 3 + 2], 1.f };
+						})
+					| std::views::join
+					| std::ranges::to<std::vector>();
+			}
+
+
+			vulkan_image ocio_image;
+			vk::ImageCreateInfo ocio_image_info({}, image_type, format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
+			vk::ImageViewCreateInfo ocio_view_info({}, {}, image_view_type, format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+			ocio_image.create(physical_device, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+
+
+			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
+			begin_barrier.emplace_back(ocio_image.set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+			(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+
+
+			vulkan_buffer stage_buffer;
+			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
+			stage_buffer.create(physical_device, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
+
+			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(width, height, 1)));
+
+			std::vector<vk::ImageMemoryBarrier2> end_barrier;
+			end_barrier.emplace_back(ocio_image.set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+			(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
+
+
+			stage_buffers.push_back(std::move(stage_buffer));
+			//ocio_images.at(shader_desc->getTextureShaderBindingIndex(i)) = std::move(ocio_image);
+			ocio_images.push_back(std::move(ocio_image));
+
+
+			// create sampler
+			vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+			vk::SamplerCreateInfo sampler_info({}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
+				(interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear), vk::SamplerMipmapMode::eNearest,
+				vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+				0.f, vk::False, 1.f, vk::False, vk::CompareOp::eAlways, 0.f, 0.f,
+				vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
+			ocio_samplers.push_back(std::move(vk::raii::Sampler(device, sampler_info)));
+		}
+
+
+		// commandbuffer submit
+		commandbuffer.end_record();
+		commandbuffer.submit({}, {}, true);
+	}
+
+	if (ocio_images.size() != ocio_samplers.size())
+	{
+		throw std::runtime_error("images and samplers number not equal.");
+	}
+
+	for (const auto& _ : std::views::zip(ocio_images, ocio_samplers)) // todo use ranges
+	{
+		bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampledImage, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
+		bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
 	}
 
 	vk::raii::ShaderModule shaderModule(device, vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
@@ -88,27 +297,57 @@ void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _u
 	bind_scene_image = _scene_image;
 	bind_ui_image = _ui_image;
 
-	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, *(pipeline.get_descriptor_set_layout()));
-	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
 
-	descriptor_sets.clear();
-	descriptor_sets = device.allocateDescriptorSets(alloc_info);
+	// descriptor
+	descriptor.clear_descriptor_info();
 
-	for (size_t i = 0; i < vulkan_common::MAX_FRAMES_IN_FLIGHT; i++)
+	auto scene_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(nullptr, bind_scene_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, scene_pool_info);
+
+	auto ui_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(nullptr, bind_ui_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, ui_pool_info);
+
+	auto sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(image_sampler, nullptr, vk::ImageLayout::eUndefined);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eSampler, sampler_pool_info);
+
+	for (const auto& _binding : std::views::zip(ocio_images, ocio_samplers))
 	{
-		vk::DescriptorImageInfo scene_info(nullptr, bind_scene_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		vk::DescriptorImageInfo ui_info(nullptr, bind_ui_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		vk::DescriptorImageInfo sampler_info(image_sampler, nullptr, vk::ImageLayout::eUndefined);
+		const auto& [ocio_image, ocio_sampler] = _binding;
 
-		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eSampledImage, scene_info, nullptr),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eSampledImage, ui_info, nullptr),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 2, 0, vk::DescriptorType::eSampler, sampler_info, nullptr),
-		};
+		auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+			| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+				{
+					return vk::DescriptorImageInfo(nullptr, ocio_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+				})
+			| std::ranges::to<std::vector>();
+		descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, image_pool_info);
 
-		device.updateDescriptorSets(descriptorWrite, {});
+
+		auto sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+			| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+				{
+					return vk::DescriptorImageInfo(ocio_sampler, nullptr, vk::ImageLayout::eUndefined);
+				})
+			| std::ranges::to<std::vector>();
+		descriptor.add_descriptor_info(vk::DescriptorType::eSampler, sampler_pool_info);
 	}
+
+	descriptor.update_descriptor_sets(device, vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
 }
 
 void vulkan_application::begin_frame()
@@ -170,7 +409,7 @@ void vulkan_application::end_frame(bool _immediately)
 
 
 	(*commandbuffer).bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
-	(*commandbuffer).bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor_sets.at(current_frame)), nullptr);
+	(*commandbuffer).bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor.get_descriptor_sets().at(current_frame)), nullptr);
 	(*commandbuffer).draw(3, 1, 0, 0);
 
 
@@ -234,7 +473,7 @@ void vulkan_application::save_image(vulkan_image& _image) const
 	auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
 	std::u8string save_path = std::u8string(CAPTURES_PATH);
-	save_path += STRING_HELPER::convert_to<std::u8string, std::string>(std::format("{:%Y_%m_%d_%H_%M_%S}", now_second), "utf8");
+	save_path += STRING_HELPER::convert_to<std::u8string, std::string>(std::format("{:%Y_%m_%d_%H_%M_%S}", now_second));
 
 	OIIO::TypeDesc desc;
 
@@ -432,10 +671,10 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderBufferInt64Atomics
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderInt8
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderFloat16
+					//&& features.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess
+					//&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderBufferInt64Atomics
+					//&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderInt8
+					//&& features.get<vk::PhysicalDeviceVulkan12Features>().shaderFloat16
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().storageBuffer16BitAccess
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
@@ -502,7 +741,7 @@ void vulkan_application::create_device_and_queue()
 			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True)),
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features().setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).setBufferDeviceAddress(vk::True),
+			vk::PhysicalDeviceVulkan12Features()./*setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).*/setBufferDeviceAddress(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setStorageBuffer16BitAccess(vk::True).setShaderDrawParameters(vk::True).setUniformAndStorageBuffer16BitAccess(vk::True),
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),

@@ -23,14 +23,6 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 	vk::raii::Sampler hdr_sampler = vk::raii::Sampler(_app->get_device(), hdr_sampler_info);
 
 
-	// descriptor pool
-	std::array pool_size{
-		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1),
-	};
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(_app->get_device(), pool_info);
-
-
 	// pipeline
 	std::array bindings{
 		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
@@ -55,20 +47,13 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 		vk::SampleCountFlagBits::e1, vk::False, color_formats, vk::Format::eUndefined);
 
 
-	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(1, *(pipeline.get_descriptor_set_layout()));
-	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
+	// descriptor
+	descriptor.clear_descriptor_info();
 
-	//descriptor_set.clear();
-	descriptor_set = std::move(_app->get_device().allocateDescriptorSets(alloc_info).front());
+	std::vector<DescriptorBufferOrImageInfo> hdr_descriptor_image_info = { vk::DescriptorImageInfo(hdr_sampler, hdr_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal) };
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, hdr_descriptor_image_info);
 
-	vk::DescriptorImageInfo hdr_descriptor_image_info(hdr_sampler, hdr_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-	std::array descriptorWrite{
-		vk::WriteDescriptorSet(descriptor_set, 0, 0, vk::DescriptorType::eCombinedImageSampler, hdr_descriptor_image_info, nullptr),
-	};
-
-	_app->get_device().updateDescriptorSets(descriptorWrite, {});
+	descriptor.update_descriptor_sets(_app->get_device(), 1, pipeline.get_descriptor_set_layout());
 
 
 	// create sampler
@@ -124,7 +109,7 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 	(*commandbuffer).setViewport(0, vk::Viewport(0.f, 0.f, static_cast<float>(height / 2), static_cast<float>(height / 2), 0.f, 1.f));
 	(*commandbuffer).setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(height / 2, height / 2)));
 	(*commandbuffer).bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
-	(*commandbuffer).bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *descriptor_set, nullptr);
+	(*commandbuffer).bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *descriptor.get_descriptor_sets().front(), nullptr);
 	(*commandbuffer).draw(3, 1, 0, 0);
 	(*commandbuffer).endRendering();
 

@@ -1,4 +1,4 @@
-﻿struct VSOutput
+struct VSOutput
 {
     float2 v_UV : TEXCOORD0;
     float4 position : SV_POSITION;

@@ -3,22 +3,15 @@
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
+#include <algorithm>
 #include <array>
+#include <ranges>
 
 void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	// begin a commandbuffer
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
-	// descriptor pool
-	std::array pool_size{
-		vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-	};
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(_app->get_device(), pool_info);
 
 
 	// pipeline
@@ -142,31 +135,30 @@ void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32
 	end_barrier.emplace_back(font_image.set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
-
-	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, *(pipeline.get_descriptor_set_layout()));
-	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
-
-	descriptor_sets.clear();
-	descriptor_sets = _app->get_device().allocateDescriptorSets(alloc_info);
-
-	for (size_t i = 0; i < vulkan_common::MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		vk::DescriptorBufferInfo buffer_info(ubos.at(i).get_buffer(), 0, sizeof(chess_board::UBO));
-		vk::DescriptorImageInfo image_info(font_sampler, font_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eUniformBuffer, nullptr, buffer_info),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eCombinedImageSampler, image_info, nullptr),
-		};
-
-		_app->get_device().updateDescriptorSets(descriptorWrite, {});
-	}
-
-
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
+
+
+	descriptor.clear_descriptor_info();
+
+	auto buffer_pool_info = ubos
+		| std::views::transform([](const auto& _buffer) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(chess_board::UBO));
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, buffer_pool_info);
+
+	auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(font_sampler, font_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, image_pool_info);
+
+	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
 }
 
 void chess_board::update(const scene_camera* _camera) noexcept
@@ -180,14 +172,15 @@ void chess_board::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
 	_commandbuffer.bindVertexBuffers(0, *(vertices_buffer.get_buffer()), vk::DeviceSize(0));
 	_commandbuffer.bindIndexBuffer(*(indices_buffer.get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
-	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor_sets.at(current_frame)), nullptr);
+	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor.get_descriptor_sets().at(current_frame)), nullptr);
 	_commandbuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 void chess_board::destroy() noexcept
-{}
+{
+}
 
 void chess_board::createblasinfo(const vulkan_application* _app) noexcept
 {

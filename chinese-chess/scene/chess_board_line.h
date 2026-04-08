@@ -3,6 +3,7 @@
 #include "scene_node.h"
 #include "tools/model_loader.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_descriptor.h"
 
 class chess_board_line
 {
@@ -17,7 +18,6 @@ public:
 	void destroy() noexcept;
 
 private:
-	vk::raii::DescriptorPool descriptor_pool = nullptr;
 	vulkan_pipeline pipeline;
 
 	std::vector<model_vertex> vertices;
@@ -26,7 +26,7 @@ private:
 	std::vector<uint32_t> indices;
 	vulkan_buffer indices_buffer;
 
-	std::vector<vk::raii::DescriptorSet> descriptor_sets;
+	vulkan_descriptor descriptor;
 
 	uint32_t current_frame = 0;
 

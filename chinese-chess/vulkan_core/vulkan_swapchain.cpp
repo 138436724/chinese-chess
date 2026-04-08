@@ -1,3 +1,4 @@
+#include "vulkan_common.h"
 #include "vulkan_swapchain.h"
 #include <vulkan/vulkan.hpp>
 
@@ -45,7 +46,14 @@ void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::rai
 	const auto format_iter = std::ranges::find_if(available_formats,
 		[](const auto& format)
 		{
-			return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+			if constexpr (vulkan_common::USE_OCIO)
+			{
+				return format.format == vk::Format::eB8G8R8A8Unorm && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+			}
+			else
+			{
+				return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+			}
 		});
 	format = format_iter != available_formats.end() ? format_iter->format : available_formats.front().format;
 

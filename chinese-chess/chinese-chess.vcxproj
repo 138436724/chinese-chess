@@ -155,6 +155,7 @@
     <ClCompile Include="tools\font_loader.cpp" />
     <ClCompile Include="tools\image_helper.cpp" />
     <ClCompile Include="tools\model_loader.cpp" />
+    <ClCompile Include="tools\ocio_helper.cpp" />
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
@@ -163,6 +164,7 @@
     <ClCompile Include="vulkan_core\vulkan_buffer.cpp" />
     <ClCompile Include="vulkan_core\vulkan_commandbuffer.cpp" />
     <ClCompile Include="vulkan_core\vulkan_common.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_descriptor.cpp" />
     <ClCompile Include="vulkan_core\vulkan_image.cpp" />
     <ClCompile Include="vulkan_core\vulkan_pipeline.cpp" />
     <ClCompile Include="vulkan_core\vulkan_queue.cpp" />
@@ -183,6 +185,7 @@
     <ClInclude Include="tools\font_loader.h" />
     <ClInclude Include="tools\image_helper.h" />
     <ClInclude Include="tools\model_loader.h" />
+    <ClInclude Include="tools\ocio_helper.h" />
     <ClInclude Include="tools\record_loader.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
@@ -191,6 +194,7 @@
     <ClInclude Include="vulkan_core\vulkan_buffer.h" />
     <ClInclude Include="vulkan_core\vulkan_commandbuffer.h" />
     <ClInclude Include="vulkan_core\vulkan_common.h" />
+    <ClInclude Include="vulkan_core\vulkan_descriptor.h" />
     <ClInclude Include="vulkan_core\vulkan_image.h" />
     <ClInclude Include="vulkan_core\vulkan_pipeline.h" />
     <ClInclude Include="vulkan_core\vulkan_queue.h" />

@@ -1,21 +1,14 @@
 #include "scene_skybox.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_common.h"
+#include <algorithm>
+#include <ranges>
 
 void scene_skybox::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	// begin a commandbuffer
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
-	// descriptor pool
-	std::array pool_size{
-		vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, 2 * vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1 * vulkan_common::MAX_FRAMES_IN_FLIGHT),
-	};
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(_app->get_device(), pool_info);
 
 
 	// pipeline
@@ -97,27 +90,34 @@ void scene_skybox::resize(const vulkan_application* _app, uint32_t _width, uint3
 		throw std::runtime_error("Need Set Sampler Image Resource First!");
 	}
 
-	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, *(pipeline.get_descriptor_set_layout()));
-	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
 
-	descriptor_sets.clear();
-	descriptor_sets = _app->get_device().allocateDescriptorSets(alloc_info);
+	descriptor.clear_descriptor_info();
 
-	for (size_t i = 0; i < vulkan_common::MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		vk::DescriptorBufferInfo ubo_buffer_info(ubos.at(i).get_buffer(), 0, sizeof(scene_skybox::UBO));
-		vk::DescriptorBufferInfo ubo_params_buffer_info(ubo_params.at(i).get_buffer(), 0, sizeof(scene_skybox::UBOParams));
-		vk::DescriptorImageInfo cubemap_image_info(cubemap->get_sampler(), cubemap->get_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+	auto buffer_pool_info = ubos
+		| std::views::transform([](const auto& _buffer) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(scene_skybox::UBO));
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, buffer_pool_info);
 
-		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eUniformBuffer, nullptr, ubo_buffer_info),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eUniformBuffer, nullptr, ubo_params_buffer_info),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 2, 0, vk::DescriptorType::eCombinedImageSampler, cubemap_image_info, nullptr),
-		};
+	auto params_pool_info = ubo_params
+		| std::views::transform([](const auto& _buffer) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(scene_skybox::UBOParams));
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, params_pool_info);
 
-		_app->get_device().updateDescriptorSets(descriptorWrite, {});
-	}
+	auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(cubemap->get_sampler(), cubemap->get_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, image_pool_info);
+
+	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
 }
 
 void scene_skybox::update(const scene_camera* _camera) noexcept
@@ -137,7 +137,7 @@ void scene_skybox::render(const vk::raii::CommandBuffer& _commandbuffer) noexcep
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
 	_commandbuffer.bindVertexBuffers(0, *(vertices_buffer.get_buffer()), vk::DeviceSize(0));
 	_commandbuffer.bindIndexBuffer(indices_buffer.get_buffer(), vk::DeviceSize(0), vk::IndexType::eUint32);
-	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor_sets.at(current_frame)), nullptr);
+	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor.get_descriptor_sets().at(current_frame)), nullptr);
 	_commandbuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;

@@ -1,4 +1,4 @@
-﻿struct VSInput
+struct VSInput
 {
     float3 position;
 };

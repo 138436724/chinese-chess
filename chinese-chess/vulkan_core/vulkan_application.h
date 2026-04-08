@@ -1,7 +1,9 @@
 #pragma once
 #define VK_USE_PLATFORM_WIN32_KHR
 
+#include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
+#include "vulkan_core/vulkan_descriptor.h"
 #include "vulkan_image.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_queue.h"
@@ -84,9 +86,12 @@ private:
 	vk::Result acquire_result = vk::Result::eSuccess;
 	vk::Semaphore acquire_semaphore = nullptr;
 
-	vk::raii::DescriptorPool descriptor_pool = nullptr;
 	vulkan_pipeline pipeline;
-	std::vector<vk::raii::DescriptorSet> descriptor_sets;
+	vulkan_descriptor descriptor;
+
+	vulkan_buffer ocio_ubo;
+	std::vector<vulkan_image> ocio_images;
+	std::vector<vk::raii::Sampler> ocio_samplers;
 
 	vulkan_image* bind_scene_image = nullptr;
 	vulkan_image* bind_ui_image = nullptr;

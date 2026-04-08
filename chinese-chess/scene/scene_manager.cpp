@@ -10,7 +10,6 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	app = _app;
 
 	color_format = vk::Format::eR16G16B16A16Sfloat;
-	//color_format = app->get_swapchain().get_format(); //todo may be need srgb format
 
 	active_camera.set_position(glm::vec3(0.f, 0.f, 1.1f));
 	active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));

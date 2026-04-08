@@ -2,6 +2,7 @@
 
 #include "scene/scene_node.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_descriptor.h"
 #include "vulkan_core/vulkan_pipeline.h"
 #include <filesystem>
 
@@ -17,10 +18,9 @@ public:
 	const vk::raii::Sampler& get_sampler() const noexcept;
 
 private:
-	vk::raii::DescriptorPool descriptor_pool = nullptr;
 	vulkan_pipeline pipeline;
 
-	vk::raii::DescriptorSet descriptor_set = nullptr;
+	vulkan_descriptor descriptor;
 
 	vulkan_image cubemap_image;
 	vk::raii::Sampler cubemap_sampler = nullptr;

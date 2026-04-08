@@ -141,15 +141,6 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
-	// descriptor pool
-	std::array pool_size{
-		vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-	};
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(_app->get_device(), pool_info);
-
-
 	// create sampler
 	vk::PhysicalDeviceProperties properties = _app->get_physical_device().getProperties();
 	vk::SamplerCreateInfo sampler_info({}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
@@ -248,10 +239,10 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 
 	vk::ImageCreateInfo font_image_info({}, vk::ImageType::e2D, vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1), 1, static_cast<uint32_t>(all_piece_names.size()), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo font_view_info({}, {}, vk::ImageViewType::e2DArray, vk::Format::eR8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, static_cast<uint32_t>(all_piece_names.size())), nullptr);
-	font_images.create(_app->get_physical_device(), _app->get_device(), font_image_info, font_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	font_image.create(_app->get_physical_device(), _app->get_device(), font_image_info, font_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
-	begin_barrier.emplace_back(font_images.set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, static_cast<uint32_t>(all_piece_names.size()))));
+	begin_barrier.emplace_back(font_image.set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, static_cast<uint32_t>(all_piece_names.size()))));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
 	std::vector<vulkan_buffer> all_stage_buffer;
@@ -262,13 +253,13 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 		memcpy(stage_buffer.get_buffer_address().hostAddress, _font_info.buffer.data(), _font_info.buffer.size());
 
 		vk::Offset3D copy_offset((all_width - _font_info.advance) / 2 + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height, 0);
-		vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), font_images.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(_index), 1), copy_offset, vk::Extent3D(_font_info.width, _font_info.height, 1)));
+		vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), font_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(_index), 1), copy_offset, vk::Extent3D(_font_info.width, _font_info.height, 1)));
 
 		all_stage_buffer.push_back(std::move(stage_buffer));
 	}
 
 	std::vector<vk::ImageMemoryBarrier2> end_barrier;
-	end_barrier.emplace_back(font_images.set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, static_cast<uint32_t>(all_piece_names.size()))));
+	end_barrier.emplace_back(font_image.set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, static_cast<uint32_t>(all_piece_names.size()))));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
 
@@ -277,25 +268,25 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 	commandbuffer.submit({}, {}, true);
 
 
-	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
-	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
+	descriptor.clear_descriptor_info();
 
-	descriptor_sets.clear();
-	descriptor_sets = _app->get_device().allocateDescriptorSets(alloc_info);
+	auto buffer_pool_info = ubos
+		| std::views::transform([](const auto& _buffer) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(chess_manager::UBOS));
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, buffer_pool_info);
 
-	for (size_t i = 0; i < vulkan_common::MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		vk::DescriptorBufferInfo buffer_info(ubos.at(i).get_buffer(), 0, sizeof(chess_manager::UBOS));
-		vk::DescriptorImageInfo image_info(font_sampler, font_images.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+	auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
+			{
+				return vk::DescriptorImageInfo(font_sampler, font_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			})
+		| std::ranges::to<std::vector>();
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, image_pool_info);
 
-		std::array descriptorWrite{
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 0, 0, vk::DescriptorType::eUniformBuffer, nullptr, buffer_info),
-			vk::WriteDescriptorSet(descriptor_sets.at(i), 1, 0, vk::DescriptorType::eCombinedImageSampler, image_info, nullptr),
-		};
-
-		_app->get_device().updateDescriptorSets(descriptorWrite, {});
-	}
+	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
 }
 
 void chess_manager::update(const scene_camera* _camera) noexcept
@@ -328,7 +319,7 @@ void chess_manager::render(const vk::raii::CommandBuffer& _commandbuffer) noexce
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
 	_commandbuffer.bindVertexBuffers(0, *(vertices_buffer.get_buffer()), vk::DeviceSize(0));
 	_commandbuffer.bindIndexBuffer(*(indices_buffer.get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
-	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor_sets.at(current_frame)), nullptr);
+	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0, *(descriptor.get_descriptor_sets().at(current_frame)), nullptr);
 	_commandbuffer.drawIndexed(static_cast<uint32_t>(indices.size()), alive_piece_num, 0, 0, 0);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;

@@ -32,7 +32,7 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
 	}
 
-	io.Fonts->AddFontFromFileTTF(STRING_HELPER::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", "utf8").c_str(), 13.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+	io.Fonts->AddFontFromFileTTF(STRING_HELPER::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf").c_str(), 13.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
 
 	ImGui_ImplGlfw_InitForVulkan(_window, true);
 

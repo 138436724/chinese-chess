@@ -14,7 +14,7 @@ namespace string_helper
 {
 	template<typename string_class>
 		requires (std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>)
-	void trim(string_class& s) noexcept
+	constexpr void trim(string_class& s) noexcept
 	{
 		auto start = std::find_if(s.begin(), s.end(), [](const auto& _c) {return !std::iswspace(_c); });
 		auto end = std::find_if(s.rbegin(), s.rend(), [](const auto& _c) {return !std::iswspace(_c); }).base();
@@ -24,9 +24,9 @@ namespace string_helper
 
 	template<typename new_string_class, typename old_string_class>
 		requires (std::same_as<old_string_class, std::string> || std::same_as<old_string_class, std::u8string> || std::same_as<old_string_class, std::wstring>)
-	&& (std::same_as<new_string_class, std::string> || std::same_as<new_string_class, std::u8string> || std::same_as<new_string_class, std::wstring>)
+		&& (std::same_as<new_string_class, std::string> || std::same_as<new_string_class, std::u8string> || std::same_as<new_string_class, std::wstring>)
 		&& (!std::same_as<old_string_class, new_string_class>)
-		new_string_class convert_to(const old_string_class& _string, const char* _encoding) noexcept
+		constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
 	{
 		icu::UnicodeString icu_string;
 
@@ -78,7 +78,7 @@ namespace string_helper
 
 	template<typename string_class>
 		requires (std::same_as<string_class, std::string> || std::same_as<string_class, std::u8string> || std::same_as<string_class, std::wstring>)
-	string_class get_file_encoding(const std::filesystem::path& _file_path)
+	constexpr string_class get_file_encoding(const std::filesystem::path& _file_path)
 	{
 		std::ifstream in_file(_file_path.generic_string(), std::ios::ate | std::ios::binary);
 		if (!in_file.is_open())
@@ -112,7 +112,7 @@ namespace string_helper
 		}
 		else
 		{
-			return convert_to<string_class, std::string>(encoding, "utf8");
+			return convert_to<string_class, std::string>(encoding);
 		}
 	}
 };

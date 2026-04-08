@@ -96,6 +96,12 @@
     <ClCompile Include="scene\skybox\scene_cubemap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="tools\ocio_helper.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_descriptor.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -174,6 +180,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="scene\skybox\scene_cubemap.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="tools\ocio_helper.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_descriptor.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

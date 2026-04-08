@@ -1,4 +1,4 @@
-﻿struct VSOutput
+struct VSOutput
 {
     float4 position : SV_Position;
     float2 uv;
@@ -17,10 +17,12 @@ VSOutput vertMain(uint vertexId: SV_VertexID)
     return output;
 }
 
+float4 ocio_conversion(float4 inPixel) { return inPixel; }
+
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_Target
 {
-    float4 color_scene = image_scene.Sample(image_texture, input.uv);
+    float4 color_scene = ocio_conversion(image_scene.Sample(image_texture, input.uv));
     float4 color_ui = image_ui.Sample(image_texture, input.uv);
 
     float3 color_final = lerp(color_scene.rgb, color_ui.rgb, color_ui.a);
