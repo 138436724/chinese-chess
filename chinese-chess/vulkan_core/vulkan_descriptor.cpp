@@ -51,20 +51,19 @@ void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, 
 	descriptor_sets = _device.allocateDescriptorSets(alloc_info);
 
 
-	std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _descriptor_pair)
-		{
-			auto descriptor_write = std::views::zip(pool_size, pool_info)
-				| std::views::enumerate
-				| std::views::transform([&](const auto& _pair)
-					{
-						const auto& [i, _descriptor_set] = _descriptor_pair;
-						const auto& [j, pool_zip] = _pair;
-						const auto& [_pool_size, _pool_info] = pool_zip;
-						return vk::WriteDescriptorSet(_descriptor_set, static_cast<uint32_t>(j), 0, 1, _pool_size.type, std::get_if<vk::DescriptorImageInfo>(&_pool_info.at(i)), std::get_if<vk::DescriptorBufferInfo>(&_pool_info.at(i)), nullptr);
-					})
-				| std::ranges::to<std::vector>();
+	std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _descriptor_pair) {
+		auto descriptor_write = std::views::zip(pool_size, pool_info)
+			| std::views::enumerate
+			| std::views::transform([&](const auto& _pair)
+				{
+					const auto& [i, _descriptor_set] = _descriptor_pair;
+					const auto& [j, pool_zip] = _pair;
+					const auto& [_pool_size, _pool_info] = pool_zip;
+					return vk::WriteDescriptorSet(_descriptor_set, static_cast<uint32_t>(j), 0, 1, _pool_size.type, std::get_if<vk::DescriptorImageInfo>(&_pool_info.at(i)), std::get_if<vk::DescriptorBufferInfo>(&_pool_info.at(i)), nullptr);
+				})
+			| std::ranges::to<std::vector>();
 
-			_device.updateDescriptorSets(descriptor_write, {});
+		_device.updateDescriptorSets(descriptor_write, {});
 		});
 }
 

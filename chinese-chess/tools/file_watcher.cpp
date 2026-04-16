@@ -1,6 +1,8 @@
 #include "file_watcher.h"
 #include <fstream>
 #include <openssl/evp.h>
+#include <ranges>
+#include <algorithm>
 
 constexpr std::string_view hash_file_name = "resources\\file_watch_cache.hash";
 constexpr std::string_view file_cache_header = "file_cache_header";
@@ -97,25 +99,19 @@ std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_
 
 	std::stringstream file_hash;
 	file_hash << std::hex << std::uppercase << std::setfill('0');
-	for (unsigned int i = 0; i < hash_len; ++i)
-	{
+	std::ranges::for_each(std::views::iota(0u, hash_len), [&](unsigned int i) {
 		file_hash << std::setw(2) << static_cast<int>(hash[i]);
-	}
+	});
 	return file_hash.str();
 }
 
 bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) noexcept
 {
-	bool is_modified = true;
+	const auto file_hash = generate_file_hash(_file_path);
+	const std::string file_path = _file_path.generic_string();
 
-	auto file_hash = generate_file_hash(_file_path);
-
-	std::string file_path = _file_path.generic_string();
-
-	if (file_watch_cache.find(file_path) != file_watch_cache.end())
-	{
-		is_modified = (file_watch_cache.at(file_path) != file_hash);
-	}
+	auto it = file_watch_cache.find(file_path);
+	bool is_modified = (it == file_watch_cache.end()) || (it->second != file_hash);
 
 	if (is_modified)
 	{

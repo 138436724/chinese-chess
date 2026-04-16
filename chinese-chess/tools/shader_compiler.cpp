@@ -4,11 +4,12 @@
 #include <print>
 #include <slang-com-helper.h>
 #include <slang-com-ptr.h>
+#include <ranges>
 
 shader_compiler shader_compiler::compiler;
 
 #ifndef NDEBUG
-void shader_compiler::diagnoseIfNeeded(Slang::ComPtr<slang::IBlob>& diagnosticBlob)
+void shader_compiler::diagnoseIfNeeded(const Slang::ComPtr<slang::IBlob>& diagnosticBlob)
 {
 	if (diagnosticBlob != nullptr)
 	{
@@ -16,19 +17,14 @@ void shader_compiler::diagnoseIfNeeded(Slang::ComPtr<slang::IBlob>& diagnosticBl
 	}
 }
 
-void shader_compiler::printEntrypointHashes(int entryPointCount, int targetCount, Slang::ComPtr<slang::IComponentType>& composedProgram)
+void shader_compiler::printEntrypointHashes(int entryPointCount, int targetCount, const Slang::ComPtr<slang::IComponentType>& composedProgram)
 {
 	int m_globalCounter = 0;
 
-	for (int targetIndex = 0; targetIndex < targetCount; targetIndex++)
-	{
-		for (int entryPointIndex = 0; entryPointIndex < entryPointCount; entryPointIndex++)
-		{
+	std::ranges::for_each(std::views::iota(0, targetCount), [&](int targetIndex) {
+		std::ranges::for_each(std::views::iota(0, entryPointCount), [&](int entryPointIndex) {
 			Slang::ComPtr<slang::IBlob> entryPointHashBlob;
-			composedProgram->getEntryPointHash(
-				entryPointIndex,
-				targetIndex,
-				entryPointHashBlob.writeRef());
+			composedProgram->getEntryPointHash(entryPointIndex, targetIndex, entryPointHashBlob.writeRef());
 
 			std::stringstream strBuilder{};
 			strBuilder << "callIdx: " << m_globalCounter << ", entrypoint: " << entryPointIndex
@@ -41,18 +37,17 @@ void shader_compiler::printEntrypointHashes(int entryPointCount, int targetCount
 				strBuilder << std::format("%.2X", buffer[i]);
 			}
 			std::println("{}", strBuilder.str());
-		}
-	}
+			});
+		});
 }
 #else
-void shader_compiler::diagnoseIfNeeded(Slang::ComPtr<slang::IBlob>& diagnosticBlob) {}
-void shader_compiler::printEntrypointHashes(int entryPointCount, int targetCount, Slang::ComPtr<slang::IComponentType>& composedProgram) {}
+void shader_compiler::diagnoseIfNeeded(const Slang::ComPtr<slang::IBlob>& diagnosticBlob) {}
+void shader_compiler::printEntrypointHashes(int entryPointCount, int targetCount, const Slang::ComPtr<slang::IComponentType>& composedProgram) {}
 #endif
 
 shader_compiler::shader_compiler()
 {
-	options =
-	{
+	options = {
 		slang::CompilerOptionEntry{
 			slang::CompilerOptionName::EmitSpirvDirectly,
 			{slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},
@@ -203,7 +198,7 @@ bool shader_compiler::slang_to_slang_module(const std::string& _shader_string, c
 bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session, Slang::ComPtr<slang::IBlob>& _diagnostics_blob, Slang::ComPtr<slang::IModule>& _slang_module, const std::vector<std::string>& _entry_name, slang::IBlob** _spirv_code) noexcept
 {
 	std::vector<slang::IComponentType*> componentTypes;
-	for (auto& entryPointName : _entry_name)
+	for (const auto& entryPointName : _entry_name)
 	{
 		Slang::ComPtr<slang::IEntryPoint> entryPoint;
 		_slang_module->findEntryPointByName(entryPointName.c_str(), entryPoint.writeRef());

@@ -1,5 +1,6 @@
 #include "font_loader.h"
 #include <freetype/freetype.h>
+#include <ranges>
 
 font_loader font_loader::loader;
 
@@ -20,16 +21,18 @@ std::vector<character_info> font_loader::load_font(const std::filesystem::path& 
 	FT_Set_Pixel_Sizes(face, 0, _font_size);
 
 	std::vector<character_info> character_infos;
-	for (auto& _char : _characters)
+	character_infos.reserve(_characters.size());
+
+	for (const auto& _char : _characters)
 	{
 		if (FT_Load_Char(face, _char, FT_LOAD_RENDER))
 		{
 			throw std::runtime_error("Failed to load Glyph.");
 		}
 
-		uint32_t width = face->glyph->bitmap.width;
-		uint32_t height = face->glyph->bitmap.rows;
-		uint8_t* bitmap = face->glyph->bitmap.buffer;
+		const uint32_t width = face->glyph->bitmap.width;
+		const uint32_t height = face->glyph->bitmap.rows;
+		const uint8_t* bitmap = face->glyph->bitmap.buffer;
 
 		character_infos.emplace_back(
 			character_info(width, height, face->glyph->bitmap_left, face->glyph->bitmap_top, face->glyph->advance.x / 64, std::vector<uint8_t>(bitmap, bitmap + width * height))

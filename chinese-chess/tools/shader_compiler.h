@@ -27,8 +27,8 @@ private:
 	shader_compiler(const shader_compiler&&) = delete;
 	shader_compiler& operator=(const shader_compiler&&) = delete;
 
-	static void diagnoseIfNeeded(Slang::ComPtr<slang::IBlob>& diagnosticBlob);
-	static void printEntrypointHashes(int entryPointCount, int targetCount, Slang::ComPtr<slang::IComponentType>& composedProgram);
+	static void diagnoseIfNeeded(const Slang::ComPtr<slang::IBlob>& diagnosticBlob);
+	static void printEntrypointHashes(int entryPointCount, int targetCount, const Slang::ComPtr<slang::IComponentType>& composedProgram);
 
 	bool slang_to_slang_module(const std::filesystem::path& _shader_path, const std::vector<std::string>& _entry_name, slang::IBlob** _spirv_code) noexcept;
 	bool slang_to_slang_module(const std::string& _shader_string, const std::vector<std::string>& _entry_name, slang::IBlob** _spirv_code) noexcept;

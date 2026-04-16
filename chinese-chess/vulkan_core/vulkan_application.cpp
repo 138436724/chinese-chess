@@ -1,4 +1,5 @@
 #include "tools/image_helper.h"
+#include "tools/ocio_helper.h"
 #include "tools/shader_compiler.h"
 #include "tools/string_helper.h"
 #include "vulkan_application.h"
@@ -7,7 +8,6 @@
 #include <format>
 #include <print>
 #include <ranges>
-#include <tools/ocio_helper.h>
 #include <unordered_set>
 #include <vulkan/utility/vk_format_utils.h>
 

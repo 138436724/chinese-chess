@@ -7,6 +7,7 @@
 #include <unicode/ucsdet.h>
 #include <unicode/unistr.h>
 #include <unicode/ustring.h>
+#include <ranges>
 
 #define STRING_HELPER string_helper
 
@@ -16,8 +17,8 @@ namespace string_helper
 		requires (std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>)
 	constexpr void trim(string_class& s) noexcept
 	{
-		auto start = std::find_if(s.begin(), s.end(), [](const auto& _c) {return !std::iswspace(_c); });
-		auto end = std::find_if(s.rbegin(), s.rend(), [](const auto& _c) {return !std::iswspace(_c); }).base();
+		const auto start = std::ranges::find_if(s, [](const auto& _c) {return !std::iswspace(_c); });
+		const auto end = std::ranges::find_if(s | std::views::reverse, [](const auto& _c) {return !std::iswspace(_c); }).base();
 		s.erase(s.begin(), start);
 		s.erase(end, s.end());
 	}
@@ -26,7 +27,7 @@ namespace string_helper
 		requires (std::same_as<old_string_class, std::string> || std::same_as<old_string_class, std::u8string> || std::same_as<old_string_class, std::wstring>)
 		&& (std::same_as<new_string_class, std::string> || std::same_as<new_string_class, std::u8string> || std::same_as<new_string_class, std::wstring>)
 		&& (!std::same_as<old_string_class, new_string_class>)
-		constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
+	constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
 	{
 		icu::UnicodeString icu_string;
 
@@ -92,19 +93,17 @@ namespace string_helper
 		in_file.close();
 
 		icu::ErrorCode error;
-		UCharsetDetector* detector = ucsdet_open(error);
+		const auto detector_guard = std::unique_ptr<UCharsetDetector, decltype(&ucsdet_close)>(ucsdet_open(error), ucsdet_close);
 
-		auto detector_guard = std::unique_ptr<UCharsetDetector, decltype(&ucsdet_close)>(detector, ucsdet_close);
+		ucsdet_setText(detector_guard.get(), buffer.data(), static_cast<int32_t>(buffer.size()), error);
 
-		ucsdet_setText(detector, buffer.data(), static_cast<int32_t>(buffer.size()), error);
-
-		const UCharsetMatch* match = ucsdet_detect(detector, error);
+		const UCharsetMatch* match = ucsdet_detect(detector_guard.get(), error);
 		if (match == nullptr || error.isFailure())
 		{
 			throw std::runtime_error("Detector Failed!");
 		}
 
-		std::string encoding = std::string(ucsdet_getName(match, error));
+		const std::string encoding = std::string(ucsdet_getName(match, error));
 
 		if constexpr (std::same_as<string_class, std::string>)
 		{

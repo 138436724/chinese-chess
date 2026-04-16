@@ -3,7 +3,7 @@
 
 #include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
-#include "vulkan_core/vulkan_descriptor.h"
+#include "vulkan_descriptor.h"
 #include "vulkan_image.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_queue.h"

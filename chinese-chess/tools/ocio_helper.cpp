@@ -47,9 +47,13 @@ OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem
 
 	const char* display = config->getDefaultDisplay();
 	const char* view = config->getDefaultView(display);
-	//const char* look = config->getDisplayViewLooks(display, view);
 
-	auto processor = config->getProcessor(config->getCurrentContext(), OCIO::ROLE_SCENE_LINEAR, display, view, OCIO::TRANSFORM_DIR_FORWARD);
+	auto transform = OCIO::DisplayViewTransform::Create();
+	transform->setSrc(OCIO::ROLE_SCENE_LINEAR);
+	transform->setDisplay(display);
+	transform->setView(view);
+
+	auto processor = config->getProcessor(transform);
 	auto gpu_processor = processor->getDefaultGPUProcessor();
 
 	auto shader_desc = OCIO::GpuShaderDesc::CreateShaderDesc();
@@ -64,7 +68,7 @@ OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem
 
 void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc, void* _buffer_address) const noexcept
 {
-	auto num_uniforms = _shader_desc->getNumUniforms();
+	const auto num_uniforms = _shader_desc->getNumUniforms();
 	if (num_uniforms <= 0)
 	{
 		return;
@@ -75,8 +79,7 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 		return;
 	}
 
-	for (uint32_t i = 0; i < num_uniforms; i++)
-	{
+	std::ranges::for_each(std::views::iota(0u, num_uniforms), [&](const uint32_t i) {
 		OCIO::GpuShaderDesc::UniformData uniform_data;
 		//const auto name = _shader_desc->getUniform(i, uniform_data);
 
@@ -84,25 +87,25 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 		char* dest = static_cast<char*>(_buffer_address) + uniform_data.m_bufferOffset;
 		if (uniform_data.m_getDouble)
 		{
-			float val = static_cast<float>(uniform_data.m_getDouble());
+			const float val = static_cast<float>(uniform_data.m_getDouble());
 			memcpy(dest, &val, sizeof(float));
 		}
 		else if (uniform_data.m_getBool)
 		{
-			int val = uniform_data.m_getBool() ? 1 : 0;
+			const int val = uniform_data.m_getBool() ? 1 : 0;
 			memcpy(dest, &val, sizeof(int));
 		}
 		else if (uniform_data.m_getFloat3)
 		{
 			// vec3 in std140: write 3 floats (12 bytes), padded to 16 bytes
-			auto vals = uniform_data.m_getFloat3();
+			const auto vals = uniform_data.m_getFloat3();
 			memcpy(dest, vals.data(), 3 * sizeof(float));
 		}
 		else if (uniform_data.m_vectorFloat.m_getSize && uniform_data.m_vectorFloat.m_getVector)
 		{
 			// In std140, each array element is padded to 16 bytes
 			const float* vals = uniform_data.m_vectorFloat.m_getVector();
-			size_t count = uniform_data.m_vectorFloat.m_getSize();
+			const size_t count = uniform_data.m_vectorFloat.m_getSize();
 			for (size_t i = 0; i < count; ++i)
 			{
 				memcpy(dest + i * 16, &vals[i], sizeof(float));
@@ -112,13 +115,13 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 		{
 			// In std140, each array element is padded to 16 bytes
 			const int* vals = uniform_data.m_vectorInt.m_getVector();
-			size_t count = uniform_data.m_vectorInt.m_getSize();
+			const size_t count = uniform_data.m_vectorInt.m_getSize();
 			for (size_t i = 0; i < count; ++i)
 			{
 				memcpy(dest + i * 16, &vals[i], sizeof(int));
 			}
 		}
-	}
+		});
 }
 
 ocio_helper& ocio_helper::get_ocio_helper() noexcept
