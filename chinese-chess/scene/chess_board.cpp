@@ -87,6 +87,10 @@ void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
+
+
+	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), commandbuffer,
+		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 }
 
 void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -180,53 +184,4 @@ void chess_board::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept
 
 void chess_board::destroy() noexcept
 {
-}
-
-void chess_board::createblasinfo(const vulkan_application* _app) noexcept
-{
-	vk::AccelerationStructureBuildRangeInfoKHR range(static_cast<uint32_t>(indices.size() / 3));
-
-	vk::AccelerationStructureGeometryKHR geometry(vk::GeometryTypeKHR::eTriangles,
-		vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR16G16B16A16Sfloat, vk::DeviceOrHostAddressConstKHR(vertices_buffer.get_buffer_address().deviceAddress), sizeof(model_vertex), static_cast<uint32_t>(vertices.size()), vk::IndexType::eUint32, vk::DeviceOrHostAddressConstKHR(indices_buffer.get_buffer_address().deviceAddress)),
-		vk::GeometryFlagBitsKHR::eOpaque, nullptr);
-
-	vk::AccelerationStructureBuildGeometryInfoKHR build_info(vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, vk::BuildAccelerationStructureModeKHR::eBuild, {}, {}, geometry);
-
-	vk::AccelerationStructureBuildSizesInfoKHR size_info = _app->get_device().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, build_info, range.primitiveCount);
-
-
-	vulkan_buffer scratch_buffer;
-	scratch_buffer.create(_app->get_physical_device(), _app->get_device(), size_info.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-
-	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
-	// build bottom-level ASs
-	blas_buffer.create(_app->get_physical_device(), _app->get_device(), size_info.accelerationStructureSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-	vk::AccelerationStructureCreateInfoKHR create_info({}, blas_buffer.get_buffer(), {}, size_info.accelerationStructureSize, vk::AccelerationStructureTypeKHR::eBottomLevel);
-	vk::raii::AccelerationStructureKHR acceleration_structure = _app->get_device().createAccelerationStructureKHR(create_info);
-
-
-	build_info.scratchData = scratch_buffer.get_buffer_address();
-	build_info.srcAccelerationStructure = nullptr;
-	build_info.dstAccelerationStructure = acceleration_structure;
-	(*commandbuffer).buildAccelerationStructuresKHR(build_info, &range);
-
-
-	// guard our scratch buffer
-	auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
-	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, memory_barrier, {}, {}));
-
-
-	// commandbuffer submit
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
-
-	// get handles
-	blas_handle = _app->get_device().getAccelerationStructureAddressKHR(vk::AccelerationStructureDeviceAddressInfoKHR(acceleration_structure));
 }

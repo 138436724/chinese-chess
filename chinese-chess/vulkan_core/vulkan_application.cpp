@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <vulkan/utility/vk_format_utils.h>
 
-void vulkan_application::init(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags)
+void vulkan_application::init(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags)
 {
 	create_instance(_instance_layers, _instance_extensions, {});
 }
@@ -338,13 +338,13 @@ void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _u
 		descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, image_pool_info);
 
 
-		auto sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
+		auto ocio_sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
 			| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
 				{
 					return vk::DescriptorImageInfo(ocio_sampler, nullptr, vk::ImageLayout::eUndefined);
 				})
 			| std::ranges::to<std::vector>();
-		descriptor.add_descriptor_info(vk::DescriptorType::eSampler, sampler_pool_info);
+		descriptor.add_descriptor_info(vk::DescriptorType::eSampler, ocio_sampler_pool_info);
 	}
 
 	descriptor.update_descriptor_sets(device, vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
@@ -660,7 +660,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 							{ return strcmp(available_device_extension.extensionName, required_device_extension) == 0; });
 					});
 
-				auto features = the_physical_device.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
+				auto features = the_physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
 					vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
 					vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
 					vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
@@ -668,6 +668,8 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 
 				bool has_all_required_features = features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
+					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderStorageImageReadWithoutFormat
+					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderStorageImageWriteWithoutFormat
 					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
@@ -738,10 +740,10 @@ void vulkan_application::create_device_and_queue()
 		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
 		vk::PhysicalDeviceAccelerationStructureFeaturesKHR, /*vk::PhysicalDeviceRayQueryFeaturesKHR,*/
 		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> feature_pnext_chain(
-			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True)),
+			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True).setShaderStorageImageReadWithoutFormat(vk::True).setShaderStorageImageWriteWithoutFormat(vk::True)),
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features()./*setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).*/setBufferDeviceAddress(vk::True),
+			vk::PhysicalDeviceVulkan12Features()./*setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).*/setBufferDeviceAddress(vk::True).setDescriptorIndexing(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setStorageBuffer16BitAccess(vk::True).setShaderDrawParameters(vk::True).setUniformAndStorageBuffer16BitAccess(vk::True),
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),

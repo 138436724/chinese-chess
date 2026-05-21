@@ -1,5 +1,4 @@
 #pragma once
-#define VK_USE_PLATFORM_WIN32_KHR
 
 #include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
@@ -75,7 +74,10 @@ private:
 		vk::KHRAccelerationStructureExtensionName,
 		vk::KHRRayTracingPipelineExtensionName,
 		//vk::KHRRayQueryExtensionName,
-		vk::KHRDeferredHostOperationsExtensionName
+		vk::KHRDeferredHostOperationsExtensionName,
+		vk::KHRBufferDeviceAddressExtensionName,
+		vk::KHRShaderFloatControlsExtensionName,
+		vk::EXTDescriptorIndexingExtensionName
 	};
 
 	vulkan_queue graphic_queue;

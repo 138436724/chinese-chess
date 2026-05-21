@@ -26,7 +26,6 @@
         "ssl3"
       ]
     },
-    "proxy",
     "shader-slang",
     "vulkan-headers",
     "vulkan-utility-libraries"

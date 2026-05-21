@@ -1,8 +1,4 @@
 #pragma once
-#define GLM_FORCE_RADIANS
-#define GLM_ENABLE_EXPERIMENTAL
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define VK_USE_PLATFORM_WIN32_KHR
 
 #include <array>
 #include <filesystem>

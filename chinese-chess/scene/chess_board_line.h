@@ -1,35 +1,20 @@
 #pragma once
 
 #include "scene_node.h"
-#include "tools/model_loader.h"
-#include "vulkan_core/vulkan_buffer.h"
-#include "vulkan_core/vulkan_descriptor.h"
 
-class chess_board_line
+class chess_board_line : public scene_node
 {
 public:
 	chess_board_line() = default;
-	~chess_board_line() = default;
+	~chess_board_line() override = default;
 
-	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format);
-	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height);
-	void update(const scene_camera* _camera) noexcept;
-	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept;
-	void destroy() noexcept;
+	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
+	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height) override;
+	void update(const scene_camera* _camera) noexcept override;
+	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept override;
+	void destroy() noexcept override;
 
 private:
-	vulkan_pipeline pipeline;
-
-	std::vector<model_vertex> vertices;
-	vulkan_buffer vertices_buffer;
-
-	std::vector<uint32_t> indices;
-	vulkan_buffer indices_buffer;
-
-	vulkan_descriptor descriptor;
-
-	uint32_t current_frame = 0;
-
 	struct UBO
 	{
 		alignas(16) glm::mat4x4 model;
@@ -37,5 +22,4 @@ private:
 		alignas(16) glm::mat4x4 proj;
 		alignas(16) glm::vec3 camera_pos;
 	};
-	std::vector<vulkan_buffer> ubos;
 };

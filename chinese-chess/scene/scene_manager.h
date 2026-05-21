@@ -4,7 +4,6 @@
 #include "scene_camera.h"
 #include "scene_node.h"
 #include "skybox/scene_cubemap.h"
-#include "vulkan_core/vulkan_application.h"
 
 class scene_manager
 {
@@ -37,8 +36,10 @@ private:
 
 	scene_camera active_camera;
 
-	std::vector<pro::proxy<scene_node>> nodes;
+	std::vector<std::unique_ptr<scene_node>> nodes;
 	chess_manager* piece_manager = nullptr;
 
 	std::unique_ptr<scene_cubemap> cubemap = nullptr;
+
+	vulkan_acceleration_structure tlas;
 };

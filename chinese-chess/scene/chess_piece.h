@@ -1,6 +1,6 @@
 #pragma once
 
-#include "scene/scene_camera.h"
+#include "scene_camera.h"
 #include "tools/record_loader.h"
 
 class chess_piece

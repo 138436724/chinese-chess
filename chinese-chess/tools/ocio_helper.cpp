@@ -106,9 +106,9 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 			// In std140, each array element is padded to 16 bytes
 			const float* vals = uniform_data.m_vectorFloat.m_getVector();
 			const size_t count = uniform_data.m_vectorFloat.m_getSize();
-			for (size_t i = 0; i < count; ++i)
+			for (size_t j = 0; j < count; ++j)
 			{
-				memcpy(dest + i * 16, &vals[i], sizeof(float));
+				memcpy(dest + j * 16, &vals[j], sizeof(float));
 			}
 		}
 		else if (uniform_data.m_vectorInt.m_getSize && uniform_data.m_vectorInt.m_getVector)
@@ -116,9 +116,9 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 			// In std140, each array element is padded to 16 bytes
 			const int* vals = uniform_data.m_vectorInt.m_getVector();
 			const size_t count = uniform_data.m_vectorInt.m_getSize();
-			for (size_t i = 0; i < count; ++i)
+			for (size_t j = 0; j < count; ++j)
 			{
-				memcpy(dest + i * 16, &vals[i], sizeof(int));
+				memcpy(dest + j * 16, &vals[j], sizeof(int));
 			}
 		}
 		});

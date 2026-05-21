@@ -76,6 +76,10 @@ void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFla
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
+
+
+	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), commandbuffer,
+		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 }
 
 void chess_board_line::resize(const vulkan_application* _app, uint32_t _width, uint32_t _height)

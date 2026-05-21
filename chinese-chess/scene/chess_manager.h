@@ -1,24 +1,21 @@
 #pragma once
 
-#include "scene/chess_piece.h"
-#include "scene/scene_camera.h"
-#include "tools/model_loader.h"
+#include "chess_piece.h"
+#include "scene_camera.h"
+#include "scene_node.h"
 #include "tools/record_loader.h"
-#include "vulkan_core/vulkan_application.h"
-#include "vulkan_core/vulkan_buffer.h"
-#include "vulkan_core/vulkan_descriptor.h"
 
-class chess_manager
+class chess_manager : public scene_node
 {
 public:
 	chess_manager() = default;
-	virtual ~chess_manager() = default;
+	~chess_manager()  override = default;
 
-	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format);
-	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height);
-	void update(const scene_camera* _camera) noexcept;
-	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept;
-	void destroy() noexcept;
+	void create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format) override;
+	void resize(const vulkan_application* _app, uint32_t _width, uint32_t _height) override;
+	void update(const scene_camera* _camera) noexcept override;
+	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept override;
+	void destroy() noexcept override;
 
 	bool load_record(const std::filesystem::path& _record_path);
 	void set_now_record_index(uint32_t _index) noexcept;
@@ -27,18 +24,6 @@ public:
 	void restore_board_state(const all_board_state& _state);
 
 private:
-	vulkan_pipeline pipeline;
-
-	std::vector<model_vertex> vertices;
-	vulkan_buffer vertices_buffer;
-
-	std::vector<uint32_t> indices;
-	vulkan_buffer indices_buffer;
-
-	vulkan_descriptor descriptor;
-
-	uint32_t current_frame = 0;
-
 	struct UBO
 	{
 		alignas(16) glm::mat4x4 model;
@@ -52,7 +37,6 @@ private:
 	{
 		UBO ubo[32];
 	};
-	std::vector<vulkan_buffer> ubos;
 
 	uint32_t alive_piece_num = 0;
 

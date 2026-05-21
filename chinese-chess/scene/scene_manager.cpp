@@ -25,8 +25,11 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	skybox->set_cubemap(cubemap.get());
 	nodes.emplace_back(std::move(skybox));
 
-	nodes.emplace_back(pro::make_proxy<scene_node, chess_board>());
-	nodes.emplace_back(pro::make_proxy<scene_node, chess_board_line>());
+	auto board = std::make_unique<chess_board>();
+	auto board_ptr = board.get();
+	nodes.emplace_back(std::move(board));
+
+	nodes.emplace_back(std::make_unique<chess_board_line>());
 
 	auto pieces = std::make_unique<chess_manager>();
 	piece_manager = pieces.get();
@@ -35,10 +38,23 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 
 	for (auto& _node : nodes)
 	{
-		_node->create(_app, vulkan_common::MASS_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
+		_node->create(app, vulkan_common::MASS_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
 	}
 
 	resize(_width, _height);
+
+
+	auto tlas_instances =
+		nodes | std::views::transform([](const auto& node) {
+		return vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::mat4(1.f)), 0, 0xFF, 0,
+			vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable,
+			node->get_acceleration_structure().get_address());
+			})
+		| std::ranges::to<std::vector>();
+
+
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	tlas.create_top_level_accelerration_structure(app->get_physical_device(), app->get_device(), commandbuffer, tlas_instances);
 }
 
 void scene_manager::resize(uint32_t _width, uint32_t _height)

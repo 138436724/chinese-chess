@@ -1,8 +1,6 @@
 #pragma once
 
 #include "scene/scene_node.h"
-#include "vulkan_core/vulkan_buffer.h"
-#include "vulkan_core/vulkan_pipeline.h"
 
 class scene_brdflut
 {

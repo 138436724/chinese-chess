@@ -57,7 +57,7 @@ public:
 	};
 	bool is_chinese_digit(UChar ch) noexcept { return chinese_digits.find(ch) != chinese_digits.end(); };
 	bool is_arabic_digit(UChar ch) noexcept { return u_isdigit(ch); };
-	uint8_t get_digit(UChar ch) noexcept { return u_isdigit(ch) ? u_charDigitValue(ch) : chinese_digits.at(ch); };
+	uint8_t get_digit(UChar ch) noexcept { return u_isdigit(ch) ? static_cast<uint8_t>(u_charDigitValue(ch)) : chinese_digits.at(ch); };
 
 
 	inline const static std::unordered_map<UChar, PIECE_TYPE> piece_map = {

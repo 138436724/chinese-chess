@@ -9,6 +9,7 @@
 #include <ranges>
 #ifdef _WIN32
 #include <Windows.h>
+#include <commdlg.h>
 #endif // _WIN32
 
 void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -36,8 +37,8 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 
 	ImGui_ImplGlfw_InitForVulkan(_window, true);
 
-	std::array pool_size{ vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1) };
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, pool_size);
+	std::array pool_size{ vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1), vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1) };
+	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
 	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_info);
 
 	color_format = app->get_swapchain().get_format();
