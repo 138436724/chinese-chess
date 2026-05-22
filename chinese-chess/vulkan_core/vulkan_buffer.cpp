@@ -12,9 +12,9 @@ vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
 {
 	if (this != &_other)
 	{
-		std::swap(buffer, _other.buffer);
-		std::swap(buffer_memory, _other.buffer_memory);
-		std::swap(buffer_address, _other.buffer_address);
+		std::ranges::swap(buffer, _other.buffer);
+		std::ranges::swap(buffer_memory, _other.buffer_memory);
+		std::ranges::swap(buffer_address, _other.buffer_address);
 	}
 	return *this;
 }

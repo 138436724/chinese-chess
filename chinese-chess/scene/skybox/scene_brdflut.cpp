@@ -16,7 +16,7 @@ void scene_brdflut::create(const vulkan_application* _app)
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
 	};
 
-	pipeline.create_pipeline(_app->get_device(), {}, {}, {}, {}, shader_stages,
+	pipeline.create(_app->get_device(), {}, {}, {}, {}, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
 		vk::SampleCountFlagBits::e1, vk::False, std::span(&color_format, 1), vk::Format::eUndefined);
 

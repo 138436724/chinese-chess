@@ -11,14 +11,14 @@ vulkan_pipeline& vulkan_pipeline::operator=(vulkan_pipeline&& _other) noexcept
 {
 	if (this != &_other)
 	{
-		std::swap(descriptor_set_layout, _other.descriptor_set_layout);
-		std::swap(pipeline_layout, _other.pipeline_layout);
-		std::swap(pipeline, _other.pipeline);
+		std::ranges::swap(descriptor_set_layout, _other.descriptor_set_layout);
+		std::ranges::swap(pipeline_layout, _other.pipeline_layout);
+		std::ranges::swap(pipeline, _other.pipeline);
 	}
 	return *this;
 }
 
-void vulkan_pipeline::create_pipeline(const vk::raii::Device& _device,
+void vulkan_pipeline::create(const vk::raii::Device& _device,
 	const std::span<vk::DescriptorSetLayoutBinding>& _descriptor_set_layout_bindings,
 	const std::span<vk::PushConstantRange>& _push_constant,
 	const std::span<vk::VertexInputBindingDescription>& _binding_description,
@@ -58,6 +58,22 @@ void vulkan_pipeline::create_pipeline(const vk::raii::Device& _device,
 		vk::PipelineRenderingCreateInfo({}, _color_formats, _depth_format, vk::Format::eUndefined));
 
 	pipeline = vk::raii::Pipeline(_device, nullptr, pipeline_info.get());
+}
+
+void vulkan_pipeline::create(const vk::raii::Device& _device,
+	const std::span<vk::DescriptorSetLayoutBinding>& _descriptor_set_layout_bindings,
+	const std::span<vk::PushConstantRange>& _push_constant,
+	const std::span<vk::PipelineShaderStageCreateInfo>& _shader_stages,
+	const std::span<vk::RayTracingShaderGroupCreateInfoKHR>& _shader_groups,
+	uint32_t _max_depth)
+{
+	descriptor_set_layout = vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR, _descriptor_set_layout_bindings));
+
+	vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
+	pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
+
+	vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, _shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
+	pipeline = vk::raii::Pipeline(_device, nullptr, nullptr, pipeline_info);
 }
 
 const vk::raii::DescriptorSetLayout& vulkan_pipeline::get_descriptor_set_layout() const noexcept

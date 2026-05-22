@@ -22,18 +22,18 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 {
 	if (this != &_other)
 	{
-		std::swap(surface_capabilities, _other.surface_capabilities);
-		std::swap(surface, _other.surface);
-		std::swap(swapchain, _other.swapchain);
-		std::swap(format, _other.format);
-		std::swap(extent, _other.extent);
-		std::swap(present_mode, _other.present_mode);
-		std::swap(images, _other.images);
-		std::swap(imageviews, _other.imageviews);
-		std::swap(current_index, _other.current_index);
-		std::swap(max_index, _other.max_index);
-		std::swap(present_used, _other.present_used);
-		std::swap(present_waited, _other.present_waited);
+		std::ranges::swap(surface_capabilities, _other.surface_capabilities);
+		std::ranges::swap(surface, _other.surface);
+		std::ranges::swap(swapchain, _other.swapchain);
+		std::ranges::swap(format, _other.format);
+		std::ranges::swap(extent, _other.extent);
+		std::ranges::swap(present_mode, _other.present_mode);
+		std::ranges::swap(images, _other.images);
+		std::ranges::swap(imageviews, _other.imageviews);
+		std::ranges::swap(current_index, _other.current_index);
+		std::ranges::swap(max_index, _other.max_index);
+		std::ranges::swap(present_used, _other.present_used);
+		std::ranges::swap(present_waited, _other.present_waited);
 	}
 	return *this;
 }

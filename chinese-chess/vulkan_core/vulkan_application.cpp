@@ -265,7 +265,7 @@ void vulkan_application::create(vk::SurfaceKHR _surface, bool _enable_graphics, 
 	};
 
 	std::array color_format_array = { swapchain.get_format() };
-	pipeline.create_pipeline(device, bindings, {}, {}, {}, shader_stages,
+	pipeline.create(device, bindings, {}, {}, {}, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
 		vk::SampleCountFlagBits::e1, vk::False, color_format_array, vk::Format::eUndefined);
 
@@ -661,7 +661,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					});
 
 				auto features = the_physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
-					vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
+					vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
 					vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
 					vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
 					vk::PhysicalDeviceRayQueryFeaturesKHR>();
@@ -671,6 +671,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderStorageImageReadWithoutFormat
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderStorageImageWriteWithoutFormat
 					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
+					&& features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
 					//&& features.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess
@@ -736,12 +737,13 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 void vulkan_application::create_device_and_queue()
 {
 	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
-		vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
-		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-		vk::PhysicalDeviceAccelerationStructureFeaturesKHR, /*vk::PhysicalDeviceRayQueryFeaturesKHR,*/
-		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> feature_pnext_chain(
+		vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features,
+		vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
+		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+		/*vk::PhysicalDeviceRayQueryFeaturesKHR,*/ vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> feature_pnext_chain(
 			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True).setShaderStorageImageReadWithoutFormat(vk::True).setShaderStorageImageWriteWithoutFormat(vk::True)),
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
+			vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
 			vk::PhysicalDeviceVulkan12Features()./*setUniformAndStorageBuffer8BitAccess(vk::True).setShaderBufferInt64Atomics(vk::True).setShaderInt8(vk::True).setShaderFloat16(vk::True).*/setBufferDeviceAddress(vk::True).setDescriptorIndexing(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setStorageBuffer16BitAccess(vk::True).setShaderDrawParameters(vk::True).setUniformAndStorageBuffer16BitAccess(vk::True),

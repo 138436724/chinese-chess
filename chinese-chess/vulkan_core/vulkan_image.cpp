@@ -16,13 +16,13 @@ vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
 {
 	if (this != &_other)
 	{
-		std::swap(format, _other.format);
-		std::swap(extent, _other.extent);
-		std::swap(layout, _other.layout);
-		std::swap(clear_value, _other.clear_value);
-		std::swap(image, _other.image);
-		std::swap(imageview, _other.imageview);
-		std::swap(image_memory, _other.image_memory);
+		std::ranges::swap(format, _other.format);
+		std::ranges::swap(extent, _other.extent);
+		std::ranges::swap(layout, _other.layout);
+		std::ranges::swap(clear_value, _other.clear_value);
+		std::ranges::swap(image, _other.image);
+		std::ranges::swap(imageview, _other.imageview);
+		std::ranges::swap(image_memory, _other.image_memory);
 	}
 	return *this;
 }

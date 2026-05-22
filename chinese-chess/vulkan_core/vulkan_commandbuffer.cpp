@@ -15,11 +15,11 @@ vulkan_commandbuffer& vulkan_commandbuffer::operator=(vulkan_commandbuffer&& _ot
 {
 	if (this != &_other)
 	{
-		std::swap(commandbuffer_level, _other.commandbuffer_level);
-		std::swap(commandbuffer, _other.commandbuffer);
-		std::swap(fence, _other.fence);
-		std::swap(device, _other.device);
-		std::swap(queue, _other.queue);
+		std::ranges::swap(commandbuffer_level, _other.commandbuffer_level);
+		std::ranges::swap(commandbuffer, _other.commandbuffer);
+		std::ranges::swap(fence, _other.fence);
+		std::ranges::swap(device, _other.device);
+		std::ranges::swap(queue, _other.queue);
 	}
 	return *this;
 }

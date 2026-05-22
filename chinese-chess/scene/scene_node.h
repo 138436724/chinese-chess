@@ -18,7 +18,12 @@ public:
 	virtual void render(const vk::raii::CommandBuffer&) noexcept = 0;
 	virtual void destroy() noexcept = 0;
 
-	const vulkan_acceleration_structure& get_acceleration_structure() const noexcept { return blas; }
+	virtual std::vector<vk::AccelerationStructureInstanceKHR> get_all_blas_info() const noexcept = 0;
+
+	vk::DeviceAddress get_vertices_device_address() const noexcept { return vertices_buffer.get_buffer_address().deviceAddress; }
+	vk::DeviceAddress get_indices_device_address() const noexcept { return indices_buffer.get_buffer_address().deviceAddress; }
+	uint32_t get_vertex_count() const noexcept { return static_cast<uint32_t>(vertices.size()); }
+	uint32_t get_index_count() const noexcept { return static_cast<uint32_t>(indices.size()); }
 
 protected:
 	uint32_t current_frame = 0;

@@ -77,7 +77,8 @@ private:
 		vk::KHRDeferredHostOperationsExtensionName,
 		vk::KHRBufferDeviceAddressExtensionName,
 		vk::KHRShaderFloatControlsExtensionName,
-		vk::EXTDescriptorIndexingExtensionName
+		vk::EXTDescriptorIndexingExtensionName,
+		vk::KHRPushDescriptorExtensionName
 	};
 
 	vulkan_queue graphic_queue;

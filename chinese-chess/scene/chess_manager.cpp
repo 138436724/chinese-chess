@@ -171,7 +171,7 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
 	};
 
-	pipeline.create_pipeline(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
+	pipeline.create(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise,
 		_multisample_count, vk::True, std::span(&_color_formats, 1), _depth_format);
 
@@ -210,14 +210,12 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 		ubos.push_back(std::move(buffer));
 	}
 
+	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), *commandbuffer,
+		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
-
-
-	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), commandbuffer,
-		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 }
 
 void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -331,6 +329,22 @@ void chess_manager::render(const vk::raii::CommandBuffer& _commandbuffer) noexce
 
 void chess_manager::destroy() noexcept
 {
+}
+
+std::vector<vk::AccelerationStructureInstanceKHR> chess_manager::get_all_blas_info() const noexcept
+{
+	return all_pieces
+		| std::views::all
+		| std::views::join
+		| std::views::filter([](const auto& _piece)
+			{
+				return _piece.get_is_on_board();
+			})
+		| std::views::transform([&](const auto& _piece)
+			{
+				return vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::translate(glm::mat4(1.f), glm::vec3(_piece.get_model_location(), 0.3f))), 0, 0xFF, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address());
+			})
+		| std::ranges::to<std::vector>();
 }
 
 bool chess_manager::load_record(const std::filesystem::path& _record_path)

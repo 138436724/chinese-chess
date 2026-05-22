@@ -15,6 +15,7 @@ public:
 	void set_world_up(const glm::vec3& _world_up) noexcept;
 
 	glm::vec3 get_position() const noexcept;
+	glm::vec3 get_direction() const noexcept;
 	glm::mat4 get_projection_matrix() const noexcept;
 	glm::mat4 get_view_matrix() const noexcept;
 

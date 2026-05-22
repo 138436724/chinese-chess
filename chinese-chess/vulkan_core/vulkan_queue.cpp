@@ -11,9 +11,9 @@ vulkan_queue& vulkan_queue::operator=(vulkan_queue&& _other) noexcept
 {
 	if (this != &_other)
 	{
-		std::swap(index, _other.index);
-		std::swap(queue, _other.queue);
-		std::swap(command_pool, _other.command_pool);
+		std::ranges::swap(index, _other.index);
+		std::ranges::swap(queue, _other.queue);
+		std::ranges::swap(command_pool, _other.command_pool);
 	}
 	return *this;
 }

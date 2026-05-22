@@ -42,7 +42,7 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 
 	std::vector<vk::Format> color_formats(6, color_format);
 
-	pipeline.create_pipeline(_app->get_device(), bindings, {}, {}, {}, shader_stages,
+	pipeline.create(_app->get_device(), bindings, {}, {}, {}, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
 		vk::SampleCountFlagBits::e1, vk::False, color_formats, vk::Format::eUndefined);
 

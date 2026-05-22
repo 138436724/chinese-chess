@@ -35,7 +35,7 @@ void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
 	};
 
-	pipeline.create_pipeline(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
+	pipeline.create(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise,
 		_multisample_count, vk::True, std::span(&_color_formats, 1), _depth_format);
 
@@ -83,14 +83,13 @@ void chess_board::create(const vulkan_application* _app, vk::SampleCountFlagBits
 		ubos.push_back(std::move(buffer));
 	}
 
+	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), *commandbuffer,
+		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
+
 
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
-
-
-	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), commandbuffer,
-		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 }
 
 void chess_board::resize(const vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -184,4 +183,9 @@ void chess_board::render(const vk::raii::CommandBuffer& _commandbuffer) noexcept
 
 void chess_board::destroy() noexcept
 {
+}
+
+std::vector<vk::AccelerationStructureInstanceKHR> chess_board::get_all_blas_info() const noexcept
+{
+	return std::vector<vk::AccelerationStructureInstanceKHR>{ vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::mat4(1.f)), 0, 0, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address()) };
 }

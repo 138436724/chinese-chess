@@ -14,10 +14,10 @@ vulkan_descriptor& vulkan_descriptor::operator=(vulkan_descriptor&& _other) noex
 {
 	if (this != &_other)
 	{
-		std::swap(pool_info, _other.pool_info);
-		std::swap(pool_size, _other.pool_size);
-		std::swap(descriptor_pool, _other.descriptor_pool);
-		std::swap(descriptor_sets, _other.descriptor_sets);
+		std::ranges::swap(pool_info, _other.pool_info);
+		std::ranges::swap(pool_size, _other.pool_size);
+		std::ranges::swap(descriptor_pool, _other.descriptor_pool);
+		std::ranges::swap(descriptor_sets, _other.descriptor_sets);
 	}
 	return *this;
 }

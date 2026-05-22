@@ -105,6 +105,9 @@
     <ClCompile Include="vulkan_core\vulkan_acceleration_structure.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_shader_binding_table.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -194,6 +197,9 @@
     <ClInclude Include="vulkan_core\vulkan_acceleration_structure.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_shader_binding_table.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang">
@@ -215,6 +221,9 @@
       <Filter>资源文件</Filter>
     </None>
     <None Include="resources\shaders\scene_cubemap.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\ray_tracing.slang">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

@@ -1,4 +1,4 @@
-#include "scene_skybox.h"
+﻿#include "scene_skybox.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_common.h"
 #include <algorithm>
@@ -33,7 +33,7 @@ void scene_skybox::create(const vulkan_application* _app, vk::SampleCountFlagBit
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
 	};
 
-	pipeline.create_pipeline(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
+	pipeline.create(_app->get_device(), bindings, {}, std::span(&binding, 1), attribute, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
 		_multisample_count, vk::False, std::span(&_color_formats, 1), _depth_format);
 
@@ -73,7 +73,7 @@ void scene_skybox::create(const vulkan_application* _app, vk::SampleCountFlagBit
 		ubos.push_back(std::move(ubo_buffer));
 
 		vulkan_buffer ubo_param_buffer;
-		ubo_param_buffer.create(_app->get_physical_device(), _app->get_device(), sizeof(scene_skybox::UBO), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		ubo_param_buffer.create(_app->get_physical_device(), _app->get_device(), sizeof(scene_skybox::UBOParams), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 		ubo_params.push_back(std::move(ubo_param_buffer));
 	}
 
@@ -145,6 +145,11 @@ void scene_skybox::render(const vk::raii::CommandBuffer& _commandbuffer) noexcep
 
 void scene_skybox::destroy() noexcept
 {
+}
+
+std::vector<vk::AccelerationStructureInstanceKHR> scene_skybox::get_all_blas_info() const noexcept
+{
+	return std::vector<vk::AccelerationStructureInstanceKHR>();
 }
 
 void scene_skybox::set_cubemap(scene_cubemap* _cubemap) noexcept

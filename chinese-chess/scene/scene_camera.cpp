@@ -35,6 +35,11 @@ glm::vec3 scene_camera::get_position() const noexcept
 	return position;
 }
 
+glm::vec3 scene_camera::get_direction() const noexcept
+{
+	return direction;
+}
+
 glm::mat4 scene_camera::get_projection_matrix() const noexcept
 {
 	return projection_matrix;

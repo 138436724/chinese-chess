@@ -3,7 +3,10 @@
 #include "scene_manager.h"
 #include "skybox/scene_skybox.h"
 #include "tools/image_helper.h"
+#include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_common.h"
+#include <ranges>
+#include <string>
 
 void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
@@ -16,20 +19,22 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
 
 
-	// sort by draw index
-	// skybox first
-	cubemap = std::make_unique<scene_cubemap>();
-	cubemap->create(app, std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr");
+	//// sort by draw index
+	//// skybox first
+	//cubemap = std::make_unique<scene_cubemap>();
+	//cubemap->create(app, std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr");
 
-	auto skybox = std::make_unique<scene_skybox>();
-	skybox->set_cubemap(cubemap.get());
-	nodes.emplace_back(std::move(skybox));
+	//auto skybox = std::make_unique<scene_skybox>();
+	//skybox->set_cubemap(cubemap.get());
+	//nodes.emplace_back(std::move(skybox));
 
 	auto board = std::make_unique<chess_board>();
-	auto board_ptr = board.get();
+	board_ = board.get();
 	nodes.emplace_back(std::move(board));
 
-	nodes.emplace_back(std::make_unique<chess_board_line>());
+	auto board_line = std::make_unique<chess_board_line>();
+	board_line_ = board_line.get();
+	nodes.emplace_back(std::move(board_line));
 
 	auto pieces = std::make_unique<chess_manager>();
 	piece_manager = pieces.get();
@@ -43,18 +48,69 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 
 	resize(_width, _height);
 
-
-	auto tlas_instances =
-		nodes | std::views::transform([](const auto& node) {
-		return vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::mat4(1.f)), 0, 0xFF, 0,
-			vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable,
-			node->get_acceleration_structure().get_address());
-			})
-		| std::ranges::to<std::vector>();
+	tlas.resize(vulkan_common::MAX_FRAMES_IN_FLIGHT);
 
 
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
-	tlas.create_top_level_accelerration_structure(app->get_physical_device(), app->get_device(), commandbuffer, tlas_instances);
+
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+
+	// create all shaders
+	enum class StageIndices
+	{
+		eRaygen,
+		eMiss,
+		eClosestHit,
+		eShaderGroupCount
+	};
+
+	std::array bindings{
+		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eAll, nullptr),
+		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
+	};
+
+	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant));
+
+	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { "rgenMain", "rmissMain", "rchitMain" });
+	if (spirv_code.empty())
+	{
+		throw std::runtime_error("compile .spv failed!");
+	}
+	vk::raii::ShaderModule shaderModule(_app->get_device(), vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
+
+	std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(StageIndices::eShaderGroupCount)> shader_stages = {
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, "rgenMain"),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rmissMain"),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule, "rchitMain"),
+	};
+
+	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(StageIndices::eRaygen)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(StageIndices::eMiss)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(StageIndices::eClosestHit)),
+	};
+
+	auto props = app->get_physical_device().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+	const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+	pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::max(3u, properties.maxRayRecursionDepth));
+
+
+	// descriptor pool
+	std::array pool_size = {
+		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+		vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+	};
+	vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
+	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_create_info);
+
+
+	// create shader binding table
+	vulkan_buffer sbt_staging_buffer;
+	sbt.create(app->get_physical_device(), app->get_device(), *commandbuffer, pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()), sbt_staging_buffer);
+
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
 }
 
 void scene_manager::resize(uint32_t _width, uint32_t _height)
@@ -67,7 +123,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 1.f, -10.f);
 
 	// render_output
-	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive, 0);
+	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage/*for ray tracing*/, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
@@ -94,10 +150,31 @@ void scene_manager::update()
 	{
 		_node->update(&active_camera);
 	}
+
+	// create top level acceleration structure
+	tlas_instances = nodes
+		| std::views::transform([](const auto& n) { return n->get_all_blas_info(); })
+		| std::views::join
+		| std::ranges::to<std::vector>();
+
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(app->get_device()), &(app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	vulkan_buffer staging_buffer;
+	vulkan_buffer instance_staging_buffer;
+	tlas.at(current_frame).create_top_level_accelerration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, tlas_instances, staging_buffer, instance_staging_buffer);
+
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
 }
 
 void scene_manager::render(const vk::raii::CommandBuffer& _commandbuffer)
 {
+	ray_tracing_render(_commandbuffer);
+	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+	return;
+
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
@@ -142,4 +219,45 @@ chess_manager* scene_manager::get_piece_manager() const noexcept
 vulkan_image& scene_manager::get_render_image() noexcept
 {
 	return render_output;
+}
+
+void scene_manager::ray_tracing_render(const vk::raii::CommandBuffer& _commandbuffer)
+{
+	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
+	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eGeneral, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+
+	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
+
+	//// Bind the descriptor sets for the graphics pipeline (making texture available to the shaders)
+	//const VkBindDescriptorSetsInfo bindDescriptorSetsInfo{ .sType = VK_STRUCTURE_TYPE_BIND_DESCRIPTOR_SETS_INFO,
+	//	.stageFlags = VK_SHADER_STAGE_ALL,
+	//	.layout = m_rtPipelineLayout,
+	//	.firstSet = 0,
+	//	.descriptorSetCount = 1,
+	//	.pDescriptorSets = m_descPack.getSetPtr() };
+	//vkCmdBindDescriptorSets2(cmd, &bindDescriptorSetsInfo);
+
+
+	vk::DescriptorBufferInfo buffer_info(tlas.at(current_frame).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * tlas_instances.size());
+	vk::DescriptorImageInfo image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);
+	vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
+		vk::WriteDescriptorSet(nullptr, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, buffer_info),
+		vk::WriteDescriptorSetAccelerationStructureKHR(*(tlas.at(current_frame).get_acceleration_structure())));
+	std::array write_sets = {
+		as_write_set.get(),
+		vk::WriteDescriptorSet(nullptr, 1, {}, vk::DescriptorType::eStorageImage, image_info, {}),
+	};
+	_commandbuffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0, write_sets);
+
+	scene_manager::PushConstant push_constant(active_camera.get_position(), glm::inverse(active_camera.get_projection_matrix()), glm::inverse(active_camera.get_view_matrix()), active_camera.get_direction());
+	_commandbuffer.pushConstants2(vk::PushConstantsInfo(pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant), &push_constant));
+
+	// Ray trace
+	const auto& extent = app->get_swapchain().get_extent();
+	_commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(), sbt.get_callable_region(), extent.width, extent.height, 1);
+
+	// Barrier to make sure the image is ready for Tonemapping
+	vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderWrite, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead);
+	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
 }

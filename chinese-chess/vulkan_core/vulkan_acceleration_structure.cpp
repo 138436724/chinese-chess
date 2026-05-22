@@ -2,7 +2,7 @@
 #include "vulkan_common.h"
 
 vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration_structure&& _other) noexcept
-	: properties(std::move(_other.properties)),
+	: scratch_alignment(std::move(_other.scratch_alignment)),
 	geometry(std::move(_other.geometry)),
 	range_info(std::move(_other.range_info)),
 	acceleration_structure(std::move(_other.acceleration_structure)),
@@ -16,65 +16,51 @@ vulkan_acceleration_structure& vulkan_acceleration_structure::operator=(vulkan_a
 {
 	if (this != &_other)
 	{
-		std::swap(properties, _other.properties);
-		std::swap(geometry, _other.geometry);
-		std::swap(range_info, _other.range_info);
-		std::swap(acceleration_structure, _other.acceleration_structure);
-		std::swap(address, _other.address);
-		std::swap(buffer, _other.buffer);
-		std::swap(scratch_buffer, _other.scratch_buffer);
+		std::ranges::swap(scratch_alignment, _other.scratch_alignment);
+		std::ranges::swap(geometry, _other.geometry);
+		std::ranges::swap(range_info, _other.range_info);
+		std::ranges::swap(acceleration_structure, _other.acceleration_structure);
+		std::ranges::swap(address, _other.address);
+		std::ranges::swap(buffer, _other.buffer);
+		std::ranges::swap(scratch_buffer, _other.scratch_buffer);
 	}
 	return *this;
 }
 
-void vulkan_acceleration_structure::create_bottom_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vulkan_commandbuffer& _commandbuffer,
+void vulkan_acceleration_structure::create_bottom_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer,
 	uint32_t _vertex_count, vk::DeviceOrHostAddressConstKHR _vertex_data, uint32_t _index_count, vk::DeviceOrHostAddressConstKHR _index_data)
 {
-	_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
 	vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex), _vertex_count, vk::IndexType::eUint32, _index_data);
 
 	geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eTriangles, triangles_data, vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation | vk::GeometryFlagBitsKHR::eOpaque);
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(_index_count / 3u);
 
-
 	create_accelerration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
-
-	_commandbuffer.end_record();
-	_commandbuffer.submit({}, {}, true);
 }
 
-void vulkan_acceleration_structure::create_top_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vulkan_commandbuffer& _commandbuffer, const std::span<vk::AccelerationStructureInstanceKHR>& _instances)
+void vulkan_acceleration_structure::create_top_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, const std::span<vk::AccelerationStructureInstanceKHR>& _instances, vulkan_buffer& _instance_staging_buffer, vulkan_buffer& _staging_buffer)
 {
-	_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
 	vk::DeviceSize instance_buffer_size = _instances.size_bytes();
 	// vk::DeviceSize instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * _instances.size();
 
-	vulkan_buffer tlas_instance_buffer;
-	tlas_instance_buffer.create(_physical_device, _device, instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	_instance_staging_buffer.create(_physical_device, _device, instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-	vulkan_buffer staging_buffer;
-	staging_buffer.create(_physical_device, _device, instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	_staging_buffer.create(_physical_device, _device, instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(staging_buffer.get_buffer_address().hostAddress, _instances.data(), instance_buffer_size);
-	vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), tlas_instance_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
+	memcpy(_staging_buffer.get_buffer_address().hostAddress, _instances.data(), instance_buffer_size);
+	vulkan_buffer::copy_buffer_to_buffer(_commandbuffer, _staging_buffer.get_buffer(), _instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
 
+	//auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR);
+	//_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, memory_barrier, {}, {}));
 
-	vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, tlas_instance_buffer.get_buffer_address().deviceAddress);
+	vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instance_staging_buffer.get_buffer_address().deviceAddress);
 
 	geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eInstances, geometry_instances, {});
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(static_cast<uint32_t>(_instances.size()));
 
 	create_accelerration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eTopLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
-
-
-	_commandbuffer.end_record();
-	_commandbuffer.submit({}, {}, true);
 }
 
 const vk::raii::AccelerationStructureKHR& vulkan_acceleration_structure::get_acceleration_structure() const noexcept
@@ -92,12 +78,15 @@ const vk::raii::Buffer& vulkan_acceleration_structure::get_buffer() const noexce
 	return buffer.get_buffer();
 }
 
-void vulkan_acceleration_structure::create_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vulkan_commandbuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
+void vulkan_acceleration_structure::create_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
 {
-	auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+	if (scratch_alignment == 0)
+	{
+		auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+		scratch_alignment = props.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>().minAccelerationStructureScratchOffsetAlignment;
+	}
 
-	properties = props.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
-
+	acceleration_structure.clear();
 
 	vk::AccelerationStructureBuildGeometryInfoKHR build_info(_type, _flags, vk::BuildAccelerationStructureModeKHR::eBuild, {}, {}, geometry);
 
@@ -105,7 +94,7 @@ void vulkan_acceleration_structure::create_accelerration_structure(const vk::rai
 
 
 	// Make sure the scratch buffer is properly aligned
-	VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, properties.minAccelerationStructureScratchOffsetAlignment);
+	VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
 
 	scratch_buffer.create(_physical_device, _device, scratch_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
@@ -124,12 +113,9 @@ void vulkan_acceleration_structure::create_accelerration_structure(const vk::rai
 	build_info.dstAccelerationStructure = acceleration_structure;
 	build_info.scratchData.deviceAddress = scratch_buffer.get_buffer_address().deviceAddress;
 
-	(*_commandbuffer).buildAccelerationStructuresKHR(build_info, &range_info);
+	_commandbuffer.buildAccelerationStructuresKHR(build_info, &range_info);
 
-	//// guard our scratch buffer
-	//auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-	//                                         vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-	//                                         vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-	//                                         vk::AccessFlagBits2::eAccelerationStructureReadKHR);
+	// guard our scratch buffer
+	//auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
 	//(*_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, memory_barrier, {}, {}));
 }

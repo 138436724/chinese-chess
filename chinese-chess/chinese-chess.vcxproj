@@ -169,6 +169,7 @@
     <ClCompile Include="vulkan_core\vulkan_image.cpp" />
     <ClCompile Include="vulkan_core\vulkan_pipeline.cpp" />
     <ClCompile Include="vulkan_core\vulkan_queue.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_shader_binding_table.cpp" />
     <ClCompile Include="vulkan_core\vulkan_swapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -200,6 +201,7 @@
     <ClInclude Include="vulkan_core\vulkan_image.h" />
     <ClInclude Include="vulkan_core\vulkan_pipeline.h" />
     <ClInclude Include="vulkan_core\vulkan_queue.h" />
+    <ClInclude Include="vulkan_core\vulkan_shader_binding_table.h" />
     <ClInclude Include="vulkan_core\vulkan_swapchain.h" />
   </ItemGroup>
   <ItemGroup>
@@ -207,6 +209,7 @@
     <None Include="resources\shaders\chess_board.slang" />
     <None Include="resources\shaders\chess_board_line.slang" />
     <None Include="resources\shaders\chess_manager.slang" />
+    <None Include="resources\shaders\ray_tracing.slang" />
     <None Include="resources\shaders\scene_brdflut.slang" />
     <None Include="resources\shaders\scene_cubemap.slang" />
     <None Include="resources\shaders\scene_skybox.slang" />

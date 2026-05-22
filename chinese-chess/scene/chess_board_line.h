@@ -14,6 +14,8 @@ public:
 	void render(const vk::raii::CommandBuffer& _commandbuffer) noexcept override;
 	void destroy() noexcept override;
 
+	std::vector<vk::AccelerationStructureInstanceKHR> get_all_blas_info() const noexcept override;
+
 private:
 	struct UBO
 	{
