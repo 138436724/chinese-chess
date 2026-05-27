@@ -210,7 +210,7 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 		ubos.push_back(std::move(buffer));
 	}
 
-	blas.create_bottom_level_accelerration_structure(_app->get_physical_device(), _app->get_device(), *commandbuffer,
+	blas.create_bottom_level_acceleration_structure(_app->get_physical_device(), _app->get_device(), *commandbuffer,
 		static_cast<uint32_t>(vertices.size()), vertices_buffer.get_buffer_address().deviceAddress, static_cast<uint32_t>(indices.size()), indices_buffer.get_buffer_address().deviceAddress);
 
 	// commandbuffer submit

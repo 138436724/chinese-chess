@@ -8,7 +8,7 @@
 class vulkan_common
 {
 public:
-	inline static vk::SampleCountFlagBits MASS_SAMPLE_COUNT = vk::SampleCountFlagBits::e1;
+	inline static vk::SampleCountFlagBits MSAA_SAMPLE_COUNT = vk::SampleCountFlagBits::e1;
 	inline static vk::Format DEPTH_FORMAT = vk::Format::eUndefined;
 	inline static const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 	inline static constexpr bool USE_OCIO = true;

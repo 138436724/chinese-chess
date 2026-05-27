@@ -27,7 +27,7 @@ vulkan_acceleration_structure& vulkan_acceleration_structure::operator=(vulkan_a
 	return *this;
 }
 
-void vulkan_acceleration_structure::create_bottom_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer,
+void vulkan_acceleration_structure::create_bottom_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer,
 	uint32_t _vertex_count, vk::DeviceOrHostAddressConstKHR _vertex_data, uint32_t _index_count, vk::DeviceOrHostAddressConstKHR _index_data)
 {
 	vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex), _vertex_count, vk::IndexType::eUint32, _index_data);
@@ -36,10 +36,10 @@ void vulkan_acceleration_structure::create_bottom_level_accelerration_structure(
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(_index_count / 3u);
 
-	create_accelerration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
+	create_acceleration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
-void vulkan_acceleration_structure::create_top_level_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, const std::span<vk::AccelerationStructureInstanceKHR>& _instances, vulkan_buffer& _instance_staging_buffer, vulkan_buffer& _staging_buffer)
+void vulkan_acceleration_structure::create_top_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, const std::span<vk::AccelerationStructureInstanceKHR>& _instances, vulkan_buffer& _instance_staging_buffer, vulkan_buffer& _staging_buffer)
 {
 	vk::DeviceSize instance_buffer_size = _instances.size_bytes();
 	// vk::DeviceSize instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * _instances.size();
@@ -60,7 +60,7 @@ void vulkan_acceleration_structure::create_top_level_accelerration_structure(con
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(static_cast<uint32_t>(_instances.size()));
 
-	create_accelerration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eTopLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
+	create_acceleration_structure(_physical_device, _device, _commandbuffer, vk::AccelerationStructureTypeKHR::eTopLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
 const vk::raii::AccelerationStructureKHR& vulkan_acceleration_structure::get_acceleration_structure() const noexcept
@@ -78,7 +78,7 @@ const vk::raii::Buffer& vulkan_acceleration_structure::get_buffer() const noexce
 	return buffer.get_buffer();
 }
 
-void vulkan_acceleration_structure::create_accelerration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
+void vulkan_acceleration_structure::create_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
 {
 	if (scratch_alignment == 0)
 	{

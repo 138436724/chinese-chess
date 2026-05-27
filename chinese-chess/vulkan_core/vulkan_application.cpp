@@ -794,7 +794,7 @@ void vulkan_application::pick_msaa_sample_count() const noexcept
 
 	auto support_sample_count = std::ranges::find_if(sample_count_flags, [&counts](vk::SampleCountFlagBits sample) { return static_cast<bool>(counts & sample); });
 
-	vulkan_common::MASS_SAMPLE_COUNT = (support_sample_count != sample_count_flags.end()) ? *support_sample_count : vk::SampleCountFlagBits::e1;
+	vulkan_common::MSAA_SAMPLE_COUNT = (support_sample_count != sample_count_flags.end()) ? *support_sample_count : vk::SampleCountFlagBits::e1;
 }
 
 void vulkan_application::pick_depth_format() const noexcept
