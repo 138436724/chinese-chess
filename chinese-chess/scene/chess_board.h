@@ -16,6 +16,9 @@ public:
 
 	std::vector<vk::AccelerationStructureInstanceKHR> get_all_blas_info() const noexcept override;
 
+	const vulkan_image& get_font_image() const noexcept { return font_image; }
+	const vk::raii::Sampler& get_font_sampler() const noexcept { return font_sampler; }
+
 private:
 	struct UBO
 	{

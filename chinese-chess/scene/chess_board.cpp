@@ -187,5 +187,5 @@ void chess_board::destroy() noexcept
 
 std::vector<vk::AccelerationStructureInstanceKHR> chess_board::get_all_blas_info() const noexcept
 {
-	return std::vector<vk::AccelerationStructureInstanceKHR>{ vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::mat4(1.f)), 0, 0, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address()) };
+	return std::vector<vk::AccelerationStructureInstanceKHR>{ vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, 0.0f))), 0, 0xFF, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address()) };
 }

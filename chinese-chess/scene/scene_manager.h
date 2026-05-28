@@ -30,10 +30,17 @@ public:
 private:
     struct PushConstant
     {
-		alignas(16) glm::vec3 cameraOrigin;
+        alignas(16) glm::vec3 cameraOrigin;
         alignas(16) glm::mat4x4 projInvMatrix;
         alignas(16) glm::mat4x4 viewInvMatrix;
-		alignas(16) glm::vec3 cameraDirection;
+        alignas(16) glm::vec3 cameraDirection;
+        // Device addresses for vertex/index buffers (raw-buffer-load in shader)
+		alignas(16) vk::DeviceAddress boardVerticesAddress;
+        vk::DeviceAddress boardIndicesAddress;
+		alignas(16) vk::DeviceAddress boardLineVerticesAddress;
+        vk::DeviceAddress boardLineIndicesAddress;
+		alignas(16) vk::DeviceAddress pieceVerticesAddress;
+        vk::DeviceAddress pieceIndicesAddress;
     };
 
 	vk::Format color_format = vk::Format::eUndefined;
@@ -66,7 +73,4 @@ private:
 
 	vulkan_shader_binding_table sbt;
 
-	// 光追附加资源
-	vulkan_buffer instance_data_buffer;   // InstanceData 数组
-	vk::raii::DescriptorPool descriptor_pool = nullptr;
 };

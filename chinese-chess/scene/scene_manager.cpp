@@ -68,6 +68,8 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	std::array bindings{
 		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eAll, nullptr),
 		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
+		vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eAll, nullptr), // 棋盘字体纹理 (2D)
+		vk::DescriptorSetLayoutBinding(3, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eAll, nullptr), // 棋子字体纹理 (2D Array)
 	};
 
 	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant));
@@ -94,15 +96,6 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	auto props = app->get_physical_device().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 	const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 	pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::max(3u, properties.maxRayRecursionDepth));
-
-
-	// descriptor pool
-	std::array pool_size = {
-		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-		vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-	};
-	vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_create_info);
 
 
 	// create shader binding table
@@ -229,35 +222,50 @@ void scene_manager::ray_tracing_render(const vk::raii::CommandBuffer& _commandbu
 
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
 
-	//// Bind the descriptor sets for the graphics pipeline (making texture available to the shaders)
-	//const VkBindDescriptorSetsInfo bindDescriptorSetsInfo{ .sType = VK_STRUCTURE_TYPE_BIND_DESCRIPTOR_SETS_INFO,
-	//	.stageFlags = VK_SHADER_STAGE_ALL,
-	//	.layout = m_rtPipelineLayout,
-	//	.firstSet = 0,
-	//	.descriptorSetCount = 1,
-	//	.pDescriptorSets = m_descPack.getSetPtr() };
-	//vkCmdBindDescriptorSets2(cmd, &bindDescriptorSetsInfo);
+	// Build push descriptors (4 bindings): AS, storage image, font images[2], font samplers[2]
+	std::vector<vk::WriteDescriptorSet> write_sets;
 
-
-	vk::DescriptorBufferInfo buffer_info(tlas.at(current_frame).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * tlas_instances.size());
-	vk::DescriptorImageInfo image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);
+	// Binding 0: Acceleration structure
+	vk::DescriptorBufferInfo as_buffer_info(tlas.at(current_frame).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * tlas_instances.size());
 	vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
-		vk::WriteDescriptorSet(nullptr, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, buffer_info),
+		vk::WriteDescriptorSet(nullptr, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
 		vk::WriteDescriptorSetAccelerationStructureKHR(*(tlas.at(current_frame).get_acceleration_structure())));
-	std::array write_sets = {
-		as_write_set.get(),
-		vk::WriteDescriptorSet(nullptr, 1, {}, vk::DescriptorType::eStorageImage, image_info, {}),
-	};
+	write_sets.push_back(as_write_set.get());
+
+	// Binding 1: Storage image (render output)
+	vk::DescriptorImageInfo storage_image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);
+	write_sets.emplace_back(vk::WriteDescriptorSet(nullptr, 1, {}, vk::DescriptorType::eStorageImage, storage_image_info, {}));
+
+	// Binding 2: 棋盘字体纹理 (2D)
+	vk::DescriptorImageInfo board_font_image_info(*board_->get_font_sampler(), *board_->get_font_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+	write_sets.emplace_back(vk::WriteDescriptorSet(nullptr, 2, {}, vk::DescriptorType::eCombinedImageSampler, board_font_image_info, {}, {}));
+
+	// Binding 3: 棋子字体纹理 (2D Array)
+	vk::DescriptorImageInfo piece_font_image_info(*piece_manager->get_font_sampler(), *piece_manager->get_font_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+	write_sets.emplace_back(vk::WriteDescriptorSet(nullptr, 3, {}, vk::DescriptorType::eCombinedImageSampler, piece_font_image_info, {}, {}));
+
 	_commandbuffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0, write_sets);
 
-	scene_manager::PushConstant push_constant(active_camera.get_position(), glm::inverse(active_camera.get_projection_matrix()), glm::inverse(active_camera.get_view_matrix()), active_camera.get_direction());
+	// Push constant with camera + device addresses for raw-buffer-load
+	scene_manager::PushConstant push_constant{
+		active_camera.get_position(),
+		glm::inverse(active_camera.get_projection_matrix()),
+		glm::inverse(active_camera.get_view_matrix()),
+		active_camera.get_direction(),
+		board_->get_vertices_device_address(),
+		board_->get_indices_device_address(),
+		board_line_->get_vertices_device_address(),
+		board_line_->get_indices_device_address(),
+		piece_manager->get_vertices_device_address(),
+		piece_manager->get_indices_device_address(),
+	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant), &push_constant));
 
 	// Ray trace
 	const auto& extent = app->get_swapchain().get_extent();
 	_commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(), sbt.get_callable_region(), extent.width, extent.height, 1);
 
-	// Barrier to make sure the image is ready for Tonemapping
+	// Barrier: ray tracing writes complete → ready for tonemapping read
 	vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderWrite, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead);
 	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
 }

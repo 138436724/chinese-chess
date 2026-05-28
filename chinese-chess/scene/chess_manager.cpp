@@ -342,7 +342,10 @@ std::vector<vk::AccelerationStructureInstanceKHR> chess_manager::get_all_blas_in
 			})
 		| std::views::transform([&](const auto& _piece)
 			{
-				return vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::translate(glm::mat4(1.f), glm::vec3(_piece.get_model_location(), 0.3f))), 0, 0xFF, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address());
+				uint32_t pieceType = static_cast<uint32_t>(_piece.get_piece_type()) - 1;
+				uint32_t pieceColor = static_cast<uint32_t>(_piece.get_piece_color() == PIECE_COLOR::RED);
+				uint32_t customIndex = 2 | (pieceType << 4) | (pieceColor << 8);
+				return vk::AccelerationStructureInstanceKHR(vulkan_common::glm_matrix_to_vulkan(glm::translate(glm::mat4(1.f), glm::vec3(_piece.get_model_location(), 0.3f))), customIndex, 0xFF, 0, vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable, blas.get_address());
 			})
 		| std::ranges::to<std::vector>();
 }
