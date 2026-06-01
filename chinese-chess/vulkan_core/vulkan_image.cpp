@@ -42,7 +42,7 @@ void vulkan_image::create(const vk::raii::PhysicalDevice& _physical_device, cons
 	image = vk::raii::Image(_device, _image_info);
 
 	vk::MemoryRequirements memory_requirements = image.getMemoryRequirements();
-	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties));
+	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties).value());
 	image_memory = vk::raii::DeviceMemory(_device, memory_info);
 	image.bindMemory(image_memory, 0);
 
@@ -52,9 +52,9 @@ void vulkan_image::create(const vk::raii::PhysicalDevice& _physical_device, cons
 
 vk::ImageMemoryBarrier2 vulkan_image::set_layout(vk::ImageLayout _new_layout, const vk::ImageSubresourceRange& _resource_range) noexcept
 {
-	auto barrier = transition_image_layout(image, layout, _new_layout, _resource_range);
+	auto old_layout = layout;
 	layout = _new_layout;
-	return barrier;
+	return transition_image_layout(image, old_layout, layout, _resource_range);
 }
 
 vk::Format vulkan_image::get_format() const noexcept

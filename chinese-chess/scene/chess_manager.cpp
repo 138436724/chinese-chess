@@ -137,7 +137,7 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -221,7 +221,7 @@ void chess_manager::create(const vulkan_application* _app, vk::SampleCountFlagBi
 void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -278,7 +278,7 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(chess_manager::UBOS));
 			})
 		| std::ranges::to<std::vector>();
-	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, buffer_pool_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, std::move(buffer_pool_info));
 
 	auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
 		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
@@ -286,9 +286,9 @@ void chess_manager::resize(const vulkan_application* _app, uint32_t _width, uint
 				return vk::DescriptorImageInfo(font_sampler, font_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 			})
 		| std::ranges::to<std::vector>();
-	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, image_pool_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, std::move(image_pool_info));
 
-	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
+	descriptor.update_descriptor_sets(_app->get_device(), pipeline.get_descriptor_set_layout());
 }
 
 void chess_manager::update(const scene_camera* _camera) noexcept

@@ -25,7 +25,7 @@ void vulkan_buffer::create(const vk::raii::PhysicalDevice& _physical_device, con
 	buffer = vk::raii::Buffer(_device, buffer_info);
 
 	vk::MemoryRequirements memory_requirements = buffer.getMemoryRequirements();
-	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties));
+	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties).value());
 
 	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
 	{
@@ -54,7 +54,7 @@ const vk::raii::Buffer& vulkan_buffer::get_buffer() const noexcept
 	return buffer;
 }
 
-const vk::DeviceOrHostAddressKHR& vulkan_buffer::get_buffer_address() const noexcept
+vk::DeviceOrHostAddressKHR vulkan_buffer::get_buffer_address() const noexcept
 {
 	return buffer_address;
 }

@@ -132,7 +132,7 @@ int main()
 		{
 			glfwGetFramebufferSize(window, &width, &height);
 
-			app->wait_idle();
+			app->wait();
 			app->resize(width, height);
 
 			scene->resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
@@ -145,16 +145,26 @@ int main()
 
 		auto start = std::chrono::high_resolution_clock::now();
 
-
 		scene->update();
 		UI->update();
 
-		app->begin_frame();
+		std::vector<vk::CommandBuffer> cbs;
+		const auto& cb = UI->render();
+		cbs.push_back(*cb);
 
-		UI->render(*app->get_current_ui_commandbuffer());
-		scene->render(*app->get_current_scene_commandbuffer());
+		if constexpr (true)
+		{
+			const auto& cb = scene->ray_tracing_render();
+			cbs.push_back(*cb);
+		}
+		else
+		{
+			const auto& cb = scene->render();
+			cbs.push_back(*cb);
+		}
 
-		app->end_frame(info.need_save);
+		app->render(cbs, info.need_save);
+
 
 		if (info.need_save)
 		{
@@ -169,7 +179,7 @@ int main()
 
 
 	// wait and destroy
-	app->wait_idle();
+	app->wait();
 
 	scene->destroy();
 	UI->destroy();

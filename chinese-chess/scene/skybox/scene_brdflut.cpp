@@ -37,7 +37,7 @@ void scene_brdflut::create(const vulkan_application* _app)
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 

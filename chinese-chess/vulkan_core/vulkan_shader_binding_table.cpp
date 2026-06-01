@@ -31,7 +31,6 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 		auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 		const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-		// create shader binding table
 		handle_size = properties.shaderGroupHandleSize;
 		handle_alignment = properties.shaderGroupHandleAlignment;
 		base_alignment = properties.shaderGroupBaseAlignment;
@@ -47,14 +46,15 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 	uint32_t hit_offset = static_cast<uint32_t>(vulkan_common::align_up(miss_offset + miss_size, base_alignment));
 	uint32_t callable_offset = static_cast<uint32_t>(vulkan_common::align_up(hit_offset + hit_size, base_alignment));
 
-	vk::DeviceSize buffer_size = callable_offset + callable_size;
+
+	vk::DeviceSize buffer_size = static_cast<uint64_t>(callable_offset) + callable_size;
 
 	sbt_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	_staging_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 
-	std::vector<uint8_t> shader_handles = _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size * _group_count));
+	std::vector<uint8_t> shader_handles = _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
 
 	uint8_t* buffer_address = static_cast<uint8_t*>(_staging_buffer.get_buffer_address().hostAddress);
 

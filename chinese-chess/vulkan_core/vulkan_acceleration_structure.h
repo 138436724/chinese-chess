@@ -19,7 +19,7 @@ public:
 		uint32_t _vertex_count, vk::DeviceOrHostAddressConstKHR _vertex_data, uint32_t _index_count, vk::DeviceOrHostAddressConstKHR _index_data);
 
 	void create_top_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer,
-		const std::span<vk::AccelerationStructureInstanceKHR>& _instances, vulkan_buffer& _instance_staging_buffer, vulkan_buffer& _staging_buffer);
+		uint32_t _instances_size, vk::DeviceOrHostAddressConstKHR _instances_data);
 
 	const vk::raii::AccelerationStructureKHR& get_acceleration_structure() const noexcept;
 	vk::DeviceAddress get_address() const noexcept;

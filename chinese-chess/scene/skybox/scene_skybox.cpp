@@ -7,7 +7,7 @@
 void scene_skybox::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -99,7 +99,7 @@ void scene_skybox::resize(const vulkan_application* _app, uint32_t _width, uint3
 				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(scene_skybox::UBO));
 			})
 		| std::ranges::to<std::vector>();
-	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, buffer_pool_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, std::move(buffer_pool_info));
 
 	auto params_pool_info = ubo_params
 		| std::views::transform([](const auto& _buffer) -> DescriptorBufferOrImageInfo
@@ -107,7 +107,7 @@ void scene_skybox::resize(const vulkan_application* _app, uint32_t _width, uint3
 				return vk::DescriptorBufferInfo(_buffer.get_buffer(), 0, sizeof(scene_skybox::UBOParams));
 			})
 		| std::ranges::to<std::vector>();
-	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, params_pool_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, std::move(params_pool_info));
 
 	auto image_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
 		| std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo
@@ -115,9 +115,9 @@ void scene_skybox::resize(const vulkan_application* _app, uint32_t _width, uint3
 				return vk::DescriptorImageInfo(cubemap->get_sampler(), cubemap->get_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 			})
 		| std::ranges::to<std::vector>();
-	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, image_pool_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, std::move(image_pool_info));
 
-	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
+	descriptor.update_descriptor_sets(_app->get_device(), pipeline.get_descriptor_set_layout());
 }
 
 void scene_skybox::update(const scene_camera* _camera) noexcept

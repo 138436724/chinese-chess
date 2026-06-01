@@ -9,7 +9,7 @@
 void chess_board_line::create(const vulkan_application* _app, vk::SampleCountFlagBits _multisample_count, vk::Format _color_formats, vk::Format _depth_format)
 {
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -90,8 +90,8 @@ void chess_board_line::resize(const vulkan_application* _app, uint32_t _width, u
 		})
 		| std::ranges::to<std::vector>();
 
-	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, pool_info);
-	descriptor.update_descriptor_sets(_app->get_device(), vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
+	descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, std::move(pool_info));
+	descriptor.update_descriptor_sets(_app->get_device(), pipeline.get_descriptor_set_layout());
 }
 
 void chess_board_line::update(const scene_camera* _camera) noexcept

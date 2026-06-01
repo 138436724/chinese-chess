@@ -51,9 +51,9 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 	descriptor.clear_descriptor_info();
 
 	std::vector<DescriptorBufferOrImageInfo> hdr_descriptor_image_info = { vk::DescriptorImageInfo(hdr_sampler, hdr_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal) };
-	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, hdr_descriptor_image_info);
+	descriptor.add_descriptor_info(vk::DescriptorType::eCombinedImageSampler, std::move(hdr_descriptor_image_info));
 
-	descriptor.update_descriptor_sets(_app->get_device(), 1, pipeline.get_descriptor_set_layout());
+	descriptor.update_descriptor_sets(_app->get_device(), pipeline.get_descriptor_set_layout());
 
 
 	// create sampler
@@ -72,7 +72,7 @@ void scene_cubemap::create(const vulkan_application* _app, const std::filesystem
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 

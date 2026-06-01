@@ -46,12 +46,14 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 		_node->create(app, vulkan_common::MSAA_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
 	}
 
+	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
+
 	resize(_width, _height);
 
 	tlas.resize(vulkan_common::MAX_FRAMES_IN_FLIGHT);
 
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(_app->get_device()), &(_app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -150,29 +152,38 @@ void scene_manager::update()
 		| std::views::join
 		| std::ranges::to<std::vector>();
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics).get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &(app->get_device()), &(app->get_queue(vk::QueueFlagBits::eGraphics).get_queue())).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	vulkan_buffer staging_buffer;
+	vk::DeviceSize instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * tlas_instances.size();
+
 	vulkan_buffer instance_staging_buffer;
-	tlas.at(current_frame).create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, tlas_instances, staging_buffer, instance_staging_buffer);
+	instance_staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	vulkan_buffer staging_buffer;
+	staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+	memcpy(staging_buffer.get_buffer_address().hostAddress, tlas_instances.data(), instance_buffer_size);
+	vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
+
+	tlas.at(current_frame).create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, static_cast<uint32_t>(tlas_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
 
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
 }
 
-void scene_manager::render(const vk::raii::CommandBuffer& _commandbuffer)
+const vulkan_commandbuffer& scene_manager::render()
 {
-	ray_tracing_render(_commandbuffer);
-	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
-	return;
+	const vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+	commandbuffer.begin_record({});
+
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	begin_barrier.emplace_back(depth_image.set_layout(vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1)));
-	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
 
 	vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
@@ -182,45 +193,37 @@ void scene_manager::render(const vk::raii::CommandBuffer& _commandbuffer)
 
 	vk::RenderingInfo renderingInfo({}, vk::Rect2D({ 0, 0 }, { static_cast<uint32_t>(width), static_cast<uint32_t>(height) }), 1, {}, colorAttachmentInfo, &depthAttachmentInfo, nullptr, nullptr);
 
-	_commandbuffer.setViewport(0, vk::Viewport(0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f));
-	_commandbuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)));
+	(*commandbuffer).setViewport(0, vk::Viewport(0.f, 0.f, static_cast<float>(width), static_cast<float>(height), 0.f, 1.f));
+	(*commandbuffer).setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)));
 
-	_commandbuffer.beginRendering(renderingInfo);
+	(*commandbuffer).beginRendering(renderingInfo);
 
 
 	for (auto& _node : nodes)
 	{
-		_node->render(_commandbuffer);
+		_node->render(*commandbuffer);
 	}
 
-	_commandbuffer.endRendering();
+	(*commandbuffer).endRendering();
+
+	commandbuffer.end_record();
+
+	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+
+	return commandbuffer;
 }
 
-void scene_manager::destroy()
+const vulkan_commandbuffer& scene_manager::ray_tracing_render()
 {
-	for (auto& _node : nodes)
-	{
-		_node->destroy();
-	}
-}
+	const vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+	commandbuffer.begin_record({});
 
-chess_manager* scene_manager::get_piece_manager() const noexcept
-{
-	return piece_manager;
-}
 
-vulkan_image& scene_manager::get_render_image() noexcept
-{
-	return render_output;
-}
-
-void scene_manager::ray_tracing_render(const vk::raii::CommandBuffer& _commandbuffer)
-{
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eGeneral, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
-	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
-	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
+	(*commandbuffer).bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
 
 	// Build push descriptors (4 bindings): AS, storage image, font images[2], font samplers[2]
 	std::vector<vk::WriteDescriptorSet> write_sets;
@@ -244,7 +247,7 @@ void scene_manager::ray_tracing_render(const vk::raii::CommandBuffer& _commandbu
 	vk::DescriptorImageInfo piece_font_image_info(*piece_manager->get_font_sampler(), *piece_manager->get_font_image().get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 	write_sets.emplace_back(vk::WriteDescriptorSet(nullptr, 3, {}, vk::DescriptorType::eCombinedImageSampler, piece_font_image_info, {}, {}));
 
-	_commandbuffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0, write_sets);
+	(*commandbuffer).pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0, write_sets);
 
 	// Push constant with camera + device addresses for raw-buffer-load
 	scene_manager::PushConstant push_constant{
@@ -259,13 +262,37 @@ void scene_manager::ray_tracing_render(const vk::raii::CommandBuffer& _commandbu
 		piece_manager->get_vertices_device_address(),
 		piece_manager->get_indices_device_address(),
 	};
-	_commandbuffer.pushConstants2(vk::PushConstantsInfo(pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant), &push_constant));
+	(*commandbuffer).pushConstants2(vk::PushConstantsInfo(pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant), &push_constant));
 
 	// Ray trace
 	const auto& extent = app->get_swapchain().get_extent();
-	_commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(), sbt.get_callable_region(), extent.width, extent.height, 1);
+	(*commandbuffer).traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(), sbt.get_callable_region(), extent.width, extent.height, 1);
 
 	// Barrier: ray tracing writes complete → ready for tonemapping read
 	vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderWrite, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead);
-	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+
+	commandbuffer.end_record();
+
+	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+
+	return commandbuffer;
+}
+
+void scene_manager::destroy()
+{
+	for (auto& _node : nodes)
+	{
+		_node->destroy();
+	}
+}
+
+chess_manager* scene_manager::get_piece_manager() const noexcept
+{
+	return piece_manager;
+}
+
+vulkan_image& scene_manager::get_render_image() noexcept
+{
+	return render_output;
 }

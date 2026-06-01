@@ -16,7 +16,7 @@ public:
 	void create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
-	void render(const vk::raii::CommandBuffer& _commandbuffer);
+	const vulkan_commandbuffer& render();
 	void destroy();
 
 	void parse_back() noexcept;
@@ -44,4 +44,7 @@ private:
 	int selected_index = 0;
 	std::vector<std::u8string> all_records;
 	std::vector<const char*> all_records_c_str;
+
+	std::vector<vulkan_commandbuffer> commandbuffers;
+	uint32_t current_frame = 0;
 };

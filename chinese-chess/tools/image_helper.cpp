@@ -17,7 +17,7 @@ void image_helper::read_hdr_image(const std::filesystem::path& _hdr_path, uint32
 	_height = spec.height;
 
 	_hdr_data.resize(_width * _height * 4, 1.f);
-	if (!image->read_image(0, 0, 0, 4, OIIO::TypeDesc::FLOAT, _hdr_data.data(), 4 * sizeof(float), _width * 4 * sizeof(float), OIIO::AutoStride))
+	if (!image->read_image(0, 0, 0, 4, OIIO::TypeDesc::FLOAT, _hdr_data.data(), 4 * sizeof(float), 4 * sizeof(float) * _width, OIIO::AutoStride))
 	{
 		throw std::runtime_error(std::format("Failed to read image {}.", _hdr_path.string()));
 	}

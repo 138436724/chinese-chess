@@ -24,9 +24,9 @@ vulkan_commandbuffer& vulkan_commandbuffer::operator=(vulkan_commandbuffer&& _ot
 	return *this;
 }
 
-std::vector<vulkan_commandbuffer> vulkan_commandbuffer::create(const vk::CommandBufferAllocateInfo& _allocate_info, const vk::raii::Device* _device, const vk::raii::Queue* _queue)
+std::vector<vulkan_commandbuffer> vulkan_commandbuffer::create(const vk::CommandBufferAllocateInfo& _allocate_info, const vk::raii::Device& _device, vk::Queue _queue)
 {
-	std::vector<vk::raii::CommandBuffer> commandbuffers = vk::raii::CommandBuffers(*_device, _allocate_info);
+	std::vector<vk::raii::CommandBuffer> commandbuffers = vk::raii::CommandBuffers(_device, _allocate_info);
 
 	auto cs = commandbuffers
 		| std::views::transform([&](vk::raii::CommandBuffer& _commandbuffer)
@@ -40,7 +40,7 @@ std::vector<vulkan_commandbuffer> vulkan_commandbuffer::create(const vk::Command
 	return cs;
 }
 
-void vulkan_commandbuffer::create(vk::CommandBufferLevel _commandbuffer_level, vk::raii::CommandBuffer&& _commandbuffer, const vk::raii::Device* _device, const vk::raii::Queue* _queue)
+void vulkan_commandbuffer::create(vk::CommandBufferLevel _commandbuffer_level, vk::raii::CommandBuffer&& _commandbuffer, const vk::raii::Device& _device, vk::Queue _queue)
 {
 	commandbuffer_level = _commandbuffer_level;
 	commandbuffer = std::move(_commandbuffer);
@@ -49,7 +49,7 @@ void vulkan_commandbuffer::create(vk::CommandBufferLevel _commandbuffer_level, v
 
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
-		fence = vk::raii::Fence(*device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
+		fence = vk::raii::Fence(_device, vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled));
 	}
 }
 
@@ -58,7 +58,7 @@ void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage) cons
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
 		wait();
-		device->resetFences(*fence);
+		device.resetFences(*fence);
 	}
 	commandbuffer.reset();
 	vk::CommandBufferInheritanceInfo info;
@@ -75,7 +75,7 @@ void vulkan_commandbuffer::submit(const std::vector<vk::SemaphoreSubmitInfo>& _w
 	vk::CommandBufferSubmitInfo commandbuffer_submit_info(*commandbuffer, 0);
 	vk::SubmitInfo2 submit_info({}, _waited, commandbuffer_submit_info, _signal);
 
-	queue->submit2(submit_info, *fence);
+	queue.submit2(submit_info, *fence);
 
 	if (_immediately)
 	{
@@ -87,7 +87,7 @@ void vulkan_commandbuffer::wait() const
 {
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
-		while (vk::Result::eTimeout == device->waitForFences(*fence, vk::True, std::numeric_limits<uint64_t>::max()))
+		while (vk::Result::eTimeout == device.waitForFences(*fence, vk::True, std::numeric_limits<uint64_t>::max()))
 		{
 		};
 	}

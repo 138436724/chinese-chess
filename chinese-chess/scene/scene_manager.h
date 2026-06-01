@@ -18,30 +18,28 @@ public:
 	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
-	void render(const vk::raii::CommandBuffer& _commandbuffer);
+	const vulkan_commandbuffer& render();
+	const vulkan_commandbuffer& ray_tracing_render();
 	void destroy();
 
 	chess_manager* get_piece_manager() const noexcept;
-
 	vulkan_image& get_render_image() noexcept;
 
-    void ray_tracing_render(const vk::raii::CommandBuffer& _commandbuffer);
-
 private:
-    struct PushConstant
-    {
-        alignas(16) glm::vec3 cameraOrigin;
-        alignas(16) glm::mat4x4 projInvMatrix;
-        alignas(16) glm::mat4x4 viewInvMatrix;
-        alignas(16) glm::vec3 cameraDirection;
-        // Device addresses for vertex/index buffers (raw-buffer-load in shader)
+	struct PushConstant
+	{
+		alignas(16) glm::vec3 cameraOrigin;
+		alignas(16) glm::mat4x4 projInvMatrix;
+		alignas(16) glm::mat4x4 viewInvMatrix;
+		alignas(16) glm::vec3 cameraDirection;
+		// Device addresses for vertex/index buffers (raw-buffer-load in shader)
 		alignas(16) vk::DeviceAddress boardVerticesAddress;
-        vk::DeviceAddress boardIndicesAddress;
+		vk::DeviceAddress boardIndicesAddress;
 		alignas(16) vk::DeviceAddress boardLineVerticesAddress;
-        vk::DeviceAddress boardLineIndicesAddress;
+		vk::DeviceAddress boardLineIndicesAddress;
 		alignas(16) vk::DeviceAddress pieceVerticesAddress;
-        vk::DeviceAddress pieceIndicesAddress;
-    };
+		vk::DeviceAddress pieceIndicesAddress;
+	};
 
 	vk::Format color_format = vk::Format::eUndefined;
 
@@ -63,6 +61,7 @@ private:
 
 	std::unique_ptr<scene_cubemap> cubemap = nullptr;
 
+	std::vector<vulkan_commandbuffer> commandbuffers;
 	uint32_t current_frame = 0;
 
 	// ray tracing

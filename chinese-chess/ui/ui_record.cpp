@@ -52,8 +52,8 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 		.Instance = *(app->get_instance()),
 		.PhysicalDevice = *(app->get_physical_device()),
 		.Device = *(app->get_device()),
-		.QueueFamily = app->get_queue(vk::QueueFlagBits::eGraphics).get_index(),
-		.Queue = *(app->get_queue(vk::QueueFlagBits::eGraphics).get_queue()),
+		.QueueFamily = app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_index(),
+		.Queue = *(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()),
 		.DescriptorPool = *descriptor_pool,
 		.MinImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
 		.ImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
@@ -61,6 +61,8 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _
 		.UseDynamicRendering = true,
 	};
 	ImGui_ImplVulkan_Init(&init_info);
+
+	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
 
 	resize(_width, _height);
 }
@@ -153,29 +155,38 @@ void ui_record::update()
 	draw_data = ImGui::GetDrawData();
 }
 
-void ui_record::render(const vk::raii::CommandBuffer& _commandbuffer)
+const vulkan_commandbuffer& ui_record::render()
 {
+	const vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+	commandbuffer.begin_record({});
+
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
-	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
 	vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
 		render_output.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
 
 	vk::RenderingInfo renderingInfo({}, vk::Rect2D({ 0, 0 }, app->get_swapchain().get_extent()), 1, {}, colorAttachmentInfo, nullptr, nullptr, nullptr);
 
-	_commandbuffer.beginRendering(renderingInfo);
+	(*commandbuffer).beginRendering(renderingInfo);
 
-	ImGui_ImplVulkan_RenderDrawData(draw_data, *_commandbuffer);
+	ImGui_ImplVulkan_RenderDrawData(draw_data, *(*(commandbuffer)));
 
-	_commandbuffer.endRendering();
+	(*commandbuffer).endRendering();
 
 	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 	{
 		ImGui::UpdatePlatformWindows();
 		ImGui::RenderPlatformWindowsDefault();
 	}
+
+	commandbuffer.end_record();
+
+	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+
+	return commandbuffer;
 }
 
 void ui_record::destroy()

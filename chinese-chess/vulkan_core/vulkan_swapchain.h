@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan_raii.hpp>
+#include <vulkan_core/vulkan_commandbuffer.h>
+#include <vulkan_core/vulkan_queue.h>
 
 class vulkan_swapchain
 {
@@ -12,20 +14,21 @@ public:
 	vulkan_swapchain& operator=(vulkan_swapchain&) = delete;
 	vulkan_swapchain& operator=(vulkan_swapchain&& _other) noexcept;
 
-	void create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
+	void create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vulkan_queue&& _present_queue, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
 	void recreate(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, uint32_t _width, uint32_t _height);
-	std::pair<vk::Result, vk::Semaphore> acquire_next_image();
-	[[nodiscard("present info need submit!")]]
-	vk::PresentInfoKHR present_image();
+	
+	vk::Result acquire_next_image();
+	void present_image(const vulkan_commandbuffer& _commandbuffer, bool _immediately) const;
 
 	const vk::raii::SwapchainKHR& get_swapchain() const noexcept;
 	vk::Extent2D get_extent() const noexcept;
 	vk::Format get_format() const noexcept;
 	const vk::Image get_current_image() const noexcept;
 	const vk::raii::ImageView& get_current_imageview() const noexcept;
-	const vk::raii::Semaphore& get_current_waited_semaphore() const noexcept;
 
 private:
+	vulkan_queue present_queue;
+
 	vk::SurfaceCapabilitiesKHR surface_capabilities = {};
 	vk::raii::SurfaceKHR surface = nullptr;
 	vk::raii::SwapchainKHR swapchain = nullptr;

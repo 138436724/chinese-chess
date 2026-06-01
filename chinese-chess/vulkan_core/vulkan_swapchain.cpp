@@ -1,9 +1,11 @@
 #include "vulkan_common.h"
 #include "vulkan_swapchain.h"
+#include <print>
 #include <vulkan/vulkan.hpp>
 
 vulkan_swapchain::vulkan_swapchain(vulkan_swapchain&& _other) noexcept
-	:surface_capabilities(std::move(_other.surface_capabilities)),
+	:present_queue(std::move(_other.present_queue)),
+	surface_capabilities(std::move(_other.surface_capabilities)),
 	surface(std::move(_other.surface)),
 	swapchain(std::move(_other.swapchain)),
 	format(std::move(_other.format)),
@@ -22,6 +24,7 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 {
 	if (this != &_other)
 	{
+		std::ranges::swap(present_queue, _other.present_queue);
 		std::ranges::swap(surface_capabilities, _other.surface_capabilities);
 		std::ranges::swap(surface, _other.surface);
 		std::ranges::swap(swapchain, _other.swapchain);
@@ -38,8 +41,10 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 	return *this;
 }
 
-void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
+void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vulkan_queue&& _present_queue, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
+	present_queue = std::move(_present_queue);
+
 	surface = vk::raii::SurfaceKHR(_instance, _surface);
 
 	auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
@@ -97,16 +102,37 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
 	}
 }
 
-std::pair<vk::Result, vk::Semaphore> vulkan_swapchain::acquire_next_image()
+vk::Result vulkan_swapchain::acquire_next_image()
 {
 	current_index = (current_index + 1) % max_index;
 	auto result = swapchain.acquireNextImage(std::numeric_limits<uint64_t>::max(), present_used.at(current_index), nullptr);
-	return std::pair<vk::Result, vk::Semaphore>(std::get<0>(static_cast<std::tuple<vk::Result&, uint32_t&>>(result)), *(present_used.at(current_index)));
+	return std::get<0>(static_cast<std::tuple<vk::Result&, uint32_t&>>(result));
 }
 
-vk::PresentInfoKHR vulkan_swapchain::present_image()
+void vulkan_swapchain::present_image(const vulkan_commandbuffer& _commandbuffer, bool _immediately) const
 {
-	return vk::PresentInfoKHR(*(present_waited.at(current_index)), (*swapchain), current_index, {});
+	_commandbuffer.submit({ vk::SemaphoreSubmitInfo(*(present_used.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },
+		{ vk::SemaphoreSubmitInfo(*(present_waited.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },
+		_immediately);
+
+	try
+	{
+		vk::Result res = present_queue.get_queue().presentKHR(vk::PresentInfoKHR(*(present_waited.at(current_index)), (*swapchain), current_index, {}));
+		if (res != vk::Result::eSuccess)
+		{
+			throw std::runtime_error("failed to present swap chain image!");
+		}
+	}
+	catch (vk::OutOfDateKHRError e)
+	{
+#ifndef NDEBUG
+		std::println("{}", e.what());
+#endif // !NDEBUG
+	}
+	catch (std::system_error)
+	{
+		throw std::runtime_error("failed to present swap chain image!");
+	}
 }
 
 const vk::raii::SwapchainKHR& vulkan_swapchain::get_swapchain() const noexcept
@@ -132,9 +158,4 @@ const vk::Image vulkan_swapchain::get_current_image() const noexcept
 const vk::raii::ImageView& vulkan_swapchain::get_current_imageview() const noexcept
 {
 	return imageviews.at(current_index);
-}
-
-const vk::raii::Semaphore& vulkan_swapchain::get_current_waited_semaphore() const noexcept
-{
-	return present_waited.at(current_index);
 }

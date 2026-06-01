@@ -3,7 +3,8 @@
 #include <ranges>
 
 vulkan_descriptor::vulkan_descriptor(vulkan_descriptor&& _other) noexcept
-	:pool_info(std::move(_other.pool_info)),
+	:max_size(std::move(_other.max_size)),
+	pool_infos(std::move(_other.pool_infos)),
 	pool_size(std::move(_other.pool_size)),
 	descriptor_pool(std::move(_other.descriptor_pool)),
 	descriptor_sets(std::move(_other.descriptor_sets))
@@ -14,7 +15,8 @@ vulkan_descriptor& vulkan_descriptor::operator=(vulkan_descriptor&& _other) noex
 {
 	if (this != &_other)
 	{
-		std::ranges::swap(pool_info, _other.pool_info);
+		std::ranges::swap(max_size, _other.max_size);
+		std::ranges::swap(pool_infos, _other.pool_infos);
 		std::ranges::swap(pool_size, _other.pool_size);
 		std::ranges::swap(descriptor_pool, _other.descriptor_pool);
 		std::ranges::swap(descriptor_sets, _other.descriptor_sets);
@@ -22,29 +24,39 @@ vulkan_descriptor& vulkan_descriptor::operator=(vulkan_descriptor&& _other) noex
 	return *this;
 }
 
-void vulkan_descriptor::add_descriptor_info(vk::DescriptorType _descriptor_type, const std::vector<DescriptorBufferOrImageInfo>& _pool_info) noexcept
+void vulkan_descriptor::add_descriptor_info(vk::DescriptorType _descriptor_type, std::vector<DescriptorBufferOrImageInfo>&& _pool_info)
 {
+	if (max_size == 0)
+	{
+		max_size = static_cast<uint32_t>(_pool_info.size());
+	}
+	else if (max_size != _pool_info.size())
+	{
+		throw std::runtime_error("All pool info size must be same.");
+	}
+
 	pool_size.emplace_back(vk::DescriptorPoolSize(_descriptor_type, static_cast<uint32_t>(_pool_info.size())));
-	pool_info.push_back(_pool_info);
+	pool_infos.emplace_back(std::move(_pool_info));
 }
 
 void vulkan_descriptor::clear_descriptor_info() noexcept
 {
+	max_size = 0;
 	pool_size.clear();
-	pool_info.clear();
+	pool_infos.clear();
 	descriptor_sets.clear();
 	descriptor_pool.clear();
 }
 
-void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, uint32_t _max_size_count, const vk::raii::DescriptorSetLayout& _descriptor_set_layout) noexcept
+void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, const vk::raii::DescriptorSetLayout& _descriptor_set_layout)
 {
 	// descriptor pool
-	vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, _max_size_count, pool_size);
+	vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, max_size, pool_size);
 	descriptor_pool = vk::raii::DescriptorPool(_device, pool_create_info);
 
 
 	// descriptor set
-	std::vector<vk::DescriptorSetLayout> layouts(_max_size_count, *(_descriptor_set_layout));
+	std::vector<vk::DescriptorSetLayout> layouts(max_size, *(_descriptor_set_layout));
 	vk::DescriptorSetAllocateInfo alloc_info(descriptor_pool, layouts);
 
 	descriptor_sets.clear();
@@ -52,7 +64,7 @@ void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, 
 
 
 	std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _descriptor_pair) {
-		auto descriptor_write = std::views::zip(pool_size, pool_info)
+		auto descriptor_write = std::views::zip(pool_size, pool_infos)
 			| std::views::enumerate
 			| std::views::transform([&](const auto& _pair)
 				{

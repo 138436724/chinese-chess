@@ -24,24 +24,21 @@ public:
 	void init(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags = {});
 	void create(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
-	void wait_idle() const;
+	void render(const std::span<const vk::CommandBuffer> _commandbuffers, bool _immediately);
+	void wait() const;
 
 	// frame
 	void bind_image(vulkan_image* _scene_image, vulkan_image* _ui_image);
-	void begin_frame();
-	void end_frame(bool _immediately);
 
 	// other function
 	void save_image(vulkan_image& _image) const;
 
-	// get functions
+	// getters
 	const vk::raii::Instance& get_instance() const noexcept;
 	const vk::raii::PhysicalDevice& get_physical_device() const noexcept;
 	const vk::raii::Device& get_device() const noexcept;
-	const vulkan_queue& get_queue(vk::QueueFlagBits _queue_type) const noexcept; // default is present
+	std::optional<std::reference_wrapper<const vulkan_queue>> get_queue(vk::QueueFlagBits _queue_type) const noexcept;
 	const vulkan_swapchain& get_swapchain() const noexcept;
-	const vulkan_commandbuffer& get_current_scene_commandbuffer() const noexcept;
-	const vulkan_commandbuffer& get_current_ui_commandbuffer() const noexcept;
 
 private:
 	// use in `init` and `create`
@@ -51,6 +48,8 @@ private:
 
 	void pick_msaa_sample_count() const noexcept;
 	void pick_depth_format() const noexcept;
+
+	void create_pipeline();
 
 #ifndef NDEBUG
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT _severity, vk::DebugUtilsMessageTypeFlagsEXT _type, const vk::DebugUtilsMessengerCallbackDataEXT* _pCallbackData, void*);
@@ -76,18 +75,14 @@ private:
 		//vk::KHRRayQueryExtensionName,
 		vk::KHRDeferredHostOperationsExtensionName,
 		vk::KHRBufferDeviceAddressExtensionName,
-		vk::KHRShaderFloatControlsExtensionName,
-		vk::EXTDescriptorIndexingExtensionName,
 		vk::KHRPushDescriptorExtensionName
 	};
 
 	vulkan_queue graphic_queue;
-	vulkan_queue present_queue;
+	vulkan_queue present_queue; // todo, remove
 	vulkan_queue compute_queue;
 
 	vulkan_swapchain swapchain;
-	vk::Result acquire_result = vk::Result::eSuccess;
-	vk::Semaphore acquire_semaphore = nullptr;
 
 	vulkan_pipeline pipeline;
 	vulkan_descriptor descriptor;
@@ -100,7 +95,6 @@ private:
 	vulkan_image* bind_ui_image = nullptr;
 	vk::raii::Sampler image_sampler = nullptr;
 
-	std::vector<vulkan_commandbuffer> primary_commandbuffers;
-	std::vector<vulkan_commandbuffer> secondary_commandbuffers;
+	std::vector<vulkan_commandbuffer> commandbuffers;
 	uint32_t current_frame = 0;
 };
