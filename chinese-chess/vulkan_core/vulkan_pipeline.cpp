@@ -67,8 +67,7 @@ void vulkan_pipeline::create(const vk::raii::Device& _device,
 	const std::span<const vk::RayTracingShaderGroupCreateInfoKHR> _shader_groups,
 	uint32_t _max_depth)
 {
-	// ray tracing use push descriptor, waiting to change
-	descriptor_set_layout = vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR, _descriptor_set_layout_bindings));
+	descriptor_set_layout = vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings));
 
 	vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
 	pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);

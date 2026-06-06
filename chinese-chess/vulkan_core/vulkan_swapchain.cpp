@@ -109,7 +109,7 @@ vk::Result vulkan_swapchain::acquire_next_image()
 	return std::get<0>(static_cast<std::tuple<vk::Result&, uint32_t&>>(result));
 }
 
-void vulkan_swapchain::present_image(const vulkan_commandbuffer& _commandbuffer, bool _immediately) const
+void vulkan_swapchain::present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const
 {
 	_commandbuffer.submit({ vk::SemaphoreSubmitInfo(*(present_used.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },
 		{ vk::SemaphoreSubmitInfo(*(present_waited.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },

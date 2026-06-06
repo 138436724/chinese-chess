@@ -13,6 +13,7 @@ public:
 	vulkan_buffer& operator=(vulkan_buffer&& _other) noexcept;
 
 	void create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties);
+	void clear() noexcept;
 
 	const vk::raii::Buffer& get_buffer() const noexcept;
 	vk::DeviceOrHostAddressKHR get_buffer_address() const noexcept;

@@ -12,9 +12,12 @@
 #include <commdlg.h>
 #endif // _WIN32
 
-void ui_record::create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height)
+void ui_record::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _mgr, uint32_t _width, uint32_t _height)
 {
 	app = _app;
+
+	chess_mgr = std::make_unique<ui_chess_manager>();
+	chess_mgr->create(_mgr);
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -157,7 +160,7 @@ void ui_record::update()
 
 const vulkan_commandbuffer& ui_record::render()
 {
-	const vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	commandbuffer.begin_record({});
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;

@@ -44,7 +44,12 @@ void vulkan_application::resize(uint32_t _width, uint32_t _height)
 	swapchain.recreate(physical_device, device, _width, _height);
 }
 
-void vulkan_application::render(const std::span<const vk::CommandBuffer> _commandbuffers, bool _immediately)
+void vulkan_application::begin() noexcept
+{
+	commandbuffers.at(current_frame).begin_record({});
+}
+
+void vulkan_application::render(const std::span<const vk::CommandBuffer> _commandbuffers)
 {
 	try
 	{
@@ -63,10 +68,7 @@ void vulkan_application::render(const std::span<const vk::CommandBuffer> _comman
 	}
 
 
-	const vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
-	commandbuffer.begin_record({});
-
-
+	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	(*commandbuffer).executeCommands(_commandbuffers);
 
 
@@ -103,9 +105,11 @@ void vulkan_application::render(const std::span<const vk::CommandBuffer> _comman
 
 
 	commandbuffer.end_record();
+}
 
-	swapchain.present_image(commandbuffer, _immediately);
-
+void vulkan_application::end(bool _immediately)
+{
+	swapchain.present_image(commandbuffers.at(current_frame), _immediately);
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
@@ -390,6 +394,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
 					&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
 					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
@@ -454,7 +459,7 @@ void vulkan_application::create_device_and_queue()
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True),
+			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True).setRuntimeDescriptorArray(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),
 			vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True).setAccelerationStructureCaptureReplay(vk::True).setDescriptorBindingAccelerationStructureUpdateAfterBind(vk::True),
@@ -731,17 +736,17 @@ void vulkan_application::create_pipeline()
 		// commandbuffer submit
 		commandbuffer.end_record();
 		commandbuffer.submit({}, {}, true);
-	}
 
-	if (ocio_images.size() != ocio_samplers.size())
-	{
-		throw std::runtime_error("images and samplers number not equal.");
-	}
+		if (ocio_images.size() != ocio_samplers.size())
+		{
+			throw std::runtime_error("images and samplers number not equal.");
+		}
 
-	for (const auto& _ : std::views::zip(ocio_images, ocio_samplers)) // todo use ranges
-	{
-		bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampledImage, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
-		bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
+		std::ranges::for_each(std::views::iota(0u, static_cast<uint32_t>(ocio_images.size())), [&bindings](const auto&)
+			{
+				bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampledImage, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
+				bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr));
+			});
 	}
 
 	vk::raii::ShaderModule shaderModule(device, vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));

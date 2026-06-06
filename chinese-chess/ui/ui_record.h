@@ -2,6 +2,8 @@
 #define GLFW_INCLUDE_VULKAN
 
 #include "scene/chess_manager.h"
+#include "scene/scene_manager.h"
+#include "ui_chess_manager.h"
 #include "vulkan_core/vulkan_application.h"
 #include <filesystem>
 #include <GLFW/glfw3.h>
@@ -13,7 +15,7 @@ public:
 	ui_record() = default;
 	~ui_record() = default;
 
-	void create(GLFWwindow* _window, vulkan_application* _app, uint32_t _width, uint32_t _height);
+	void create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _mgr, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
 	const vulkan_commandbuffer& render();
@@ -39,6 +41,7 @@ private:
 	vulkan_image color_image;
 	vulkan_image render_output;
 
+	std::unique_ptr<ui_chess_manager> chess_mgr = nullptr;
 	chess_manager* manager = nullptr;
 
 	int selected_index = 0;

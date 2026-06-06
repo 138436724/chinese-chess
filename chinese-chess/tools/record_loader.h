@@ -30,9 +30,9 @@ enum class PIECE_TYPE :uint8_t
 
 struct piece_state
 {
-	PIECE_TYPE piece_type;
-	uint8_t x;
-	uint8_t y;
+	PIECE_TYPE piece_type = PIECE_TYPE::NONE;
+	uint8_t x = 0;
+	uint8_t y = 0;
 
 	auto operator<=>(const piece_state& _other) const = default;
 };

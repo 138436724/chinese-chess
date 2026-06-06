@@ -77,6 +77,14 @@ struct model_vertex
 	}
 };
 
+struct model_infomation
+{
+	size_t vertex_offset = 0;
+	size_t index_offset = 0;
+	std::vector<model_vertex> vertices;
+	std::vector<uint32_t> indices;
+};
+
 class model_loader
 {
 public:

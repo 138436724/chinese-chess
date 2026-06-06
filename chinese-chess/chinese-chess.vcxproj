@@ -147,7 +147,10 @@
     <ClCompile Include="scene\chess_piece.cpp" />
     <ClCompile Include="scene\scene_camera.cpp" />
     <ClCompile Include="scene\scene_manager.cpp" />
+    <ClCompile Include="scene\scene_material.cpp" />
+    <ClCompile Include="scene\scene_material_manager.cpp" />
     <ClCompile Include="scene\scene_node.cpp" />
+    <ClCompile Include="scene\scene_node_manager.cpp" />
     <ClCompile Include="scene\skybox\scene_brdflut.cpp" />
     <ClCompile Include="scene\skybox\scene_cubemap.cpp" />
     <ClCompile Include="scene\skybox\scene_skybox.cpp" />
@@ -159,6 +162,7 @@
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
+    <ClCompile Include="ui\ui_chess_manager.cpp" />
     <ClCompile Include="ui\ui_record.cpp" />
     <ClCompile Include="vulkan_core\vulkan_acceleration_structure.cpp" />
     <ClCompile Include="vulkan_core\vulkan_application.cpp" />
@@ -179,7 +183,10 @@
     <ClInclude Include="scene\chess_piece.h" />
     <ClInclude Include="scene\scene_camera.h" />
     <ClInclude Include="scene\scene_manager.h" />
+    <ClInclude Include="scene\scene_material.h" />
+    <ClInclude Include="scene\scene_material_manager.h" />
     <ClInclude Include="scene\scene_node.h" />
+    <ClInclude Include="scene\scene_node_manager.h" />
     <ClInclude Include="scene\skybox\scene_brdflut.h" />
     <ClInclude Include="scene\skybox\scene_cubemap.h" />
     <ClInclude Include="scene\skybox\scene_skybox.h" />
@@ -191,6 +198,7 @@
     <ClInclude Include="tools\record_loader.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
+    <ClInclude Include="ui\ui_chess_manager.h" />
     <ClInclude Include="ui\ui_record.h" />
     <ClInclude Include="vulkan_core\vulkan_acceleration_structure.h" />
     <ClInclude Include="vulkan_core\vulkan_application.h" />

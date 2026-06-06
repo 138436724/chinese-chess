@@ -24,7 +24,9 @@ public:
 	void init(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags = {});
 	void create(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
-	void render(const std::span<const vk::CommandBuffer> _commandbuffers, bool _immediately);
+	void begin() noexcept;
+	void render(const std::span<const vk::CommandBuffer> _commandbuffers);
+	void end(bool _immediately);
 	void wait() const;
 
 	// frame

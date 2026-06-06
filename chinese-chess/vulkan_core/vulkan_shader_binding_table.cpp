@@ -24,7 +24,7 @@ vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shade
 	return *this;
 }
 
-void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::raii::CommandBuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count, vulkan_buffer& _staging_buffer)
+void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vulkan_commandbuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count)
 {
 	if (handle_size == 0 && handle_alignment == 0 && base_alignment == 0)
 	{
@@ -51,12 +51,13 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 
 	sbt_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-	_staging_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	vulkan_buffer staging_buffer;
+	staging_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 
 	std::vector<uint8_t> shader_handles = _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
 
-	uint8_t* buffer_address = static_cast<uint8_t*>(_staging_buffer.get_buffer_address().hostAddress);
+	uint8_t* buffer_address = static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress);
 
 	memcpy(buffer_address + raygen_offset, shader_handles.data() + 0 * handle_size, handle_size);
 	memcpy(buffer_address + miss_offset, shader_handles.data() + 1 * handle_size, handle_size);
@@ -67,7 +68,9 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 	hit_region = vk::StridedDeviceAddressRegionKHR(sbt_buffer.get_buffer_address().deviceAddress + hit_offset, hit_size, hit_size);
 	callable_region = vk::StridedDeviceAddressRegionKHR(0, 0, 0);
 
-	vulkan_buffer::copy_buffer_to_buffer(_commandbuffer, _staging_buffer.get_buffer(), sbt_buffer.get_buffer(), vk::BufferCopy2(0, 0, buffer_size));
+	vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), sbt_buffer.get_buffer(), vk::BufferCopy2(0, 0, buffer_size));
+
+	_commandbuffer.add_staging_buffer(std::move(staging_buffer));
 }
 
 const vk::StridedDeviceAddressRegionKHR& vulkan_shader_binding_table::get_raygen_region() const noexcept

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan_buffer.h"
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_commandbuffer
@@ -15,10 +16,12 @@ public:
 	static std::vector<vulkan_commandbuffer> create(const vk::CommandBufferAllocateInfo& _allocate_info, const vk::raii::Device& _device, vk::Queue _queue);
 	void create(vk::CommandBufferLevel _commandbuffer_level, vk::raii::CommandBuffer&& _commandbuffer, const vk::raii::Device& _device, vk::Queue _queue);
 
-	void begin_record(vk::CommandBufferUsageFlags _usage) const;
+	void begin_record(vk::CommandBufferUsageFlags _usage);
 	void end_record() const;
-	void submit(const std::vector<vk::SemaphoreSubmitInfo>& _waited, const std::vector<vk::SemaphoreSubmitInfo>& _signal, bool _immediately) const;
-	void wait() const;
+	void submit(const std::vector<vk::SemaphoreSubmitInfo>& _waited, const std::vector<vk::SemaphoreSubmitInfo>& _signal, bool _immediately);
+	void wait();
+
+	void add_staging_buffer(vulkan_buffer&& _buffer) noexcept;
 
 	const vk::raii::CommandBuffer& operator*() const noexcept;
 
@@ -28,4 +31,6 @@ private:
 	vk::raii::Fence fence = nullptr;
 	vk::Device device = nullptr;
 	vk::Queue queue = nullptr;
+
+	std::vector<vulkan_buffer> staging_buffers; 
 };

@@ -11,11 +11,11 @@ constexpr std::u8string_view FONTS_PATH = u8"resources\\fonts\\";
 
 struct character_info
 {
-	uint32_t width;
-	uint32_t height;
-	uint32_t bearing_width;
-	uint32_t bearing_height;
-	uint32_t advance;
+	uint32_t width = 0;
+	uint32_t height = 0;
+	uint32_t bearing_width = 0;
+	uint32_t bearing_height = 0;
+	uint32_t advance = 0;
 	std::vector<uint8_t> buffer;
 };
 

@@ -18,7 +18,7 @@ public:
 	void recreate(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, uint32_t _width, uint32_t _height);
 	
 	vk::Result acquire_next_image();
-	void present_image(const vulkan_commandbuffer& _commandbuffer, bool _immediately) const;
+	void present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const;
 
 	const vk::raii::SwapchainKHR& get_swapchain() const noexcept;
 	vk::Extent2D get_extent() const noexcept;

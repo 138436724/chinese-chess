@@ -5,7 +5,7 @@
 #include "scene_node.h"
 #include "tools/record_loader.h"
 
-class chess_manager : public scene_node
+class chess_manager : public scene_node_old
 {
 public:
 	chess_manager() = default;

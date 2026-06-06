@@ -49,6 +49,13 @@ void vulkan_buffer::create(const vk::raii::PhysicalDevice& _physical_device, con
 	}
 }
 
+void vulkan_buffer::clear() noexcept
+{
+	buffer_address = nullptr;
+	buffer_memory.clear();
+	buffer.clear();
+}
+
 const vk::raii::Buffer& vulkan_buffer::get_buffer() const noexcept
 {
 	return buffer;

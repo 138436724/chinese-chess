@@ -99,7 +99,7 @@ int main()
 
 	// create ui
 	std::unique_ptr<ui_record> UI = std::make_unique<ui_record>();
-	UI->create(window, app.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	UI->create(window, app.get(), scene.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
 
 	// bind
@@ -145,26 +145,18 @@ int main()
 
 		auto start = std::chrono::high_resolution_clock::now();
 
+		app->begin();
+
 		scene->update();
 		UI->update();
 
-		std::vector<vk::CommandBuffer> cbs;
-		const auto& cb = UI->render();
-		cbs.push_back(*cb);
+		const auto& cb1 = UI->render();
+		const auto& cb2 = scene->render(true);
 
-		if constexpr (true)
-		{
-			const auto& cb = scene->ray_tracing_render();
-			cbs.push_back(*cb);
-		}
-		else
-		{
-			const auto& cb = scene->render();
-			cbs.push_back(*cb);
-		}
+		std::vector<vk::CommandBuffer> cbs = { *cb1,*cb2 };
+		app->render(cbs);
 
-		app->render(cbs, info.need_save);
-
+		app->end(info.need_save);
 
 		if (info.need_save)
 		{

@@ -198,7 +198,7 @@ bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>& _sessi
 	result = linked_program->getTargetCode(0, _spirv_code, _diagnostics_blob.writeRef());
 	diagnose_if_needed(_diagnostics_blob);
 	SLANG_RETURN_FALSE_ON_FAIL(result);
-	print_entrypoint_hashes(1, 1, composed_program);
+	print_entrypoint_hashes(static_cast<int>(_entry_name.size()), 1, composed_program);
 
 	return true;
 }

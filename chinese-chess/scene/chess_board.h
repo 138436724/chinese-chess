@@ -2,7 +2,7 @@
 
 #include "scene_node.h"
 
-class chess_board : public scene_node
+class chess_board : public scene_node_old
 {
 public:
 	chess_board() = default;

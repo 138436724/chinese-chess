@@ -3,7 +3,7 @@
 #include "scene/scene_node.h"
 #include "scene_cubemap.h"
 
-class scene_skybox : public scene_node
+class scene_skybox : public scene_node_old
 {
 public:
 	scene_skybox() = default;

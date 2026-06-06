@@ -53,7 +53,7 @@ void vulkan_commandbuffer::create(vk::CommandBufferLevel _commandbuffer_level, v
 	}
 }
 
-void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage) const
+void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage)
 {
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
@@ -70,7 +70,7 @@ void vulkan_commandbuffer::end_record() const
 	commandbuffer.end();
 }
 
-void vulkan_commandbuffer::submit(const std::vector<vk::SemaphoreSubmitInfo>& _waited, const std::vector<vk::SemaphoreSubmitInfo>& _signal, bool _immediately) const
+void vulkan_commandbuffer::submit(const std::vector<vk::SemaphoreSubmitInfo>& _waited, const std::vector<vk::SemaphoreSubmitInfo>& _signal, bool _immediately)
 {
 	vk::CommandBufferSubmitInfo commandbuffer_submit_info(*commandbuffer, 0);
 	vk::SubmitInfo2 submit_info({}, _waited, commandbuffer_submit_info, _signal);
@@ -83,7 +83,7 @@ void vulkan_commandbuffer::submit(const std::vector<vk::SemaphoreSubmitInfo>& _w
 	}
 }
 
-void vulkan_commandbuffer::wait() const
+void vulkan_commandbuffer::wait()
 {
 	if (commandbuffer_level == vk::CommandBufferLevel::ePrimary)
 	{
@@ -97,6 +97,13 @@ void vulkan_commandbuffer::wait() const
 		throw std::runtime_error("Secondary commandbuffer can not wait!");
 	}
 #endif // !NDEBUG
+
+	staging_buffers.clear();
+}
+
+void vulkan_commandbuffer::add_staging_buffer(vulkan_buffer&& _buffer) noexcept
+{
+	staging_buffers.push_back(std::move(_buffer));
 }
 
 const vk::raii::CommandBuffer& vulkan_commandbuffer::operator*() const noexcept
