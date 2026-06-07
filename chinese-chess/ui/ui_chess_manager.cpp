@@ -57,7 +57,6 @@ void ui_chess_manager::create(scene_manager* _manager)
 
 	// init
 	set_now_record_index(0);
-	manager->need_update();
 }
 
 bool ui_chess_manager::load_record(const std::filesystem::path& _record_path)
@@ -105,7 +104,7 @@ void ui_chess_manager::restore_board_state(const all_board_state& _state)
 		{
 			const auto& [index, state] = _pair;
 			const auto& sp = all_chess_pieces.at(index + index_offset).lock();
-			sp->material = std::shared_ptr<scene_material>(red_chess_piece_materials.at(state.piece_type));
+			sp->material = std::shared_ptr<scene_material>(black_chess_piece_materials.at(state.piece_type));
 			sp->is_show = true;
 			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), 0.3f));
 		});
@@ -115,10 +114,12 @@ void ui_chess_manager::restore_board_state(const all_board_state& _state)
 		{
 			const auto& [index, state] = _pair;
 			const auto& sp = all_chess_pieces.at(index + index_offset).lock();
-			sp->material = std::shared_ptr<scene_material>(black_chess_piece_materials.at(state.piece_type));
+			sp->material = std::shared_ptr<scene_material>(red_chess_piece_materials.at(state.piece_type));
 			sp->is_show = true;
 			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), 0.3f));
 		});
+
+	manager->need_update();
 }
 
 glm::vec2 ui_chess_manager::location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept

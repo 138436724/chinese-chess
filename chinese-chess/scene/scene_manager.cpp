@@ -10,12 +10,12 @@
 #include <string>
 #include <unordered_set>
 
-enum class StageIndices
+enum class stage_indices
 {
-	eRaygen,
-	eMiss,
-	eClosestHit,
-	eShaderGroupCount
+	raygeneration,
+	miss,
+	closesthit,
+	shader_group_max_count
 };
 
 void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
@@ -349,7 +349,7 @@ void scene_manager::create_ray_tracing()
 		vk::DescriptorSetLayoutBinding(4, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eAll, nullptr)
 	};
 
-	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant));
+	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant));
 
 	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { "rgenMain", "rmissMain", "rchitMain" });
 	if (spirv_code.empty())
@@ -358,16 +358,16 @@ void scene_manager::create_ray_tracing()
 	}
 	vk::raii::ShaderModule shaderModule(app->get_device(), vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
 
-	std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(StageIndices::eShaderGroupCount)> shader_stages = {
+	std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, "rgenMain"),
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rmissMain"),
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule, "rchitMain"),
 	};
 
 	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(StageIndices::eRaygen)),
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(StageIndices::eMiss)),
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(StageIndices::eClosestHit)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::raygeneration)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::closesthit)),
 	};
 
 	auto props = app->get_physical_device().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
@@ -428,6 +428,8 @@ void scene_manager::update_ray_tracing()
 
 
 	// update descriptor pool
+	rt_descriptor_sets.clear();
+
 	std::array pool_size = {
 		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, 2),
 		vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, 2),
@@ -488,13 +490,13 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline_layout(), 0, *(rt_descriptor_sets.at(current_frame)), nullptr);
 
 	// Push constant with camera + device addresses for raw-buffer-load
-	scene_manager::PushConstant push_constant{
+	scene_manager::push_constant pc{
 		active_camera.get_position(),
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
 		active_camera.get_direction(),
 	};
-	_commandbuffer.pushConstants2(vk::PushConstantsInfo(rt_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::PushConstant), &push_constant));
+	_commandbuffer.pushConstants2(vk::PushConstantsInfo(rt_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant), &pc));
 
 	// Ray trace
 	_commandbuffer.traceRaysKHR(rt_sbt.get_raygen_region(), rt_sbt.get_miss_region(), rt_sbt.get_hit_region(), rt_sbt.get_callable_region(), width, height, 1);

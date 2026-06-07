@@ -60,7 +60,7 @@ int main()
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-	auto* window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+	auto* window = glfwCreateWindow(WIDTH, HEIGHT, "Chinese Chess", nullptr, nullptr);
 
 	std::unique_ptr<vulkan_application> app = std::make_unique<vulkan_application>();
 

@@ -46,21 +46,6 @@ private:
 	void update_ray_tracing();
 	void render_ray_tracing(const vk::raii::CommandBuffer& _commandbuffer) noexcept;
 
-	struct PushConstant
-	{
-		alignas(16) glm::vec3 cameraOrigin;
-		alignas(16) glm::mat4x4 projInvMatrix;
-		alignas(16) glm::mat4x4 viewInvMatrix;
-		alignas(16) glm::vec3 cameraDirection;
-	};
-
-	vk::Format color_format = vk::Format::eUndefined;
-
-	vulkan_image color_image;
-	vulkan_image depth_image;
-	vulkan_image render_output;
-
-	scene_camera active_camera;
 
 	std::vector<std::unique_ptr<scene_node_old>> nodes;
 	chess_manager* piece_manager = nullptr;
@@ -72,14 +57,20 @@ private:
 
 
 	// new ======================================================
+	struct push_constant
+	{
+		alignas(16) glm::vec3 camera_origin;
+		alignas(16) glm::mat4x4 proj_inv_matrix;
+		alignas(16) glm::mat4x4 view_inv_matrix;
+		alignas(16) glm::vec3 camera_direction;
+	};
 
 	struct model_data
 	{
-		alignas(8) glm::mat4 model_matrix = glm::mat4(1.f);
+		alignas(16) glm::mat4 model_matrix = glm::mat4(1.f); // std430 layout
 		alignas(8) uint32_t material_index = std::numeric_limits<uint32_t>::max();
 		alignas(8) vk::DeviceAddress vertex_address = 0;
 		alignas(8) vk::DeviceAddress index_address = 0;
-		uint32_t _padding[2];  // 匹配std430 StructuredBuffer
 	};
 
 	struct material_data
@@ -88,9 +79,6 @@ private:
 		alignas(8) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
 		uint32_t texture_index = std::numeric_limits<uint32_t>::max();
 	};
-
-	vulkan_buffer model_ubo_buffer;
-	vulkan_buffer material_ubo_buffer;
 
 	bool is_dirty = true;
 
@@ -105,10 +93,24 @@ private:
 	std::unique_ptr<scene_node_manager> node_manager;
 	std::unique_ptr<scene_material_manager> material_manager;
 
+	scene_camera active_camera;
 	vk::raii::Sampler image_sampler = nullptr;
 	std::vector<std::shared_ptr<scene_node>> models;
 	std::vector<std::shared_ptr<scene_material>> materials;
 
+	vulkan_buffer model_ubo_buffer;
+	vulkan_buffer material_ubo_buffer;
+
+
+	// only rasterization
+	vk::Format color_format = vk::Format::eUndefined;
+
+	vulkan_image color_image;
+	vulkan_image depth_image;
+	vulkan_image render_output;
+
+
+	// only ray tracing
 	vulkan_pipeline rt_pipeline;
 	vk::raii::DescriptorPool rt_descriptor_pool = nullptr;
 	std::vector<vk::raii::DescriptorSet> rt_descriptor_sets;
