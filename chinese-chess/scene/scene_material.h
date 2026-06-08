@@ -1,8 +1,6 @@
 #pragma once
 
-#include "vulkan_core/vulkan_descriptor.h"
 #include "vulkan_core/vulkan_image.h"
-#include "vulkan_core/vulkan_pipeline.h"
 #include <glm/glm.hpp>
 
 class scene_material

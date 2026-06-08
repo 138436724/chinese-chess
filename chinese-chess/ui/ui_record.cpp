@@ -3,7 +3,6 @@
 #include "tools/string_helper.h"
 #include "ui_record.h"
 #include "vulkan_core/vulkan_common.h"
-#include <algorithm>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <ranges>
@@ -16,8 +15,8 @@ void ui_record::create(GLFWwindow* _window, vulkan_application* _app, scene_mana
 {
 	app = _app;
 
-	chess_mgr = std::make_unique<ui_chess_manager>();
-	chess_mgr->create(_mgr);
+	manager = std::make_unique<ui_chess_manager>();
+	manager->create(_mgr);
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -105,6 +104,11 @@ void ui_record::update()
 
 	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
 
+	if (ImGui::Checkbox("光线追踪", &use_ray_tracing))
+	{
+		manager->set_now_record_index(selected_index + 1); // todo now refresh data, but really need?
+	}
+
 	if (ImGui::Button(reinterpret_cast<const char*>(OPEN_RECORDS.data())))
 	{
 		std::filesystem::path file_path;
@@ -131,9 +135,7 @@ void ui_record::update()
 		{
 			load_records(file_path);
 			manager->load_record(file_path);
-			chess_mgr->load_record(file_path);
 			manager->set_now_record_index(1);
-			chess_mgr->set_now_record_index(1);
 		}
 	}
 
@@ -142,7 +144,6 @@ void ui_record::update()
 		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &selected_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
 		{
 			manager->set_now_record_index(selected_index + 1);
-			chess_mgr->set_now_record_index(selected_index + 1);
 		}
 		if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
 		{
@@ -208,7 +209,6 @@ void ui_record::parse_back() noexcept
 	{
 		selected_index--;
 		manager->set_now_record_index(selected_index + 1);
-		chess_mgr->set_now_record_index(selected_index + 1);
 	}
 }
 
@@ -218,13 +218,7 @@ void ui_record::parse_next() noexcept
 	{
 		selected_index++;
 		manager->set_now_record_index(selected_index + 1);
-		chess_mgr->set_now_record_index(selected_index + 1);
 	}
-}
-
-void ui_record::set_chess_manager(chess_manager* _manager) noexcept
-{
-	manager = _manager;
 }
 
 vulkan_image& ui_record::get_render_image() noexcept

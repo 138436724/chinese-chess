@@ -1,7 +1,4 @@
-#include "chess_board.h"
-#include "chess_board_line.h"
 #include "scene_manager.h"
-#include "skybox/scene_skybox.h"
 #include "tools/font_loader.h"
 #include "tools/image_helper.h"
 #include "tools/shader_compiler.h"
@@ -35,16 +32,14 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	image_sampler = vk::raii::Sampler(app->get_device(), sampler_info);
 
 
-	color_format = vk::Format::eR16G16B16A16Sfloat;
-
-
-	active_camera.set_position(glm::vec3(0.f, 0.f, 1.1f));
+	active_camera.set_position(glm::vec3(0.f, 0.f, 0.f));
 	active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));
 	active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
 
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
+	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
 
+	color_format = vk::Format::eR16G16B16A16Sfloat;
 
 	create_rasterization();
 	create_ray_tracing();
@@ -60,9 +55,14 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 	// camera projection
 	constexpr float camera_height = 1.3f;
-	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 1.f, -10.f);
+	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
 
 	is_dirty = true;
+
+	// render_output
+	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage/*for ray tracing*/, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	resize_rasterization();
 	resize_ray_tracing();
@@ -74,6 +74,8 @@ void scene_manager::update()
 	{
 		return;
 	}
+
+	app->wait(); // todo need wait? 可以修改为更新只更新下一帧的数据，这一帧的可以先放着
 
 	is_dirty = false;
 	node_manager->clear_unused_nodes();
@@ -164,13 +166,13 @@ const vulkan_commandbuffer& scene_manager::render(bool _use_ray_tracing)
 	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	commandbuffer.begin_record({});
 
-	if (_use_ray_tracing)
+	if (!_use_ray_tracing)
 	{
-		render_ray_tracing(*commandbuffer);
+		render_rasterization(*commandbuffer);
 	}
 	else
 	{
-		render_rasterization(*commandbuffer);
+		render_ray_tracing(*commandbuffer);
 	}
 
 	commandbuffer.end_record();
@@ -182,11 +184,6 @@ const vulkan_commandbuffer& scene_manager::render(bool _use_ray_tracing)
 
 void scene_manager::destroy()
 {
-	for (auto& _node : nodes)
-	{
-		_node->destroy();
-	}
-
 	models.clear();
 	node_manager->clear_unused_nodes();
 	material_manager->clear_unused_materials();
@@ -236,11 +233,6 @@ void scene_manager::remove_material(const std::weak_ptr<scene_material>& _materi
 	material_manager->clear_unused_materials();
 }
 
-chess_manager* scene_manager::get_piece_manager() const noexcept
-{
-	return piece_manager;
-}
-
 vulkan_image& scene_manager::get_render_image() noexcept
 {
 	return render_output;
@@ -248,79 +240,132 @@ vulkan_image& scene_manager::get_render_image() noexcept
 
 void scene_manager::create_rasterization()
 {
-	//// sort by draw index
-	//// skybox first
-	//cubemap = std::make_unique<scene_cubemap>();
-	//cubemap->create(app, std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr");
+	// pipeline
+	std::array bindings{
+		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
+		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
+		vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eFragment, nullptr)
+	};
 
-	//auto skybox = std::make_unique<scene_skybox>();
-	//skybox->set_cubemap(cubemap.get());
-	//nodes.emplace_back(std::move(skybox));
+	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant));
 
-	auto board = std::make_unique<chess_board>();
-	board_ = board.get();
-	nodes.emplace_back(std::move(board));
+	auto binding = model_vertex::get_binding_description();
+	auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
-	auto board_line = std::make_unique<chess_board_line>();
-	board_line_ = board_line.get();
-	nodes.emplace_back(std::move(board_line));
-
-	auto pieces = std::make_unique<chess_manager>();
-	piece_manager = pieces.get();
-	nodes.emplace_back(std::move(pieces));
-
-
-	for (auto& _node : nodes)
+	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"rasterization.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+	if (spirv_code.empty())
 	{
-		_node->create(app, vulkan_common::MSAA_SAMPLE_COUNT, color_format, vulkan_common::DEPTH_FORMAT);
+		throw std::runtime_error("compile .spv failed!");
 	}
+
+	vk::raii::ShaderModule shaderModule(app->get_device(), vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
+	std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTYR_NAME.data()),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
+	};
+
+	raster_pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), std::span(&binding, 1), attribute, shader_stages,
+		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise,
+		vulkan_common::MSAA_SAMPLE_COUNT, vk::True, std::span(&color_format, 1), vulkan_common::DEPTH_FORMAT);
 }
 
 void scene_manager::resize_rasterization()
 {
-	// render_output
-	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage/*for ray tracing*/, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
-
 	// msaa color
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	raster_color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	// depth
 	vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
-	depth_image.create(app->get_physical_device(), app->get_device(), depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearDepthStencilValue(1.f, 0));
-
-
-	for (auto& _node : nodes)
-	{
-		_node->resize(app, width, height);
-	}
+	raster_depth_image.create(app->get_physical_device(), app->get_device(), depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearDepthStencilValue(1.f, 0));
 }
 
 void scene_manager::update_rasterization()
 {
-	for (auto& _node : nodes)
-	{
-		_node->update(&active_camera);
-	}
+	// update draw commands
+	auto draw_commands = models
+		| std::views::transform([](const auto& m)
+			{
+				return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(m->model_info->indices.size()), 1, static_cast<uint32_t>(m->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(m->model_info->vertex_offset / sizeof(model_vertex)), 0);
+			})
+		| std::ranges::to<std::vector>();
+
+
+	// begin a commandbuffer
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
+	raster_draw_commands.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	vulkan_buffer draw_commands_staging_buffer;
+	draw_commands_staging_buffer.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+	memcpy(draw_commands_staging_buffer.get_buffer_address().hostAddress, draw_commands.data(), draw_commands_size);
+	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
+
+	// commandbuffer submit
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
+
+
+	// update descriptor pool
+	raster_descriptor_sets.clear();
+
+	std::array pool_size = {
+		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 2),
+		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 2),
+		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 2048)
+	};
+
+	vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind, 2, pool_size);
+	raster_descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_create_info);
+
+	// descriptor set
+	std::vector<vk::DescriptorSetLayout> layouts(2, raster_pipeline.get_descriptor_set_layout());
+	auto alloc_info = vk::DescriptorSetAllocateInfo(raster_descriptor_pool, layouts);
+	raster_descriptor_sets = app->get_device().allocateDescriptorSets(alloc_info);
+
+	std::ranges::for_each(raster_descriptor_sets | std::views::enumerate, [&](const auto& _pair)
+		{
+			const auto& [index, descriptor_set] = _pair;
+			std::vector<vk::WriteDescriptorSet> write_sets;
+
+			vk::DescriptorBufferInfo model_buffer_info(model_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eStorageBuffer, {}, model_buffer_info));
+
+			vk::DescriptorBufferInfo material_buffer_info(material_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageBuffer, {}, material_buffer_info));
+
+			std::array sampler = { *image_sampler };
+			auto material_sets = material_manager->get_descriptor_info(sampler)
+				| std::views::enumerate
+				| std::views::transform([&descriptor_set](const auto& _pair)
+					{
+						const auto& [index, image_info] = _pair;
+						return vk::WriteDescriptorSet(descriptor_set, 2, static_cast<uint32_t>(index), vk::DescriptorType::eCombinedImageSampler, image_info, {});
+					});
+			std::ranges::move(material_sets, std::back_inserter(write_sets));
+
+			app->get_device().updateDescriptorSets(write_sets, {});
+		});
 }
 
 void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _commandbuffer) noexcept
 {
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
-	begin_barrier.emplace_back(color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
-	begin_barrier.emplace_back(depth_image.set_layout(vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1)));
+	begin_barrier.emplace_back(raster_color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	begin_barrier.emplace_back(raster_depth_image.set_layout(vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1)));
 	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
 
-	vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
-		render_output.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
-	vk::RenderingAttachmentInfo depthAttachmentInfo(depth_image.get_imageview(), vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ResolveModeFlagBits::eNone,
-		{}, vk::ImageLayout::eUndefined, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, depth_image.get_clear_value());
+	vk::RenderingAttachmentInfo colorAttachmentInfo(raster_color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
+		render_output.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, raster_color_image.get_clear_value());
+	vk::RenderingAttachmentInfo depthAttachmentInfo(raster_depth_image.get_imageview(), vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ResolveModeFlagBits::eNone,
+		{}, vk::ImageLayout::eUndefined, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, raster_depth_image.get_clear_value());
 
 	vk::RenderingInfo renderingInfo({}, vk::Rect2D({ 0, 0 }, { static_cast<uint32_t>(width), static_cast<uint32_t>(height) }), 1, {}, colorAttachmentInfo, &depthAttachmentInfo, nullptr, nullptr);
 
@@ -330,10 +375,21 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 	_commandbuffer.beginRendering(renderingInfo);
 
 
-	for (auto& _node : nodes)
-	{
-		_node->render(_commandbuffer);
-	}
+	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, raster_pipeline.get_pipeline());
+	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, raster_pipeline.get_pipeline_layout(), 0, *(raster_descriptor_sets.at(current_frame)), nullptr);
+
+	// Push constant with camera
+	scene_manager::push_constant pc{
+		active_camera.get_position(),
+		active_camera.get_projection_matrix(),
+		active_camera.get_view_matrix(),
+		active_camera.get_direction(),
+	};
+	_commandbuffer.pushConstants2(vk::PushConstantsInfo(raster_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant), &pc));
+
+	_commandbuffer.bindVertexBuffers(0, *(node_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
+	_commandbuffer.bindIndexBuffer(*(node_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
+	_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(models.size()), sizeof(vk::DrawIndexedIndirectCommand));
 
 	_commandbuffer.endRendering();
 }
@@ -397,9 +453,9 @@ void scene_manager::update_ray_tracing()
 
 	// create top level acceleration structure
 	rt_instances = models
-		| std::views::transform([](const auto& model)
+		| std::views::transform([](const auto& m)
 			{
-				return model->get_blas_instance();
+				return m->get_blas_instance();
 			})
 		| std::ranges::to<std::vector>();
 
@@ -489,7 +545,7 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline());
 	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline_layout(), 0, *(rt_descriptor_sets.at(current_frame)), nullptr);
 
-	// Push constant with camera + device addresses for raw-buffer-load
+	// Push constant with camera
 	scene_manager::push_constant pc{
 		active_camera.get_position(),
 		glm::inverse(active_camera.get_projection_matrix()),

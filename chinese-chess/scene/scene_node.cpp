@@ -1,4 +1,5 @@
 #include "scene_node.h"
+#include "vulkan_core/vulkan_common.h"
 
 scene_node::scene_node(std::shared_ptr<model_infomation> _model_info, std::shared_ptr<vulkan_acceleration_structure> _blas_info) noexcept
 	:model_info(_model_info),

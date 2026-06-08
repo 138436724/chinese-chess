@@ -1,12 +1,8 @@
 #pragma once
 
-#include "chess_board.h"
-#include "chess_board_line.h"
-#include "chess_manager.h"
 #include "scene_camera.h"
 #include "scene_material_manager.h"
 #include "scene_node_manager.h"
-#include "skybox/scene_cubemap.h"
 #include "vulkan_core/vulkan_shader_binding_table.h"
 
 class scene_manager
@@ -30,7 +26,6 @@ public:
 	std::weak_ptr<scene_material> create_material(const std::wstring& _characters);
 	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
 
-	chess_manager* get_piece_manager() const noexcept;
 	vulkan_image& get_render_image() noexcept;
 
 private:
@@ -47,21 +42,19 @@ private:
 	void render_ray_tracing(const vk::raii::CommandBuffer& _commandbuffer) noexcept;
 
 
-	std::vector<std::unique_ptr<scene_node_old>> nodes;
-	chess_manager* piece_manager = nullptr;
-	chess_board* board_ = nullptr;
-	chess_board_line* board_line_ = nullptr;
-
-	std::unique_ptr<scene_cubemap> cubemap = nullptr;
-
-
-
-	// new ======================================================
 	struct push_constant
 	{
 		alignas(16) glm::vec3 camera_origin;
-		alignas(16) glm::mat4x4 proj_inv_matrix;
-		alignas(16) glm::mat4x4 view_inv_matrix;
+		union
+		{
+			alignas(16) glm::mat4x4 proj_matrix;
+			alignas(16) glm::mat4x4 proj_inv_matrix;
+		};
+		union
+		{
+			alignas(16) glm::mat4x4 view_matrix;
+			alignas(16) glm::mat4x4 view_inv_matrix;
+		};
 		alignas(16) glm::vec3 camera_direction;
 	};
 
@@ -101,13 +94,17 @@ private:
 	vulkan_buffer model_ubo_buffer;
 	vulkan_buffer material_ubo_buffer;
 
+	vk::Format color_format = vk::Format::eUndefined;
+	vulkan_image render_output;
+
 
 	// only rasterization
-	vk::Format color_format = vk::Format::eUndefined;
-
-	vulkan_image color_image;
-	vulkan_image depth_image;
-	vulkan_image render_output;
+	vulkan_image raster_color_image;
+	vulkan_image raster_depth_image;
+	vulkan_pipeline raster_pipeline;
+	vk::raii::DescriptorPool raster_descriptor_pool = nullptr;
+	std::vector<vk::raii::DescriptorSet> raster_descriptor_sets;
+	vulkan_buffer raster_draw_commands;
 
 
 	// only ray tracing

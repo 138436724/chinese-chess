@@ -1,7 +1,7 @@
 # ChineseChess
 尝试使用vulkan渲染一个中国象棋的棋盘和棋子。
 
-使用C++23编写。
+使用C++23和vulkan1.4编写。
 
 使用vcpkg进行包管理，索引获取网站使用gitee的镜像站加速访问，包下载仍然从github下载。
 
@@ -13,9 +13,7 @@
 
 接入imgui，可以弹窗选择txt的棋谱文件。
 
-棋子渲染是将纹理组合成一个纹理数组提交，然后采样对应的层。ubo也组合成一个巨大的ubo提交。
-
-使用微软的proxy4取代虚函数。
+可以切换光栅化与光线追踪，将模型和材质信息组合成两个SSBO、将纹理使用bindless descriptor提交到GPU计算
 
 尽量使用u8string，在需要的地方使用icu4c进行字符串转换。
 
@@ -23,5 +21,5 @@
 
 早期提交需要看master分支，该分支尝试使用module，但是代码提示太差，还是换回头文件模式。
 
-渲染场景如下：
-![场景图像](./chinese-chess/resources/captures/2026_02_01_20_27_16.png)
+渲染结果如下：
+![场景图像](./chinese-chess/resources/captures/2026_06_09_00_03_06.png)

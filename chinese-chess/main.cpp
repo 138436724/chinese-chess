@@ -103,7 +103,6 @@ int main()
 
 
 	// bind
-	UI->set_chess_manager(scene->get_piece_manager());
 	app->bind_image(&scene->get_render_image(), &UI->get_render_image());
 
 
@@ -151,7 +150,7 @@ int main()
 		UI->update();
 
 		const auto& cb1 = UI->render();
-		const auto& cb2 = scene->render(true);
+		const auto& cb2 = scene->render(UI->use_ray_tracing);
 
 		std::vector<vk::CommandBuffer> cbs = { *cb1,*cb2 };
 		app->render(cbs);

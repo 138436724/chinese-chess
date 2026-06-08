@@ -72,28 +72,7 @@
     <ClCompile Include="ui\ui_record.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\chess_board.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="scene\scene_manager.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\chess_board_line.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\chess_manager.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\chess_piece.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\skybox\scene_skybox.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\skybox\scene_brdflut.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="scene\skybox\scene_cubemap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="tools\ocio_helper.cpp">
@@ -176,28 +155,7 @@
     <ClInclude Include="ui\ui_record.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="scene\chess_board.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="scene\scene_manager.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\chess_board_line.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\chess_manager.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\chess_piece.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\skybox\scene_skybox.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\skybox\scene_brdflut.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="scene\skybox\scene_cubemap.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="tools\ocio_helper.h">
@@ -229,15 +187,6 @@
     <None Include="resources\shaders\blend_image.slang">
       <Filter>资源文件</Filter>
     </None>
-    <None Include="resources\shaders\chess_board.slang">
-      <Filter>资源文件</Filter>
-    </None>
-    <None Include="resources\shaders\chess_board_line.slang">
-      <Filter>资源文件</Filter>
-    </None>
-    <None Include="resources\shaders\chess_manager.slang">
-      <Filter>资源文件</Filter>
-    </None>
     <None Include="resources\shaders\scene_skybox.slang">
       <Filter>资源文件</Filter>
     </None>
@@ -248,6 +197,9 @@
       <Filter>资源文件</Filter>
     </None>
     <None Include="resources\shaders\ray_tracing.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\rasterization.slang">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

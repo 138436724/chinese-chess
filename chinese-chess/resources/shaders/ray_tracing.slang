@@ -81,8 +81,8 @@ void rgenMain()
 
     // Create the primary ray
     RayDesc ray;
-    ray.Origin = worldNear + pushConst.camera_origin; // 正交投影无法还原深度信息，需要摄像机的原始信息
-    ray.Direction = pushConst.camera_direction;       // 使用摄像机的方向
+    ray.Origin = worldNear;
+    ray.Direction = normalize(worldFar - worldNear); // 使用摄像机的方向
     ray.TMin = 0.001;                                 // Minimum distance to avoid self-intersection
     ray.TMax = 1e23f;                                 // Maximum distance (infinite for primary rays)
 

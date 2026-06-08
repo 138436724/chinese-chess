@@ -1,7 +1,6 @@
 #pragma once
 #define GLFW_INCLUDE_VULKAN
 
-#include "scene/chess_manager.h"
 #include "scene/scene_manager.h"
 #include "ui_chess_manager.h"
 #include "vulkan_core/vulkan_application.h"
@@ -24,9 +23,9 @@ public:
 	void parse_back() noexcept;
 	void parse_next() noexcept;
 
-	void set_chess_manager(chess_manager* _manager) noexcept;
-
 	vulkan_image& get_render_image() noexcept;
+
+	bool use_ray_tracing = false;
 
 private:
 	void load_records(const std::filesystem::path& _record_path);
@@ -41,8 +40,7 @@ private:
 	vulkan_image color_image;
 	vulkan_image render_output;
 
-	std::unique_ptr<ui_chess_manager> chess_mgr = nullptr;
-	chess_manager* manager = nullptr;
+	std::unique_ptr<ui_chess_manager> manager = nullptr;
 
 	int selected_index = 0;
 	std::vector<std::u8string> all_records;

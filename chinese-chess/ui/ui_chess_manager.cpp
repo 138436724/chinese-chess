@@ -18,13 +18,14 @@ void ui_chess_manager::create(scene_manager* _manager)
 	chess_board_material.lock()->foreground_color = glm::vec3(0., 0., 0.);
 
 	chess_board = manager->create_node(u8"chess_board.glb");
+	chess_board.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
 	chess_board.lock()->custom_index = 0;
 	chess_board.lock()->material = std::shared_ptr(chess_board_material);
 
 
 	// create board line
 	chess_board_line = manager->create_node(u8"chess_board_line.glb");
-	chess_board_line.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, 0.15f));
+	chess_board_line.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
 	chess_board_line.lock()->custom_index = 1;
 
 
@@ -106,7 +107,7 @@ void ui_chess_manager::restore_board_state(const all_board_state& _state)
 			const auto& sp = all_chess_pieces.at(index + index_offset).lock();
 			sp->material = std::shared_ptr<scene_material>(black_chess_piece_materials.at(state.piece_type));
 			sp->is_show = true;
-			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), 0.3f));
+			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), -3.f));
 		});
 
 	index_offset = _state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
@@ -116,7 +117,7 @@ void ui_chess_manager::restore_board_state(const all_board_state& _state)
 			const auto& sp = all_chess_pieces.at(index + index_offset).lock();
 			sp->material = std::shared_ptr<scene_material>(red_chess_piece_materials.at(state.piece_type));
 			sp->is_show = true;
-			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), 0.3f));
+			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), -3.f));
 		});
 
 	manager->need_update();

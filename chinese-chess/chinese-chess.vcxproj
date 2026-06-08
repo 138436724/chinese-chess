@@ -141,19 +141,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="scene\chess_board.cpp" />
-    <ClCompile Include="scene\chess_board_line.cpp" />
-    <ClCompile Include="scene\chess_manager.cpp" />
-    <ClCompile Include="scene\chess_piece.cpp" />
     <ClCompile Include="scene\scene_camera.cpp" />
     <ClCompile Include="scene\scene_manager.cpp" />
     <ClCompile Include="scene\scene_material.cpp" />
     <ClCompile Include="scene\scene_material_manager.cpp" />
     <ClCompile Include="scene\scene_node.cpp" />
     <ClCompile Include="scene\scene_node_manager.cpp" />
-    <ClCompile Include="scene\skybox\scene_brdflut.cpp" />
-    <ClCompile Include="scene\skybox\scene_cubemap.cpp" />
-    <ClCompile Include="scene\skybox\scene_skybox.cpp" />
     <ClCompile Include="tools\file_watcher.cpp" />
     <ClCompile Include="tools\font_loader.cpp" />
     <ClCompile Include="tools\image_helper.cpp" />
@@ -177,19 +170,12 @@
     <ClCompile Include="vulkan_core\vulkan_swapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="scene\chess_board.h" />
-    <ClInclude Include="scene\chess_board_line.h" />
-    <ClInclude Include="scene\chess_manager.h" />
-    <ClInclude Include="scene\chess_piece.h" />
     <ClInclude Include="scene\scene_camera.h" />
     <ClInclude Include="scene\scene_manager.h" />
     <ClInclude Include="scene\scene_material.h" />
     <ClInclude Include="scene\scene_material_manager.h" />
     <ClInclude Include="scene\scene_node.h" />
     <ClInclude Include="scene\scene_node_manager.h" />
-    <ClInclude Include="scene\skybox\scene_brdflut.h" />
-    <ClInclude Include="scene\skybox\scene_cubemap.h" />
-    <ClInclude Include="scene\skybox\scene_skybox.h" />
     <ClInclude Include="tools\file_watcher.h" />
     <ClInclude Include="tools\font_loader.h" />
     <ClInclude Include="tools\image_helper.h" />
@@ -214,9 +200,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang" />
-    <None Include="resources\shaders\chess_board.slang" />
-    <None Include="resources\shaders\chess_board_line.slang" />
-    <None Include="resources\shaders\chess_manager.slang" />
+    <None Include="resources\shaders\rasterization.slang" />
     <None Include="resources\shaders\ray_tracing.slang" />
     <None Include="resources\shaders\scene_brdflut.slang" />
     <None Include="resources\shaders\scene_cubemap.slang" />
