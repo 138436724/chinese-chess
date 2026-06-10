@@ -109,6 +109,17 @@ void ui_record::update()
 		manager->set_now_record_index(selected_index + 1); // todo now refresh data, but really need?
 	}
 
+	if (ImGui::InputFloat3("光线方向", glm::value_ptr(light_direction)))
+	{
+
+	}
+
+	if (ImGui::ColorEdit3("光线颜色", glm::value_ptr(light_color)))
+	{
+
+	}
+
+
 	if (ImGui::Button(reinterpret_cast<const char*>(OPEN_RECORDS.data())))
 	{
 		std::filesystem::path file_path;

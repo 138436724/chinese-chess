@@ -6,14 +6,25 @@
 class scene_camera
 {
 public:
+	enum class projection_type
+	{
+		orthographic,
+		perspective
+	};
+
+public:
 	scene_camera() = default;
 	~scene_camera() = default;
 
-	void set_ortho_projection(float _left, float _right, float _bottom, float _top, float _near, float _far) noexcept;
+	void set_orthographic_projection(float _left, float _right, float _bottom, float _top, float _near, float _far) noexcept;
+	void set_perspective_projection(float _fov_y, float _aspect, float _near, float _far) noexcept;
+
+	void set_projection_type(projection_type _type) noexcept;
 	void set_position(const glm::vec3& _position) noexcept;
 	void set_direction(const glm::vec3& _direction) noexcept;
 	void set_world_up(const glm::vec3& _world_up) noexcept;
 
+	projection_type get_projection_type() const noexcept;
 	glm::vec3 get_position() const noexcept;
 	glm::vec3 get_direction() const noexcept;
 	glm::mat4 get_projection_matrix() const noexcept;
@@ -23,10 +34,19 @@ private:
 	void update_camera_axis() noexcept;
 	void update_camera_matrix() noexcept;
 
+	projection_type active_projection = projection_type::orthographic;
+
+	// orthographic parameters
 	float left = -10.f;
 	float right = 10.f;
 	float bottom = -10.f;
 	float top = 10.f;
+
+	// perspective parameters
+	float fov_y = glm::radians(45.f);
+	float aspect = 16.f / 9.f;
+
+	// shared parameters
 	float near = 0.1f;
 	float far = 100.f;
 

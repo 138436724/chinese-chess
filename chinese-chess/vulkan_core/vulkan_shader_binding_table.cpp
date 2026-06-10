@@ -36,36 +36,79 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 		base_alignment = properties.shaderGroupBaseAlignment;
 	}
 
-	uint32_t raygen_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
-	uint32_t miss_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
-	uint32_t hit_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
-	uint32_t callable_size = 0; // not now
+	// SBT layout for 5 groups:
+	// [Group 0: raygen] [Group 1: miss_primary] [Group 2: miss_shadow] [Group 3: hit_primary] [Group 4: hit_shadow]
+	//
+	// Vulkan SBT regions:
+	// - raygen_region: points to Group 0 (1 entry, stride = raygen_size)
+	// - miss_region:   points to Group 1 (2 entries: miss_primary + miss_shadow, stride = miss_entry_size)
+	// - hit_region:    points to Group 3 (2 entries: hit_primary + hit_shadow, stride = hit_entry_size)
 
+	uint32_t raygen_entry_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
+	uint32_t miss_entry_count = _group_count >= 5 ? 2 : 1; // 2 miss shaders (primary + shadow) if 5 groups present
+	uint32_t hit_entry_count = _group_count >= 5 ? 2 : 1;   // 2 hit shaders (primary + shadow) if 5 groups present
+
+	// Calculate offsets for each group in the SBT buffer
+	// Group 0: raygen
 	uint32_t raygen_offset = 0;
-	uint32_t miss_offset = static_cast<uint32_t>(vulkan_common::align_up(raygen_size, base_alignment));
-	uint32_t hit_offset = static_cast<uint32_t>(vulkan_common::align_up(miss_offset + miss_size, base_alignment));
-	uint32_t callable_offset = static_cast<uint32_t>(vulkan_common::align_up(hit_offset + hit_size, base_alignment));
+	// Group 1: miss_primary
+	uint32_t miss_primary_offset = static_cast<uint32_t>(vulkan_common::align_up(raygen_offset + raygen_entry_size, base_alignment));
+	// Group 2: miss_shadow
+	uint32_t miss_shadow_offset = static_cast<uint32_t>(vulkan_common::align_up(miss_primary_offset + raygen_entry_size, base_alignment));
+	// Group 3: hit_primary
+	uint32_t hit_primary_offset = static_cast<uint32_t>(vulkan_common::align_up(miss_shadow_offset + raygen_entry_size, base_alignment));
+	// Group 4: hit_shadow
+	uint32_t hit_shadow_offset = static_cast<uint32_t>(vulkan_common::align_up(hit_primary_offset + raygen_entry_size, base_alignment));
+	// Total size
+	vk::DeviceSize buffer_size = static_cast<uint64_t>(vulkan_common::align_up(hit_shadow_offset + raygen_entry_size, base_alignment));
 
-
-	vk::DeviceSize buffer_size = static_cast<uint64_t>(callable_offset) + callable_size;
+	// Stride must match actual spacing between groups (base_alignment-aligned), not handle_alignment-aligned
+	uint32_t miss_stride = miss_shadow_offset - miss_primary_offset;
+	uint32_t hit_stride = hit_shadow_offset - hit_primary_offset;
 
 	sbt_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer staging_buffer;
 	staging_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-
 	std::vector<uint8_t> shader_handles = _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
 
 	uint8_t* buffer_address = static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress);
 
+	// Copy handles for all 5 groups
+	// Group 0: raygen
 	memcpy(buffer_address + raygen_offset, shader_handles.data() + 0 * handle_size, handle_size);
-	memcpy(buffer_address + miss_offset, shader_handles.data() + 1 * handle_size, handle_size);
-	memcpy(buffer_address + hit_offset, shader_handles.data() + 2 * handle_size, handle_size);
+	// Group 1: miss_primary
+	memcpy(buffer_address + miss_primary_offset, shader_handles.data() + 1 * handle_size, handle_size);
+	// Group 2: miss_shadow
+	memcpy(buffer_address + miss_shadow_offset, shader_handles.data() + 2 * handle_size, handle_size);
+	// Group 3: hit_primary
+	memcpy(buffer_address + hit_primary_offset, shader_handles.data() + 3 * handle_size, handle_size);
+	// Group 4: hit_shadow
+	memcpy(buffer_address + hit_shadow_offset, shader_handles.data() + 4 * handle_size, handle_size);
 
-	raygen_region = vk::StridedDeviceAddressRegionKHR(sbt_buffer.get_buffer_address().deviceAddress + raygen_offset, raygen_size, raygen_size);
-	miss_region = vk::StridedDeviceAddressRegionKHR(sbt_buffer.get_buffer_address().deviceAddress + miss_offset, miss_size, miss_size);
-	hit_region = vk::StridedDeviceAddressRegionKHR(sbt_buffer.get_buffer_address().deviceAddress + hit_offset, hit_size, hit_size);
+	// Create StridedDeviceAddressRegion for each Vulkan SBT region
+	// raygen: single group at raygen_offset, stride = raygen_entry_size (size of 1 entry)
+	raygen_region = vk::StridedDeviceAddressRegionKHR(
+		sbt_buffer.get_buffer_address().deviceAddress + raygen_offset,
+		raygen_entry_size,
+		raygen_entry_size * 1  // total size = 1 entry
+	);
+
+	// miss: starts at miss_primary_offset, stride = actual interval between miss groups, 2 entries (primary + shadow)
+	miss_region = vk::StridedDeviceAddressRegionKHR(
+		sbt_buffer.get_buffer_address().deviceAddress + miss_primary_offset,
+		miss_stride,
+		miss_stride * miss_entry_count  // total size = 2 entries
+	);
+
+	// hit: starts at hit_primary_offset, stride = actual interval between hit groups, 2 entries (primary + shadow)
+	hit_region = vk::StridedDeviceAddressRegionKHR(
+		sbt_buffer.get_buffer_address().deviceAddress + hit_primary_offset,
+		hit_stride,
+		hit_stride * hit_entry_count  // total size = 2 entries
+	);
+
 	callable_region = vk::StridedDeviceAddressRegionKHR(0, 0, 0);
 
 	vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), sbt_buffer.get_buffer(), vk::BufferCopy2(0, 0, buffer_size));

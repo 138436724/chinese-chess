@@ -25,7 +25,9 @@ public:
 
 	vulkan_image& get_render_image() noexcept;
 
-	bool use_ray_tracing = false;
+	bool use_ray_tracing = true;
+	glm::vec3 light_direction = glm::vec3(1.f, 1.f, 1.f);
+	glm::vec3 light_color = glm::vec3(1.0f, 0.95f, 0.85f);
 
 private:
 	void load_records(const std::filesystem::path& _record_path);

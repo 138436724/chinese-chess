@@ -23,12 +23,12 @@ private:
 private:
 	scene_manager* manager;
 
-	std::weak_ptr<scene_node> chess_board;
-	std::weak_ptr<scene_node> chess_board_line;
+	std::weak_ptr<scene_model> chess_board;
+	std::weak_ptr<scene_model> chess_board_line;
 
 	uint32_t now_record_index = 0;
 	std::vector<all_board_state> board_state = { RECORD_LOADER.get_init_all_borad() };
-	std::array<std::weak_ptr<scene_node>, 32> all_chess_pieces;
+	std::array<std::weak_ptr<scene_model>, 32> all_chess_pieces;
 	std::unordered_map<PIECE_TYPE, std::weak_ptr<scene_material>> red_chess_piece_materials;
 	std::unordered_map<PIECE_TYPE, std::weak_ptr<scene_material>> black_chess_piece_materials;
 };

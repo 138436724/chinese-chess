@@ -58,10 +58,10 @@ shader_compiler::shader_compiler()
 			slang::CompilerOptionName::Optimization,
 			{slang::CompilerOptionValueKind::Int, SlangOptimizationLevel::SLANG_OPTIMIZATION_LEVEL_MAXIMAL, 0, nullptr, nullptr},
 		},
-		slang::CompilerOptionEntry{
-			slang::CompilerOptionName::DownstreamArgs,
-			{slang::CompilerOptionValueKind::String, 0, 0, nullptr, nullptr},
-		},
+		//slang::CompilerOptionEntry{
+		//	slang::CompilerOptionName::DownstreamArgs,
+		//	{slang::CompilerOptionValueKind::String, 0, 0, nullptr, nullptr},
+		//},
 		slang::CompilerOptionEntry{
 			slang::CompilerOptionName::MatrixLayoutColumn,
 			{slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},

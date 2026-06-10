@@ -9,9 +9,11 @@
 
 enum class stage_indices
 {
-	raygeneration,
+	ray_generation,
 	miss,
+	miss_shadow,
 	closesthit,
+	anyhit_shadow,
 	shader_group_max_count
 };
 
@@ -19,7 +21,7 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 {
 	app = _app;
 
-	node_manager = std::make_unique<scene_node_manager>(app);
+	node_manager = std::make_unique<scene_model_manager>(app);
 	material_manager = std::make_unique<scene_material_manager>(app);
 
 
@@ -55,7 +57,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 	// camera projection
 	constexpr float camera_height = 1.3f;
-	active_camera.set_ortho_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
+	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
 
 	is_dirty = true;
 
@@ -78,6 +80,7 @@ void scene_manager::update()
 	app->wait(); // todo need wait? 可以修改为更新只更新下一帧的数据，这一帧的可以先放着
 
 	is_dirty = false;
+	rt_frame_index = 0; // reset path tracing accumulation on scene change
 	node_manager->clear_unused_nodes();
 	material_manager->clear_unused_materials();
 
@@ -194,13 +197,13 @@ void scene_manager::need_update()
 	is_dirty = true;
 }
 
-std::weak_ptr<scene_node> scene_manager::create_node(const std::u8string& _model_name)
+std::weak_ptr<scene_model> scene_manager::create_node(const std::u8string& _model_name)
 {
 	models.emplace_back(node_manager->create_node(std::u8string(MODELS_PATH) + _model_name));
 	return models.back();
 }
 
-void scene_manager::remove_node(const std::weak_ptr<scene_node>& _node) noexcept
+void scene_manager::remove_node(const std::weak_ptr<scene_model>& _node) noexcept
 {
 	std::owner_less<void> cmp;
 	std::erase_if(models, [&](const auto& p)
@@ -231,6 +234,21 @@ void scene_manager::remove_material(const std::weak_ptr<scene_material>& _materi
 			}
 		});
 	material_manager->clear_unused_materials();
+}
+
+void scene_manager::set_light_direction(const glm::vec3& _direction) noexcept
+{
+	light_direction = glm::normalize(_direction);
+}
+
+void scene_manager::set_light_color(const glm::vec3& _color) noexcept
+{
+	light_color = _color;
+}
+
+void scene_manager::set_ambient_color(const glm::vec3& _color) noexcept
+{
+	ambient_color = _color;
 }
 
 vulkan_image& scene_manager::get_render_image() noexcept
@@ -407,7 +425,7 @@ void scene_manager::create_ray_tracing()
 
 	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant));
 
-	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { "rgenMain", "rmissMain", "rchitMain" });
+	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { "rgenMain", "rmissMain", "rshadowMiss", "rchitMain", "rshadowAhit" });
 	if (spirv_code.empty())
 	{
 		throw std::runtime_error("compile .spv failed!");
@@ -417,24 +435,33 @@ void scene_manager::create_ray_tracing()
 	std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, "rgenMain"),
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rmissMain"),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rshadowMiss"),
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule, "rchitMain"),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eAnyHitKHR, shaderModule, "rshadowAhit"),
 	};
 
 	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::raygeneration)),
+		// Group 0: Ray generation (general)
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::ray_generation)),
+		// Group 1: Primary miss (general)
 		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss)),
+		// Group 2: Shadow miss (general)
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss_shadow)),
+		// Group 3: Primary hit group (triangles)
 		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::closesthit)),
+		// Group 4: Shadow hit group (triangles, any-hit only)
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::anyhit_shadow)),
 	};
 
 	auto props = app->get_physical_device().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 	const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-	rt_pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::max(3u, properties.maxRayRecursionDepth));
+	rt_pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::min(9u, properties.maxRayRecursionDepth));
 
 
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	// create shader binding table
+	// create shader binding table (now needs 5 groups)
 	rt_sbt.create(app->get_physical_device(), app->get_device(), commandbuffer, rt_pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()));
 
 	commandbuffer.end_record();
@@ -545,14 +572,21 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline());
 	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline_layout(), 0, *(rt_descriptor_sets.at(current_frame)), nullptr);
 
-	// Push constant with camera
+	// Push constant with camera and lighting
 	scene_manager::push_constant pc{
 		active_camera.get_position(),
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
 		active_camera.get_direction(),
+		light_direction,
+		light_color,
+		ambient_color,
+		rt_frame_index,
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(rt_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant), &pc));
+
+	// Increment frame index for progressive path tracing
+	rt_frame_index++;
 
 	// Ray trace
 	_commandbuffer.traceRaysKHR(rt_sbt.get_raygen_region(), rt_sbt.get_miss_region(), rt_sbt.get_hit_region(), rt_sbt.get_callable_region(), width, height, 1);

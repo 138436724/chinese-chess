@@ -145,8 +145,8 @@
     <ClCompile Include="scene\scene_manager.cpp" />
     <ClCompile Include="scene\scene_material.cpp" />
     <ClCompile Include="scene\scene_material_manager.cpp" />
-    <ClCompile Include="scene\scene_node.cpp" />
-    <ClCompile Include="scene\scene_node_manager.cpp" />
+    <ClCompile Include="scene\scene_model.cpp" />
+    <ClCompile Include="scene\scene_model_manager.cpp" />
     <ClCompile Include="tools\file_watcher.cpp" />
     <ClCompile Include="tools\font_loader.cpp" />
     <ClCompile Include="tools\image_helper.cpp" />
@@ -174,8 +174,8 @@
     <ClInclude Include="scene\scene_manager.h" />
     <ClInclude Include="scene\scene_material.h" />
     <ClInclude Include="scene\scene_material_manager.h" />
-    <ClInclude Include="scene\scene_node.h" />
-    <ClInclude Include="scene\scene_node_manager.h" />
+    <ClInclude Include="scene\scene_model.h" />
+    <ClInclude Include="scene\scene_model_manager.h" />
     <ClInclude Include="tools\file_watcher.h" />
     <ClInclude Include="tools\font_loader.h" />
     <ClInclude Include="tools\image_helper.h" />

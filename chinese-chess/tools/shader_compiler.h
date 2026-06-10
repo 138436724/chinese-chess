@@ -36,7 +36,7 @@ private:
 	static shader_compiler compiler;
 	Slang::ComPtr<slang::IGlobalSession> global_session;
 
-	std::array<slang::CompilerOptionEntry, 5> options;
+	std::array<slang::CompilerOptionEntry, 4> options;
 	slang::TargetDesc target_desc;
 	slang::SessionDesc session_desc;
 

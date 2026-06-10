@@ -1,20 +1,20 @@
-#include "scene_node_manager.h"
+#include "scene_model_manager.h"
 #include <algorithm>
 #include <ranges>
 
-scene_node_manager::scene_node_manager(vulkan_application* _app)
+scene_model_manager::scene_model_manager(vulkan_application* _app)
 	:app(_app)
 {
 }
 
-std::shared_ptr<scene_node> scene_node_manager::create_node(const std::u8string& _model_path)
+std::shared_ptr<scene_model> scene_model_manager::create_node(const std::u8string& _model_path)
 {
 	// find in cache
 	if (auto iter = std::ranges::find_if(models_cache, [&_model_path](const auto& s) {return s.first == _model_path; }); iter != models_cache.end())
 	{
 		if (!std::get<0>(iter->second).expired() && !std::get<1>(iter->second).expired())
 		{
-			auto node = std::make_shared<scene_node>(std::shared_ptr<model_infomation>(std::get<0>(iter->second)), std::shared_ptr<vulkan_acceleration_structure>(std::get<1>(iter->second)));
+			auto node = std::make_shared<scene_model>(std::shared_ptr<model_infomation>(std::get<0>(iter->second)), std::shared_ptr<vulkan_acceleration_structure>(std::get<1>(iter->second)));
 			nodes.emplace_back(node);
 			return node;
 		}
@@ -46,12 +46,12 @@ std::shared_ptr<scene_node> scene_node_manager::create_node(const std::u8string&
 
 
 	models_cache.emplace(_model_path, std::make_tuple(std::weak_ptr<model_infomation>(model), std::weak_ptr<vulkan_acceleration_structure>(blas)));
-	auto node = std::make_shared<scene_node>(model, blas);
+	auto node = std::make_shared<scene_model>(model, blas);
 	nodes.emplace_back(node);
 	return node;
 }
 
-void scene_node_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexcept
+void scene_model_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexcept
 {
 	std::erase_if(nodes, [](const auto& p)
 		{
@@ -91,7 +91,7 @@ void scene_node_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexce
 	}
 }
 
-void scene_node_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) noexcept
+void scene_model_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	// recreate vertex buffer
 	vk::DeviceSize vertices_size = std::ranges::fold_left(models, static_cast<size_t>(0), [](size_t s, const auto& p)
@@ -137,12 +137,12 @@ void scene_node_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) noe
 	_commandbuffer.add_staging_buffer(std::move(indices_staging_buffer));
 }
 
-const vulkan_buffer& scene_node_manager::get_vertices_buffer() const noexcept
+const vulkan_buffer& scene_model_manager::get_vertices_buffer() const noexcept
 {
 	return vertices_buffer;
 }
 
-const vulkan_buffer& scene_node_manager::get_indices_buffer() const noexcept
+const vulkan_buffer& scene_model_manager::get_indices_buffer() const noexcept
 {
 	return indices_buffer;
 }

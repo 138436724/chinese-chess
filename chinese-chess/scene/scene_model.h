@@ -4,11 +4,11 @@
 #include "vulkan_core/vulkan_acceleration_structure.h"
 #include <memory>
 
-class scene_node
+class scene_model
 {
 public:
-	scene_node(std::shared_ptr<model_infomation> _model_info, std::shared_ptr<vulkan_acceleration_structure> _blas_info) noexcept;
-	~scene_node() = default;
+	scene_model(std::shared_ptr<model_infomation> _model_info, std::shared_ptr<vulkan_acceleration_structure> _blas_info) noexcept;
+	~scene_model() = default;
 
 	vk::AccelerationStructureInstanceKHR get_blas_instance() const noexcept;
 

@@ -32,7 +32,7 @@ void vulkan_acceleration_structure::create_bottom_level_acceleration_structure(c
 {
 	vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex), _vertex_count, vk::IndexType::eUint32, _index_data);
 
-	geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eTriangles, triangles_data, vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation | vk::GeometryFlagBitsKHR::eOpaque);
+	geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eTriangles, triangles_data, vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation);
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(_index_count / 3u);
 
