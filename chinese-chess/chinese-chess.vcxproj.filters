@@ -66,9 +66,6 @@
     <ClCompile Include="scene\scene_camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\scene_node.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="ui\ui_record.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -90,13 +87,22 @@
     <ClCompile Include="scene\scene_material.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="scene\scene_node_manager.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="scene\scene_material_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ui\ui_chess_manager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\scene_model.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\scene_model_manager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\scene_light.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\scene_light_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -149,9 +155,6 @@
     <ClInclude Include="scene\scene_camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="scene\scene_node.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="ui\ui_record.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -173,13 +176,22 @@
     <ClInclude Include="scene\scene_material.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="scene\scene_node_manager.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="scene\scene_material_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="ui\ui_chess_manager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\scene_model.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\scene_model_manager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\scene_light.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\scene_light_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

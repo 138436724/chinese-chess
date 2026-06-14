@@ -73,8 +73,49 @@ public:
 	PIECE_TYPE get_piece_type(UChar ch) noexcept { return piece_map.at(ch); };
 
 
-	std::vector<all_board_state> load_record(const std::filesystem::path& _record_path);
-	static all_board_state get_init_all_borad() noexcept;
+	std::vector<all_board_state> load_records(const std::filesystem::path& _record_path);
+	static constexpr all_board_state get_init_all_borad() noexcept
+	{
+		half_board_state red;
+		red.emplace_back(piece_state(PIECE_TYPE::GENERAL, 5, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::GUARD, 4, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::GUARD, 6, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 3, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 7, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::HORSE, 2, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::HORSE, 8, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 1, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 9, 0));
+		red.emplace_back(piece_state(PIECE_TYPE::CANNON, 2, 2));
+		red.emplace_back(piece_state(PIECE_TYPE::CANNON, 8, 2));
+		red.emplace_back(piece_state(PIECE_TYPE::PAWN, 1, 3));
+		red.emplace_back(piece_state(PIECE_TYPE::PAWN, 3, 3));
+		red.emplace_back(piece_state(PIECE_TYPE::PAWN, 5, 3));
+		red.emplace_back(piece_state(PIECE_TYPE::PAWN, 7, 3));
+		red.emplace_back(piece_state(PIECE_TYPE::PAWN, 9, 3));
+
+		half_board_state black;
+		black.emplace_back(piece_state(PIECE_TYPE::GENERAL, 5, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::GUARD, 4, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::GUARD, 6, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 3, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 7, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::HORSE, 2, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::HORSE, 8, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 1, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 9, 0));
+		black.emplace_back(piece_state(PIECE_TYPE::CANNON, 2, 2));
+		black.emplace_back(piece_state(PIECE_TYPE::CANNON, 8, 2));
+		black.emplace_back(piece_state(PIECE_TYPE::PAWN, 1, 3));
+		black.emplace_back(piece_state(PIECE_TYPE::PAWN, 3, 3));
+		black.emplace_back(piece_state(PIECE_TYPE::PAWN, 5, 3));
+		black.emplace_back(piece_state(PIECE_TYPE::PAWN, 7, 3));
+		black.emplace_back(piece_state(PIECE_TYPE::PAWN, 9, 3));
+
+		all_board_state borad{ std::move(red),std::move(black) };
+
+		return borad;
+	}
 
 	static record_loader& get_record_loader() noexcept;
 

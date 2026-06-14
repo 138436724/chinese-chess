@@ -142,6 +142,8 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="scene\scene_camera.cpp" />
+    <ClCompile Include="scene\scene_light.cpp" />
+    <ClCompile Include="scene\scene_light_manager.cpp" />
     <ClCompile Include="scene\scene_manager.cpp" />
     <ClCompile Include="scene\scene_material.cpp" />
     <ClCompile Include="scene\scene_material_manager.cpp" />
@@ -171,6 +173,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="scene\scene_camera.h" />
+    <ClInclude Include="scene\scene_light.h" />
+    <ClInclude Include="scene\scene_light_manager.h" />
     <ClInclude Include="scene\scene_manager.h" />
     <ClInclude Include="scene\scene_material.h" />
     <ClInclude Include="scene\scene_material_manager.h" />

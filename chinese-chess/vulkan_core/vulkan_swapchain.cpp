@@ -41,10 +41,8 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 	return *this;
 }
 
-void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vulkan_queue&& _present_queue, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
+void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
-	present_queue = std::move(_present_queue);
-
 	surface = vk::raii::SurfaceKHR(_instance, _surface);
 
 	auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
@@ -133,6 +131,16 @@ void vulkan_swapchain::present_image(vulkan_commandbuffer& _commandbuffer, bool 
 	{
 		throw std::runtime_error("failed to present swap chain image!");
 	}
+}
+
+void vulkan_swapchain::set_present_queue(vulkan_queue&& _present_queue) noexcept
+{
+	present_queue = std::move(_present_queue);
+}
+
+const vulkan_queue& vulkan_swapchain::get_present_queue() const noexcept
+{
+	return present_queue;
 }
 
 const vk::raii::SwapchainKHR& vulkan_swapchain::get_swapchain() const noexcept

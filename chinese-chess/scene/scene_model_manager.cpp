@@ -7,16 +7,16 @@ scene_model_manager::scene_model_manager(vulkan_application* _app)
 {
 }
 
-std::shared_ptr<scene_model> scene_model_manager::create_node(const std::u8string& _model_path)
+std::shared_ptr<scene_model> scene_model_manager::create(const std::u8string& _model_path)
 {
 	// find in cache
 	if (auto iter = std::ranges::find_if(models_cache, [&_model_path](const auto& s) {return s.first == _model_path; }); iter != models_cache.end())
 	{
 		if (!std::get<0>(iter->second).expired() && !std::get<1>(iter->second).expired())
 		{
-			auto node = std::make_shared<scene_model>(std::shared_ptr<model_infomation>(std::get<0>(iter->second)), std::shared_ptr<vulkan_acceleration_structure>(std::get<1>(iter->second)));
-			nodes.emplace_back(node);
-			return node;
+			auto model = std::make_shared<scene_model>(std::shared_ptr<model_infomation>(std::get<0>(iter->second)), std::shared_ptr<vulkan_acceleration_structure>(std::get<1>(iter->second)));
+			models.emplace_back(model);
+			return model;
 		}
 	}
 
@@ -25,9 +25,9 @@ std::shared_ptr<scene_model> scene_model_manager::create_node(const std::u8strin
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// read vertex and index data from model file
-	auto model = std::make_shared<model_infomation>();
-	models.emplace_back(model);
-	if (!MODEL_LOADER.load_model(_model_path, model->vertices, model->indices))
+	auto mesh = std::make_shared<model_infomation>();
+	meshs.emplace_back(mesh);
+	if (!MODEL_LOADER.load_model(_model_path, mesh->vertices, mesh->indices))
 	{
 		throw std::runtime_error("read model failed!");
 	}
@@ -37,28 +37,28 @@ std::shared_ptr<scene_model> scene_model_manager::create_node(const std::u8strin
 	// create blas
 	auto blas = std::make_shared<vulkan_acceleration_structure>();
 	blas->create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer,
-		static_cast<uint32_t>(model->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + model->vertex_offset,
-		static_cast<uint32_t>(model->indices.size()), indices_buffer.get_buffer_address().deviceAddress + model->index_offset);
+		static_cast<uint32_t>(mesh->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + mesh->vertex_offset,
+		static_cast<uint32_t>(mesh->indices.size()), indices_buffer.get_buffer_address().deviceAddress + mesh->index_offset);
 
 	// submit commandbuffer
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
 
 
-	models_cache.emplace(_model_path, std::make_tuple(std::weak_ptr<model_infomation>(model), std::weak_ptr<vulkan_acceleration_structure>(blas)));
-	auto node = std::make_shared<scene_model>(model, blas);
-	nodes.emplace_back(node);
-	return node;
+	models_cache.emplace(_model_path, std::make_tuple(std::weak_ptr<model_infomation>(mesh), std::weak_ptr<vulkan_acceleration_structure>(blas)));
+	auto model = std::make_shared<scene_model>(mesh, blas);
+	models.emplace_back(model);
+	return model;
 }
 
-void scene_model_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexcept
+void scene_model_manager::clear_unused(bool _need_reload/* = true*/, vulkan_commandbuffer* _commandbuffer/* = nullptr*/) noexcept
 {
-	std::erase_if(nodes, [](const auto& p)
+	std::erase_if(models, [](const auto& p)
 		{
 			return p.expired();
 		});
 
-	std::erase_if(models, [](const auto& p)
+	std::erase_if(meshs, [](const auto& p)
 		{
 			return p.expired();
 		});
@@ -71,7 +71,13 @@ void scene_model_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexc
 
 	if (_need_reload)
 	{
-		if (models.empty())
+		if (_commandbuffer)
+		{
+			_commandbuffer->add_staging_buffer(std::move(vertices_buffer));
+			_commandbuffer->add_staging_buffer(std::move(indices_buffer));
+		}
+
+		if (meshs.empty())
 		{
 			vertices_buffer.clear();
 			indices_buffer.clear();
@@ -91,10 +97,20 @@ void scene_model_manager::clear_unused_nodes(bool _need_reload/* = true*/) noexc
 	}
 }
 
+void scene_model_manager::clear() noexcept
+{
+	models.clear();
+	meshs.clear();
+	models_cache.clear();
+
+	vertices_buffer.clear();
+	indices_buffer.clear();
+}
+
 void scene_model_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	// recreate vertex buffer
-	vk::DeviceSize vertices_size = std::ranges::fold_left(models, static_cast<size_t>(0), [](size_t s, const auto& p)
+	vk::DeviceSize vertices_size = std::ranges::fold_left(meshs, static_cast<size_t>(0), [](size_t s, const auto& p)
 		{
 			const auto& sp = p.lock();
 			sp->vertex_offset = s;
@@ -104,7 +120,7 @@ void scene_model_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) no
 	vulkan_buffer vertices_staging_buffer;
 	vertices_staging_buffer.create(app->get_physical_device(), app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	std::ranges::for_each(models, [&](const auto& p)
+	std::ranges::for_each(meshs, [&](const auto& p)
 		{
 			const auto& sp = p.lock();
 			memcpy(static_cast<uint8_t*>(vertices_staging_buffer.get_buffer_address().hostAddress) + sp->vertex_offset, sp->vertices.data(), sp->vertices.size() * sizeof(sp->vertices.front()));
@@ -116,7 +132,7 @@ void scene_model_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) no
 
 
 	// recreate index buffer
-	vk::DeviceSize indices_size = std::ranges::fold_left(models, static_cast<size_t>(0), [](size_t s, const auto& p)
+	vk::DeviceSize indices_size = std::ranges::fold_left(meshs, static_cast<size_t>(0), [](size_t s, const auto& p)
 		{
 			const auto& sp = p.lock();
 			sp->index_offset = s;
@@ -126,7 +142,7 @@ void scene_model_manager::reload_buffer(vulkan_commandbuffer& _commandbuffer) no
 	vulkan_buffer indices_staging_buffer;
 	indices_staging_buffer.create(app->get_physical_device(), app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	std::ranges::for_each(models, [&](const auto& p)
+	std::ranges::for_each(meshs, [&](const auto& p)
 		{
 			const auto& sp = p.lock();
 			memcpy(static_cast<uint8_t*>(indices_staging_buffer.get_buffer_address().hostAddress) + sp->index_offset, sp->indices.data(), sp->indices.size() * sizeof(sp->indices.front()));

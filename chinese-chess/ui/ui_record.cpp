@@ -11,12 +11,24 @@
 #include <commdlg.h>
 #endif // _WIN32
 
-void ui_record::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _mgr, uint32_t _width, uint32_t _height)
+constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
+constexpr std::u8string_view LIGHT_DIRECTION = u8"平行光方向";
+constexpr std::u8string_view LIGHT_COLOR = u8"平行光颜色";
+constexpr std::u8string_view CHESS_RECORD = u8"象棋棋谱";
+constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";
+constexpr std::u8string_view OPEN_RECORDS = u8"加载棋谱";
+constexpr std::u8string_view LAST_STEP = u8"上一步";
+constexpr std::u8string_view NEXT_STEP = u8"下一步";
+
+void ui_record::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
 	app = _app;
 
-	manager = std::make_unique<ui_chess_manager>();
-	manager->create(_mgr);
+	manager = _manager;
+
+	chess_manager = std::make_unique<ui_chess_manager>();
+	chess_manager->create(manager);
+
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -86,37 +98,29 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
 
 void ui_record::update()
 {
-	constexpr std::u8string_view CHESS_RECORD = u8"象棋棋谱";
-	constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";
-	constexpr std::u8string_view OPEN_RECORDS = u8"加载棋谱";
-	constexpr std::u8string_view LAST_STEP = u8"上一步";
-	constexpr std::u8string_view NEXT_STEP = u8"下一步";
-
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
 	bool show_demo_window = true;
 
-#ifndef NDEBUG
-	ImGui::ShowDemoWindow(&show_demo_window);
-#endif // !NDEBUG
+	//ImGui::ShowDemoWindow(&show_demo_window);
 
 	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
 
-	if (ImGui::Checkbox("光线追踪", &use_ray_tracing))
+	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
 	{
-		manager->set_now_record_index(selected_index + 1); // todo now refresh data, but really need?
+		manager->need_update();
 	}
 
-	if (ImGui::InputFloat3("光线方向", glm::value_ptr(light_direction)))
+	if (ImGui::InputFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_direction)))
 	{
-
+		manager->need_update();
 	}
 
-	if (ImGui::ColorEdit3("光线颜色", glm::value_ptr(light_color)))
+	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_color)))
 	{
-
+		manager->need_update();
 	}
 
 
@@ -145,8 +149,8 @@ void ui_record::update()
 		if (!file_path.empty())
 		{
 			load_records(file_path);
-			manager->load_record(file_path);
-			manager->set_now_record_index(1);
+			chess_manager->load_records(file_path);
+			chess_manager->set_now_record_index(1);
 		}
 	}
 
@@ -154,16 +158,16 @@ void ui_record::update()
 	{
 		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &selected_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
 		{
-			manager->set_now_record_index(selected_index + 1);
+			chess_manager->set_now_record_index(selected_index);
 		}
 		if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
 		{
-			parse_back();
+			load_previous();
 		}
 		ImGui::SameLine();
 		if (ImGui::Button(reinterpret_cast<const char*>(NEXT_STEP.data())))
 		{
-			parse_next();
+			load_next();
 		}
 	}
 
@@ -214,21 +218,21 @@ void ui_record::destroy()
 	ImGui::DestroyContext();
 }
 
-void ui_record::parse_back() noexcept
+void ui_record::load_previous() noexcept
 {
 	if (selected_index > 0)
 	{
 		selected_index--;
-		manager->set_now_record_index(selected_index + 1);
+		chess_manager->set_now_record_index(selected_index);
 	}
 }
 
-void ui_record::parse_next() noexcept
+void ui_record::load_next() noexcept
 {
 	if (selected_index < all_records.size() - 1)
 	{
 		selected_index++;
-		manager->set_now_record_index(selected_index + 1);
+		chess_manager->set_now_record_index(selected_index);
 	}
 }
 

@@ -81,7 +81,7 @@ shader_compiler::shader_compiler()
 	session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path, const std::vector<std::string>& _entry_name) noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path, const std::vector<std::string_view>& _entry_name) noexcept
 {
 	std::filesystem::path spirv_path = _shader_path;
 	spirv_path.replace_extension(".spv");
@@ -127,7 +127,7 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::
 	return std::vector<char>();
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::string& _shader_string, const std::vector<std::string>& _entry_name) noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::string& _shader_string, const std::vector<std::string_view>& _entry_name) noexcept
 {
 	Slang::ComPtr<slang::IBlob> spirv_code;
 	bool result = slang_to_slang_module(session_desc, _shader_string, false, _entry_name, spirv_code.writeRef());
@@ -142,7 +142,7 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::string& _sha
 	return std::vector<char>();
 }
 
-bool shader_compiler::slang_to_slang_module(const slang::SessionDesc& _session_desc, const std::string& _shader_string, bool _as_shader_name, const std::vector<std::string>& _entry_name, slang::IBlob** _spirv_code) noexcept
+bool shader_compiler::slang_to_slang_module(const slang::SessionDesc& _session_desc, const std::string& _shader_string, bool _as_shader_name, const std::vector<std::string_view>& _entry_name, slang::IBlob** _spirv_code) noexcept
 {
 	Slang::ComPtr<slang::ISession> session;
 	auto result = global_session->createSession(_session_desc, session.writeRef());
@@ -170,13 +170,13 @@ bool shader_compiler::slang_to_slang_module(const slang::SessionDesc& _session_d
 	return slang_module_to_spv(session, diagnostics_blob, slang_module, _entry_name, _spirv_code);
 }
 
-bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session, Slang::ComPtr<slang::IBlob>& _diagnostics_blob, Slang::ComPtr<slang::IModule>& _slang_module, const std::vector<std::string>& _entry_name, slang::IBlob** _spirv_code) noexcept
+bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session, Slang::ComPtr<slang::IBlob>& _diagnostics_blob, Slang::ComPtr<slang::IModule>& _slang_module, const std::vector<std::string_view>& _entry_name, slang::IBlob** _spirv_code) noexcept
 {
 	std::vector<slang::IComponentType*> component_types;
 	for (const auto& entry_name : _entry_name)
 	{
 		Slang::ComPtr<slang::IEntryPoint> entry_point;
-		_slang_module->findEntryPointByName(entry_name.c_str(), entry_point.writeRef());
+		_slang_module->findEntryPointByName(entry_name.data(), entry_point.writeRef());
 		if (!entry_point)
 		{
 			return false;

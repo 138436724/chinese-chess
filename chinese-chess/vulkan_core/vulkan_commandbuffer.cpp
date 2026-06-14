@@ -60,6 +60,7 @@ void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage)
 		wait();
 		device.resetFences(*fence);
 	}
+	staging_buffers.clear();
 	commandbuffer.reset();
 	vk::CommandBufferInheritanceInfo info;
 	commandbuffer.begin(vk::CommandBufferBeginInfo(_usage, &info));
@@ -97,8 +98,6 @@ void vulkan_commandbuffer::wait()
 		throw std::runtime_error("Secondary commandbuffer can not wait!");
 	}
 #endif // !NDEBUG
-
-	staging_buffers.clear();
 }
 
 void vulkan_commandbuffer::add_staging_buffer(vulkan_buffer&& _buffer) noexcept

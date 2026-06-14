@@ -24,12 +24,12 @@ struct model_vertex
 
 	auto operator<=>(const model_vertex& _other) const = default;
 
-	static constexpr auto get_binding_description() noexcept
+	static consteval auto get_binding_description() noexcept
 	{
 		return vk::VertexInputBindingDescription{ 0, sizeof(model_vertex), vk::VertexInputRate::eVertex };
 	}
 
-	static constexpr auto get_attribute_description(model_vertex_type _type, uint32_t _location) noexcept
+	static consteval auto get_attribute_description(model_vertex_type _type, uint32_t _location) noexcept
 	{
 		vk::VertexInputAttributeDescription description{};
 
@@ -56,7 +56,7 @@ struct model_vertex
 	}
 
 	template<model_vertex_type...attributes>
-	static constexpr auto get_attribute_descriptions() noexcept
+	static consteval auto get_attribute_descriptions() noexcept
 	{
 		auto create = []<std::size_t...indices>(std::index_sequence<indices...>)
 		{

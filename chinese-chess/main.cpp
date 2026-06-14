@@ -13,8 +13,8 @@ struct window_info
 	double last_mouse_y = 0.0;
 	float all_mouse_x = 0.f;
 	float all_mouse_y = 0.f;
-	bool parse_before = false;
-	bool parse_next = false;
+	bool load_previous_record = false;
+	bool load_next_record = false;
 	bool need_save = false;
 };
 
@@ -35,11 +35,11 @@ static void key_callback(GLFWwindow* window, int key, int /*scancode*/, int acti
 		{
 		case GLFW_KEY_W:
 		case GLFW_KEY_A:
-			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_before = true;
+			static_cast<window_info*>(glfwGetWindowUserPointer(window))->load_previous_record = true;
 			break;
 		case GLFW_KEY_S:
 		case GLFW_KEY_D:
-			static_cast<window_info*>(glfwGetWindowUserPointer(window))->parse_next = true;
+			static_cast<window_info*>(glfwGetWindowUserPointer(window))->load_next_record = true;
 			break;
 		case GLFW_KEY_C:
 			static_cast<window_info*>(glfwGetWindowUserPointer(window))->need_save = true;
@@ -110,19 +110,21 @@ int main()
 	while (!glfwWindowShouldClose(window))
 	{
 		while (glfwGetWindowAttrib(window, GLFW_ICONIFIED))
+		{
 			glfwWaitEvents();
+		}
 
 		glfwPollEvents();
 
-		if (info.parse_before)
+		if (info.load_previous_record)
 		{
-			UI->parse_back();
-			info.parse_before = false;
+			UI->load_previous();
+			info.load_previous_record = false;
 		}
-		else if (info.parse_next)
+		else if (info.load_next_record)
 		{
-			UI->parse_next();
-			info.parse_next = false;
+			UI->load_next();
+			info.load_next_record = false;
 		}
 
 

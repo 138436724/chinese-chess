@@ -81,7 +81,6 @@ private:
 	};
 
 	vulkan_queue graphic_queue;
-	vulkan_queue present_queue; // todo, remove
 	vulkan_queue compute_queue;
 
 	vulkan_swapchain swapchain;

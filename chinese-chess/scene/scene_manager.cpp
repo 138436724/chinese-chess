@@ -9,10 +9,10 @@
 
 enum class stage_indices
 {
-	ray_generation,
+	ray_gen,
 	miss,
 	miss_shadow,
-	closesthit,
+	closest_hit,
 	anyhit_shadow,
 	shader_group_max_count
 };
@@ -21,7 +21,7 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 {
 	app = _app;
 
-	node_manager = std::make_unique<scene_model_manager>(app);
+	model_manager = std::make_unique<scene_model_manager>(app);
 	material_manager = std::make_unique<scene_material_manager>(app);
 
 
@@ -40,6 +40,7 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 
 
 	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
+
 
 	color_format = vk::Format::eR16G16B16A16Sfloat;
 
@@ -77,12 +78,9 @@ void scene_manager::update()
 		return;
 	}
 
-	app->wait(); // todo need wait? 可以修改为更新只更新下一帧的数据，这一帧的可以先放着
-
 	is_dirty = false;
-	rt_frame_index = 0; // reset path tracing accumulation on scene change
-	node_manager->clear_unused_nodes();
-	material_manager->clear_unused_materials();
+	model_manager->clear_unused(true, &(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT)));
+	material_manager->clear_unused();
 
 	// get all unique materials
 	auto materials = models
@@ -116,8 +114,8 @@ void scene_manager::update()
 				return scene_manager::model_data{
 					.model_matrix = m->model_matrix,
 					.material_index = get_material_index(m->material).value_or(std::numeric_limits<uint32_t>::max()),
-					.vertex_address = node_manager->get_vertices_buffer().get_buffer_address().deviceAddress + m->model_info->vertex_offset,
-					.index_address = node_manager->get_indices_buffer().get_buffer_address().deviceAddress + m->model_info->index_offset,
+					.vertex_address = model_manager->get_vertices_buffer().get_buffer_address().deviceAddress + m->model_info->vertex_offset,
+					.index_address = model_manager->get_indices_buffer().get_buffer_address().deviceAddress + m->model_info->index_offset,
 				};
 			})
 		| std::ranges::to<std::vector>();
@@ -188,8 +186,8 @@ const vulkan_commandbuffer& scene_manager::render(bool _use_ray_tracing)
 void scene_manager::destroy()
 {
 	models.clear();
-	node_manager->clear_unused_nodes();
-	material_manager->clear_unused_materials();
+	model_manager->clear();
+	material_manager->clear();
 }
 
 void scene_manager::need_update()
@@ -197,30 +195,41 @@ void scene_manager::need_update()
 	is_dirty = true;
 }
 
-std::weak_ptr<scene_model> scene_manager::create_node(const std::u8string& _model_name)
+std::weak_ptr<scene_model> scene_manager::create_model(const std::u8string& _model_name)
 {
-	models.emplace_back(node_manager->create_node(std::u8string(MODELS_PATH) + _model_name));
+	is_dirty = true;
+
+	models.emplace_back(model_manager->create(std::u8string(MODELS_PATH) + _model_name));
 	return models.back();
 }
 
-void scene_manager::remove_node(const std::weak_ptr<scene_model>& _node) noexcept
+void scene_manager::remove_model(const std::weak_ptr<scene_model>& _model) noexcept
 {
+	is_dirty = true;
+
 	std::owner_less<void> cmp;
 	std::erase_if(models, [&](const auto& p)
 		{
-			return !cmp(p, _node) && !cmp(_node, p);
+			return !cmp(p, _model) && !cmp(_model, p);
 		});
-	node_manager->clear_unused_nodes();
+	std::erase_if(materials, [&](const auto& p)
+		{
+			return p.use_count() == 1;
+		});
 }
 
 std::weak_ptr<scene_material> scene_manager::create_material(const std::wstring& _characters)
 {
-	materials.emplace_back(material_manager->create_material(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(height / 9.0 * 2), _characters));
+	is_dirty = true;
+
+	materials.emplace_back(material_manager->create(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(height / 9.0 * 2), _characters));
 	return materials.back();
 }
 
 void scene_manager::remove_material(const std::weak_ptr<scene_material>& _material) noexcept
 {
+	is_dirty = true;
+
 	std::owner_less<void> cmp;
 	std::erase_if(materials, [&](const auto& p)
 		{
@@ -233,7 +242,6 @@ void scene_manager::remove_material(const std::weak_ptr<scene_material>& _materi
 				p->material = nullptr;
 			}
 		});
-	material_manager->clear_unused_materials();
 }
 
 void scene_manager::set_light_direction(const glm::vec3& _direction) noexcept
@@ -270,7 +278,7 @@ void scene_manager::create_rasterization()
 	auto binding = model_vertex::get_binding_description();
 	auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
-	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"rasterization.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"rasterization.slang", { VERT_ENTYR_NAME, FRAG_ENTYR_NAME });
 	if (spirv_code.empty())
 	{
 		throw std::runtime_error("compile .spv failed!");
@@ -405,8 +413,8 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(raster_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant), &pc));
 
-	_commandbuffer.bindVertexBuffers(0, *(node_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
-	_commandbuffer.bindIndexBuffer(*(node_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
+	_commandbuffer.bindVertexBuffers(0, *(model_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
+	_commandbuffer.bindIndexBuffer(*(model_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
 	_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(models.size()), sizeof(vk::DrawIndexedIndirectCommand));
 
 	_commandbuffer.endRendering();
@@ -425,7 +433,7 @@ void scene_manager::create_ray_tracing()
 
 	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant));
 
-	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { "rgenMain", "rmissMain", "rshadowMiss", "rchitMain", "rshadowAhit" });
+	auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang", { RAY_GEN_ENTYR_NAME, RAY_MISS_ENTYR_NAME, RAY_SHADOW_MISS_ENTYR_NAME, RAY_CLOSEST_HIT_ENTRY_NAME, RAY_SHADOW_ANY_HIT_ENTYR_NAME });
 	if (spirv_code.empty())
 	{
 		throw std::runtime_error("compile .spv failed!");
@@ -433,22 +441,22 @@ void scene_manager::create_ray_tracing()
 	vk::raii::ShaderModule shaderModule(app->get_device(), vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
 
 	std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
-		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, "rgenMain"),
-		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rmissMain"),
-		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, "rshadowMiss"),
-		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule, "rchitMain"),
-		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eAnyHitKHR, shaderModule, "rshadowAhit"),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, RAY_GEN_ENTYR_NAME.data()),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, RAY_MISS_ENTYR_NAME.data()),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, RAY_SHADOW_MISS_ENTYR_NAME.data()),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule, RAY_CLOSEST_HIT_ENTRY_NAME.data()),
+		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eAnyHitKHR, shaderModule, RAY_SHADOW_ANY_HIT_ENTYR_NAME.data()),
 	};
 
 	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
 		// Group 0: Ray generation (general)
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::ray_generation)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::ray_gen)),
 		// Group 1: Primary miss (general)
 		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss)),
 		// Group 2: Shadow miss (general)
 		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss_shadow)),
 		// Group 3: Primary hit group (triangles)
-		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::closesthit)),
+		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::closest_hit)),
 		// Group 4: Shadow hit group (triangles, any-hit only)
 		vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR, vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::anyhit_shadow)),
 	};
@@ -474,12 +482,15 @@ void scene_manager::resize_ray_tracing()
 
 void scene_manager::update_ray_tracing()
 {
+	// reset path tracing accumulation
+	rt_frame_index = 0;
+
 	// generate tlas
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// create top level acceleration structure
-	rt_instances = models
+	auto rt_instances = models
 		| std::views::transform([](const auto& m)
 			{
 				return m->get_blas_instance();
@@ -516,8 +527,7 @@ void scene_manager::update_ray_tracing()
 	std::array pool_size = {
 		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, 2),
 		vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, 2),
-		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 2),
-		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 2),
+		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 4),
 		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 2048)
 	};
 
@@ -572,7 +582,6 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline());
 	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline_layout(), 0, *(rt_descriptor_sets.at(current_frame)), nullptr);
 
-	// Push constant with camera and lighting
 	scene_manager::push_constant pc{
 		active_camera.get_position(),
 		glm::inverse(active_camera.get_projection_matrix()),
@@ -585,13 +594,10 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(rt_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant), &pc));
 
-	// Increment frame index for progressive path tracing
-	rt_frame_index++;
-
-	// Ray trace
 	_commandbuffer.traceRaysKHR(rt_sbt.get_raygen_region(), rt_sbt.get_miss_region(), rt_sbt.get_hit_region(), rt_sbt.get_callable_region(), width, height, 1);
 
-	// Barrier: ray tracing writes complete → ready for tonemapping read
-	vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderWrite, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead);
-	_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+	//vk::MemoryBarrier2 end_barrier(vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderWrite, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead);
+	//_commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, end_barrier, {}, {}));
+
+	rt_frame_index++;
 }

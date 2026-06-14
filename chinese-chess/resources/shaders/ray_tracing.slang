@@ -133,7 +133,7 @@ static const int MAX_BOUNCES = 8;
 
 // Ray generation shader - entry point for each pixel
 [shader("raygeneration")]
-void rgenMain()
+void rayGenMain()
 {
     // Get the current pixel coordinates and image dimensions
     float2 launchID = (float2)DispatchRaysIndex().xy;        // Current pixel (x,y)
@@ -192,7 +192,7 @@ void rgenMain()
 // Closest hit shader - called when ray hits geometry
 // Implements full path tracing: direct lighting + indirect bounce
 [shader("closesthit")]
-void rchitMain(inout HitPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
     uint primitiveID = PrimitiveIndex();
     uint32_t model_index = InstanceIndex();
@@ -354,7 +354,7 @@ void rchitMain(inout HitPayload payload, in BuiltInTriangleIntersectionAttribute
 
 // Miss shader - called when ray doesn't hit any geometry (sky)
 [shader("miss")]
-void rmissMain(inout HitPayload payload)
+void rayMissMain(inout HitPayload payload)
 {
     // Sky color (simple gradient based on ray direction)
     // Add sky contribution to accumulated color
@@ -365,14 +365,14 @@ void rmissMain(inout HitPayload payload)
 
 // Shadow miss shader - called when shadow ray doesn't hit anything (point is lit)
 [shader("miss")]
-void rshadowMiss(inout ShadowPayload payload)
+void rayShadowMissMain(inout ShadowPayload payload)
 {
     payload.is_shadowed = false;
 }
 
 // Shadow any-hit shader - called when shadow ray hits something (point is in shadow)
 [shader("anyhit")]
-void rshadowAhit(inout ShadowPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+void rayShadowAnyHitMain(inout ShadowPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
     payload.is_shadowed = true;
     AcceptHitAndEndSearch();

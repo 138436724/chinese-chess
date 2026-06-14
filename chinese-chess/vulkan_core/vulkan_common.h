@@ -12,7 +12,7 @@ class vulkan_common
 public:
 	inline static vk::SampleCountFlagBits MSAA_SAMPLE_COUNT = vk::SampleCountFlagBits::e1;
 	inline static vk::Format DEPTH_FORMAT = vk::Format::eUndefined;
-	inline static const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+	inline static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 	inline static constexpr bool USE_OCIO = true;
 
 	inline static std::optional<uint32_t> find_memory_type(const vk::raii::PhysicalDevice& _physical_device, uint32_t _type_filter, vk::MemoryPropertyFlags _properties) noexcept

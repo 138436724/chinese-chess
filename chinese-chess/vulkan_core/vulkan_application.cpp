@@ -24,7 +24,7 @@ void vulkan_application::create(vk::SurfaceKHR _surface, bool _enable_graphics, 
 	pick_msaa_sample_count();
 	pick_depth_format();
 
-	swapchain.create(instance, physical_device, device, std::move(present_queue), _surface, _width, _height);
+	swapchain.create(instance, physical_device, device, _surface, _width, _height);
 
 	create_pipeline();
 
@@ -426,14 +426,16 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 				}
 				if (support_present)
 				{
+					vulkan_queue present_queue;
 					present_queue.set_index(static_cast<uint32_t>(queue_family_index));
+					swapchain.set_present_queue(std::move(present_queue));
 				}
 				if (support_compute)
 				{
 					compute_queue.set_index(static_cast<uint32_t>(queue_family_index));
 				}
 
-				if (present_queue.get_index() != vk::QueueFamilyIgnored && ((_enable_graphics && graphic_queue.get_index() != vk::QueueFamilyIgnored) || (_enable_compute && compute_queue.get_index() != vk::QueueFamilyIgnored)))
+				if (swapchain.get_present_queue().get_index() != vk::QueueFamilyIgnored && ((_enable_graphics && graphic_queue.get_index() != vk::QueueFamilyIgnored) || (_enable_compute && compute_queue.get_index() != vk::QueueFamilyIgnored)))
 				{
 					return true;
 				}
@@ -467,7 +469,7 @@ void vulkan_application::create_device_and_queue()
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceRayTracingPipelineFeaturesKHR().setRayTracingPipeline(vk::True).setRayTracingPipelineTraceRaysIndirect(vk::True).setRayTraversalPrimitiveCulling(vk::True));
 
-	std::unordered_set<uint32_t> queue_indices = { present_queue.get_index(), graphic_queue.get_index(), compute_queue.get_index() };
+	std::unordered_set<uint32_t> queue_indices = { swapchain.get_present_queue().get_index(), graphic_queue.get_index(), compute_queue.get_index() };
 	queue_indices.erase(vk::QueueFamilyIgnored);
 
 	float queue_priority = 0.0f;
@@ -487,9 +489,11 @@ void vulkan_application::create_device_and_queue()
 	{
 		graphic_queue.create(device, graphic_queue.get_index());
 	}
-	if (present_queue.get_index() != vk::QueueFamilyIgnored)
+	if (swapchain.get_present_queue().get_index() != vk::QueueFamilyIgnored)
 	{
-		present_queue.create(device, present_queue.get_index());
+		vulkan_queue present_queue;
+		present_queue.create(device, swapchain.get_present_queue().get_index());
+		swapchain.set_present_queue(std::move(present_queue));
 	}
 	if (compute_queue.get_index() != vk::QueueFamilyIgnored)
 	{
@@ -533,11 +537,11 @@ void vulkan_application::create_pipeline()
 	if constexpr (vulkan_common::USE_OCIO)
 	{
 		shader_desc = OCIO_HELPER.generate_shader_info(std::u8string(OCIOS_PATH) + u8"studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio");
-		spirv_code = OCIO_HELPER.replace_and_compile(shader_desc, std::u8string(SHADERS_PATH) + u8"blend_image.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+		spirv_code = OCIO_HELPER.replace_and_compile(shader_desc, std::u8string(SHADERS_PATH) + u8"blend_image.slang", { VERT_ENTYR_NAME, FRAG_ENTYR_NAME });
 	}
 	else
 	{
-		spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"blend_image.slang", { std::string(VERT_ENTYR_NAME), std::string(FRAG_ENTYR_NAME) });
+		spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"blend_image.slang", { VERT_ENTYR_NAME, FRAG_ENTYR_NAME });
 	}
 
 	if (spirv_code.empty())

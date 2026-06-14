@@ -15,7 +15,7 @@ namespace OCIO = OCIO_NAMESPACE;
 class ocio_helper
 {
 public:
-	std::vector<char> replace_and_compile(OCIO::GpuShaderDescRcPtr& _shader_desc, const std::filesystem::path& _shader_path, const std::vector<std::string>& _entry_name) const;
+	std::vector<char> replace_and_compile(OCIO::GpuShaderDescRcPtr& _shader_desc, const std::filesystem::path& _shader_path, const std::vector<std::string_view>& _entry_name) const;
 	OCIO::GpuShaderDescRcPtr generate_shader_info(const std::filesystem::path& _ocio_path) const noexcept;
 	void copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc, void* _buffer_address) const noexcept;
 

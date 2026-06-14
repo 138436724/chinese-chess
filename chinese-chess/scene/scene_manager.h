@@ -20,8 +20,8 @@ public:
 
 	void need_update();
 
-	std::weak_ptr<scene_model> create_node(const std::u8string& _model_name);
-	void remove_node(const std::weak_ptr<scene_model>& _node) noexcept;
+	std::weak_ptr<scene_model> create_model(const std::u8string& _model_name);
+	void remove_model(const std::weak_ptr<scene_model>& _model) noexcept;
 
 	std::weak_ptr<scene_material> create_material(const std::wstring& _characters);
 	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
@@ -49,19 +49,11 @@ private:
 	struct push_constant
 	{
 		alignas(16) glm::vec3 camera_origin;
-		union
-		{
-			alignas(16) glm::mat4x4 proj_matrix;
-			alignas(16) glm::mat4x4 proj_inv_matrix;
-		};
-		union
-		{
-			alignas(16) glm::mat4x4 view_matrix;
-			alignas(16) glm::mat4x4 view_inv_matrix;
-		};
+		alignas(16) glm::mat4x4 proj_or_inv_matrix;
+		alignas(16) glm::mat4x4 view_or_inv_matrix;
 		alignas(16) glm::vec3 camera_direction;
-		alignas(16) glm::vec3 light_direction; 
-		alignas(16) glm::vec3 light_color;           
+		alignas(16) glm::vec3 light_direction;
+		alignas(16) glm::vec3 light_color;
 		alignas(16) glm::vec3 ambient_color;
 		uint32_t frame_index = 0;
 	};
@@ -95,10 +87,11 @@ private:
 
 	std::vector<vulkan_commandbuffer> commandbuffers;
 
-	std::unique_ptr<scene_model_manager> node_manager;
+	std::unique_ptr<scene_model_manager> model_manager;
 	std::unique_ptr<scene_material_manager> material_manager;
 
 	scene_camera active_camera;
+
 	vk::raii::Sampler image_sampler = nullptr;
 	std::vector<std::shared_ptr<scene_model>> models;
 	std::vector<std::shared_ptr<scene_material>> materials;
@@ -125,6 +118,5 @@ private:
 	vk::raii::DescriptorPool rt_descriptor_pool = nullptr;
 	std::vector<vk::raii::DescriptorSet> rt_descriptor_sets;
 	vulkan_shader_binding_table rt_sbt;
-	std::vector<vk::AccelerationStructureInstanceKHR> rt_instances;
 	std::vector<vulkan_acceleration_structure> rt_tlas;
 };

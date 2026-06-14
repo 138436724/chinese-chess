@@ -6,7 +6,7 @@
 
 ocio_helper ocio_helper::helper;
 
-std::vector<char> ocio_helper::replace_and_compile(OCIO::GpuShaderDescRcPtr& _shader_desc, const std::filesystem::path& _shader_path, const std::vector<std::string>& _entry_name) const
+std::vector<char> ocio_helper::replace_and_compile(OCIO::GpuShaderDescRcPtr& _shader_desc, const std::filesystem::path& _shader_path, const std::vector<std::string_view>& _entry_name) const
 {
 	auto ocio_function_name = string_helper::convert_to<std::string, std::u8string>(u8"float4 " + std::u8string(OCIO_FUNCTION_NAME));
 

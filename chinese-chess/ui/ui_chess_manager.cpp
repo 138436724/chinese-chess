@@ -17,14 +17,14 @@ void ui_chess_manager::create(scene_manager* _manager)
 	chess_board_material.lock()->background_color = glm::vec3(0.87843, 0.69020, 0.48627);
 	chess_board_material.lock()->foreground_color = glm::vec3(0., 0., 0.);
 
-	chess_board = manager->create_node(u8"chess_board.glb");
+	chess_board = manager->create_model(u8"chess_board.glb");
 	chess_board.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
 	chess_board.lock()->custom_index = 0;
 	chess_board.lock()->material = std::shared_ptr(chess_board_material);
 
 
 	// create board line
-	chess_board_line = manager->create_node(u8"chess_board_line.glb");
+	chess_board_line = manager->create_model(u8"chess_board_line.glb");
 	chess_board_line.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
 	chess_board_line.lock()->custom_index = 1;
 
@@ -32,7 +32,7 @@ void ui_chess_manager::create(scene_manager* _manager)
 	// create all pieces and all materials
 	std::ranges::for_each(all_chess_pieces, [this](auto& p)
 		{
-			p = manager->create_node(u8"chess_piece.glb");
+			p = manager->create_model(u8"chess_piece.glb");
 			p.lock()->custom_index = 2u;
 		});
 
@@ -60,18 +60,17 @@ void ui_chess_manager::create(scene_manager* _manager)
 	set_now_record_index(0);
 }
 
-bool ui_chess_manager::load_record(const std::filesystem::path& _record_path)
+bool ui_chess_manager::load_records(const std::filesystem::path& _record_path)
 {
-	board_state = RECORD_LOADER.load_record(_record_path);
-	return board_state.size() > 1;
+	board_state = RECORD_LOADER.load_records(_record_path);
+	return !board_state.empty();
 }
 
 void ui_chess_manager::set_now_record_index(uint32_t _index) noexcept
 {
 	if (0 <= _index && _index < board_state.size())
 	{
-		now_record_index = _index;
-		restore_board_state(board_state.at(now_record_index));
+		restore_board_state(board_state.at(_index));
 	}
 }
 

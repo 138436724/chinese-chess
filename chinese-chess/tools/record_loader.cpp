@@ -76,7 +76,7 @@ std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, ui
 	return new_position;
 }
 
-std::vector<all_board_state> record_loader::load_record(const std::filesystem::path& _record_path)
+std::vector<all_board_state> record_loader::load_records(const std::filesystem::path& _record_path)
 {
 	// get file encoding and read file
 	auto encoding = STRING_HELPER::get_file_encoding<std::string>(_record_path);
@@ -101,7 +101,7 @@ std::vector<all_board_state> record_loader::load_record(const std::filesystem::p
 
 
 	// generate board state
-	std::vector<all_board_state> the_board_state = { std::move(get_init_all_borad()) };
+	std::vector<all_board_state> the_board_state;
 	bool is_player_red = true;
 
 	icu::RegexMatcher* matcher = compiled_pattern->matcher(records_text, error);
@@ -132,7 +132,12 @@ std::vector<all_board_state> record_loader::load_record(const std::filesystem::p
 			throw std::runtime_error("Not a valid chess record file.");
 		}
 
-		all_board_state now_board = the_board_state.back();
+		all_board_state now_board = get_init_all_borad();
+		if (!the_board_state.empty())
+		{
+			now_board = the_board_state.back();
+		}
+
 		PIECE_COLOR now_color = static_cast<PIECE_COLOR>(is_player_red);
 		PIECE_COLOR now_other_color = static_cast<PIECE_COLOR>(!is_player_red);
 		PIECE_TYPE now_type = is_piece_type(result[0]) ? get_piece_type(result[0]) : get_piece_type(result[1]);
@@ -218,49 +223,6 @@ std::vector<all_board_state> record_loader::load_record(const std::filesystem::p
 	}
 
 	return the_board_state;
-}
-
-all_board_state record_loader::get_init_all_borad() noexcept
-{
-	half_board_state red;
-	red.emplace_back(piece_state(PIECE_TYPE::GENERAL, 5, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::GUARD, 4, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::GUARD, 6, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 3, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 7, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::HORSE, 2, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::HORSE, 8, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 1, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 9, 0));
-	red.emplace_back(piece_state(PIECE_TYPE::CANNON, 2, 2));
-	red.emplace_back(piece_state(PIECE_TYPE::CANNON, 8, 2));
-	red.emplace_back(piece_state(PIECE_TYPE::PAWN, 1, 3));
-	red.emplace_back(piece_state(PIECE_TYPE::PAWN, 3, 3));
-	red.emplace_back(piece_state(PIECE_TYPE::PAWN, 5, 3));
-	red.emplace_back(piece_state(PIECE_TYPE::PAWN, 7, 3));
-	red.emplace_back(piece_state(PIECE_TYPE::PAWN, 9, 3));
-
-	half_board_state black;
-	black.emplace_back(piece_state(PIECE_TYPE::GENERAL, 5, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::GUARD, 4, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::GUARD, 6, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 3, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::ELEPHANT, 7, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::HORSE, 2, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::HORSE, 8, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 1, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::CHARIOT, 9, 0));
-	black.emplace_back(piece_state(PIECE_TYPE::CANNON, 2, 2));
-	black.emplace_back(piece_state(PIECE_TYPE::CANNON, 8, 2));
-	black.emplace_back(piece_state(PIECE_TYPE::PAWN, 1, 3));
-	black.emplace_back(piece_state(PIECE_TYPE::PAWN, 3, 3));
-	black.emplace_back(piece_state(PIECE_TYPE::PAWN, 5, 3));
-	black.emplace_back(piece_state(PIECE_TYPE::PAWN, 7, 3));
-	black.emplace_back(piece_state(PIECE_TYPE::PAWN, 9, 3));
-
-	all_board_state borad{ std::move(red),std::move(black) };
-
-	return borad;
 }
 
 record_loader& record_loader::get_record_loader() noexcept

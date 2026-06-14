@@ -3,7 +3,10 @@
 #include "vulkan_shader_binding_table.h"
 
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
-	:raygen_region(std::move(_other.raygen_region)),
+	: handle_size(std::move(_other.handle_size)),
+	handle_alignment(std::move(_other.handle_alignment)),
+	base_alignment(std::move(_other.base_alignment)),
+	raygen_region(std::move(_other.raygen_region)),
 	miss_region(std::move(_other.miss_region)),
 	hit_region(std::move(_other.hit_region)),
 	callable_region(std::move(_other.callable_region)),
@@ -15,6 +18,9 @@ vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shade
 {
 	if (this != &_other)
 	{
+		std::ranges::swap(handle_size, _other.handle_size);
+		std::ranges::swap(handle_alignment, _other.handle_alignment);
+		std::ranges::swap(base_alignment, _other.base_alignment);
 		std::ranges::swap(raygen_region, _other.raygen_region);
 		std::ranges::swap(miss_region, _other.miss_region);
 		std::ranges::swap(hit_region, _other.hit_region);

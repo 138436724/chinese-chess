@@ -7,7 +7,7 @@ scene_material_manager::scene_material_manager(vulkan_application* _app)
 {
 }
 
-std::shared_ptr<scene_material> scene_material_manager::create_material(const std::u8string& _font_path, uint32_t _font_size, const std::wstring& _characters)
+std::shared_ptr<scene_material> scene_material_manager::create(const std::u8string& _font_path, uint32_t _font_size, const std::wstring& _characters)
 {
 	// find in cache
 	if (auto iter = std::ranges::find_if(images_cache, [&](const auto& s) {return std::get<0>(s.first) == _characters && std::get<1>(s.first) == _font_size; }); iter != images_cache.end())
@@ -77,7 +77,7 @@ std::shared_ptr<scene_material> scene_material_manager::create_material(const st
 	return material;
 }
 
-void scene_material_manager::clear_unused_materials() noexcept
+void scene_material_manager::clear_unused() noexcept
 {
 	std::erase_if(materials, [](const auto& p)
 		{
@@ -93,6 +93,13 @@ void scene_material_manager::clear_unused_materials() noexcept
 		{
 			return p.second.expired();
 		});
+}
+
+void scene_material_manager::clear() noexcept
+{
+	materials.clear();
+	images.clear();
+	images_cache.clear();
 }
 
 std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<vulkan_image>& _texture) const noexcept
