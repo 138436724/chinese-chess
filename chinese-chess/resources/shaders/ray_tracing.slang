@@ -126,16 +126,16 @@ void rayGenMain()
     const float2 clipCoords = launchID / launchSize * 2.f - 1.f;
 
     // 近平面深度 = 0，远平面深度 = 1 (Vulkan 的 NDC 深度范围)
-    float4 nearPointV = mul(float4(clipCoords, 0.f, 1.f), push_const.proj_inv_matrix);
-    float4 farPointV = mul(float4(clipCoords, 1.f, 1.f), push_const.proj_inv_matrix);
+    float4 nearPointV = mul(push_const.proj_inv_matrix, float4(clipCoords, 0.f, 1.f));
+    float4 farPointV = mul(push_const.proj_inv_matrix, float4(clipCoords, 1.f, 1.f));
 
     // 透视除法（正交投影下 w 通常为 1，但为了安全必须做）
     nearPointV /= nearPointV.w;
     farPointV /= farPointV.w;
 
     // 转换到世界空间
-    float3 worldNear = mul(nearPointV, push_const.view_inv_matrix).xyz;
-    float3 worldFar = mul(farPointV, push_const.view_inv_matrix).xyz;
+    float3 worldNear = mul(push_const.view_inv_matrix, nearPointV).xyz;
+    float3 worldFar = mul(push_const.view_inv_matrix, farPointV).xyz;
 
     // Create the primary ray
     RayDesc ray;
@@ -195,7 +195,7 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     float3 local_pos1 = v1.position;
     float3 local_pos2 = v2.position;
     float3 local_position = interpolate(bary, local_pos0, local_pos1, local_pos2);
-    float3 world_position = mul(float4(local_position, 1.f), now_model.model_matrix).xyz;
+    float3 world_position = mul(now_model.model_matrix, float4(local_position, 1.f)).xyz;
 
     // reconstruct and interpolate normals
     float3 n0 = float3(v0.normalx, v0.normalyz.x, v0.normalyz.y);
@@ -204,7 +204,7 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     float3 local_normal = normalize(interpolate(bary, n0, n1, n2));
 
     // transform normal to world space
-    float3 world_normal = normalize(mul(float4(local_normal, 0.f), now_model.model_matrix).xyz);
+    float3 world_normal = normalize(mul(now_model.model_matrix, float4(local_normal, 0.f)).xyz);
 
     // calculate uv
     float2 uv = interpolate(bary, v0.uv, v1.uv, v2.uv);
