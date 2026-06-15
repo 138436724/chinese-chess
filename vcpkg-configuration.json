@@ -1,7 +1,7 @@
 {
   "default-registry": {
     "kind": "git",
-    "baseline": "e0b785fa42e9b3ee27f62e54f65e41358a1d2671",
+    "baseline": "b216ddff25a1f432870e6c340ce79357049ef86e",
     "repository": "https://gitee.com/mirrors/vcpkg"
   },
   "registries": [

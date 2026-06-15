@@ -14,6 +14,10 @@
 constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
 constexpr std::u8string_view LIGHT_DIRECTION = u8"平行光方向";
 constexpr std::u8string_view LIGHT_COLOR = u8"平行光颜色";
+
+constexpr std::u8string_view CAMERA_TYPE = u8"摄像机类型";
+constexpr std::u8string_view CAMERA_POSITION = u8"摄像机位置";
+
 constexpr std::u8string_view CHESS_RECORD = u8"象棋棋谱";
 constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";
 constexpr std::u8string_view OPEN_RECORDS = u8"加载棋谱";
@@ -108,68 +112,9 @@ void ui_record::update()
 
 	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
 
-	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
-	{
-		manager->need_update();
-	}
-
-	if (ImGui::InputFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_direction)))
-	{
-		manager->need_update();
-	}
-
-	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_color)))
-	{
-		manager->need_update();
-	}
-
-
-	if (ImGui::Button(reinterpret_cast<const char*>(OPEN_RECORDS.data())))
-	{
-		std::filesystem::path file_path;
-
-#ifdef _WIN32
-		TCHAR szFile[MAX_PATH] = { 0 };
-
-		OPENFILENAME ofn;
-		ZeroMemory(&ofn, sizeof(ofn));
-		ofn.lStructSize = sizeof(ofn);
-		ofn.lpstrFile = szFile;
-		ofn.nMaxFile = sizeof(szFile);
-		ofn.lpstrFilter = L"Text\0*.txt\0All\0*.*\0";
-		ofn.nFilterIndex = 1;
-		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-
-		if (GetOpenFileName(&ofn))
-		{
-			file_path = szFile;
-		}
-#endif // _WIN32
-
-		if (!file_path.empty())
-		{
-			load_records(file_path);
-			chess_manager->load_records(file_path);
-			chess_manager->set_now_record_index(1);
-		}
-	}
-
-	if (!all_records.empty())
-	{
-		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &selected_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
-		{
-			chess_manager->set_now_record_index(selected_index);
-		}
-		if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
-		{
-			load_previous();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button(reinterpret_cast<const char*>(NEXT_STEP.data())))
-		{
-			load_next();
-		}
-	}
+	ray_tracing_ui();
+	camera_ui();
+	records_ui();
 
 	ImGui::End();
 
@@ -239,6 +184,87 @@ void ui_record::load_next() noexcept
 vulkan_image& ui_record::get_render_image() noexcept
 {
 	return render_output;
+}
+
+void ui_record::ray_tracing_ui() noexcept
+{
+	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
+	{
+		manager->set_use_ray_tracing(use_ray_tracing);
+	}
+
+	if (ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_direction)))
+	{
+		manager->set_light_direction(light_direction);
+	}
+
+	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_color)))
+	{
+		manager->set_light_color(light_color);
+	}
+}
+
+void ui_record::camera_ui() noexcept
+{
+	if (ImGui::Checkbox(reinterpret_cast<const char*>(CAMERA_TYPE.data()), &camera_type))
+	{
+		manager->set_camera_projection_type(static_cast<projection_type>(camera_type));
+	}
+
+	if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_POSITION.data()), glm::value_ptr(camera_position)))
+	{
+		manager->set_camera_position(camera_position);
+	}
+}
+
+void ui_record::records_ui() noexcept
+{
+	if (ImGui::Button(reinterpret_cast<const char*>(OPEN_RECORDS.data())))
+	{
+		std::filesystem::path file_path;
+
+#ifdef _WIN32
+		TCHAR szFile[MAX_PATH] = { 0 };
+
+		OPENFILENAME ofn;
+		ZeroMemory(&ofn, sizeof(ofn));
+		ofn.lStructSize = sizeof(ofn);
+		ofn.lpstrFile = szFile;
+		ofn.nMaxFile = sizeof(szFile);
+		ofn.lpstrFilter = L"Text\0*.txt\0All\0*.*\0";
+		ofn.nFilterIndex = 1;
+		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+
+		if (GetOpenFileName(&ofn))
+		{
+			file_path = szFile;
+		}
+#endif // _WIN32
+
+		if (!file_path.empty())
+		{
+			load_records(file_path);
+			chess_manager->load_records(file_path);
+			chess_manager->set_now_record_index(1);
+		}
+	}
+
+	if (!all_records.empty())
+	{
+		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &selected_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
+		{
+			chess_manager->set_now_record_index(selected_index);
+		}
+		if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
+		{
+			load_previous();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button(reinterpret_cast<const char*>(NEXT_STEP.data())))
+		{
+			load_next();
+		}
+	}
 }
 
 void ui_record::load_records(const std::filesystem::path& _record_path)

@@ -46,7 +46,7 @@ void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 	update_camera_axis();
 }
 
-scene_camera::projection_type scene_camera::get_projection_type() const noexcept
+projection_type scene_camera::get_projection_type() const noexcept
 {
 	return active_projection;
 }

@@ -25,10 +25,16 @@ public:
 
 	vulkan_image& get_render_image() noexcept;
 
-public:
+private:
+	void ray_tracing_ui() noexcept;
+	void camera_ui() noexcept;
+	void records_ui() noexcept;
+
 	bool use_ray_tracing = true;
 	glm::vec3 light_direction = glm::vec3(1.f, 1.f, 1.f);
 	glm::vec3 light_color = glm::vec3(1.0f, 0.95f, 0.85f);
+	bool camera_type = static_cast<bool>(projection_type::orthographic);
+	glm::vec3 camera_position = glm::vec3(0.f, 0.f, 0.f);
 
 private:
 	void load_records(const std::filesystem::path& _record_path);

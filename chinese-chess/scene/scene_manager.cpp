@@ -59,6 +59,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	// camera projection
 	constexpr float camera_height = 1.3f;
 	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
+	active_camera.set_perspective_projection(glm::radians(90.f), width / height, 0.01f, 100.f);
 
 	is_dirty = true;
 
@@ -162,12 +163,12 @@ void scene_manager::update()
 	update_ray_tracing();
 }
 
-const vulkan_commandbuffer& scene_manager::render(bool _use_ray_tracing)
+const vulkan_commandbuffer& scene_manager::render()
 {
 	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	commandbuffer.begin_record({});
 
-	if (!_use_ray_tracing)
+	if (!use_ray_tracing)
 	{
 		render_rasterization(*commandbuffer);
 	}
@@ -244,19 +245,49 @@ void scene_manager::remove_material(const std::weak_ptr<scene_material>& _materi
 		});
 }
 
+void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
+{
+	is_dirty = true;
+	use_ray_tracing = _use_ray_tracing;
+}
+
 void scene_manager::set_light_direction(const glm::vec3& _direction) noexcept
 {
+	is_dirty = true;
 	light_direction = glm::normalize(_direction);
 }
 
 void scene_manager::set_light_color(const glm::vec3& _color) noexcept
 {
+	is_dirty = true;
 	light_color = _color;
 }
 
 void scene_manager::set_ambient_color(const glm::vec3& _color) noexcept
 {
+	is_dirty = true;
 	ambient_color = _color;
+}
+
+void scene_manager::set_camera_projection_type(projection_type _type) noexcept
+{
+	is_dirty = true;
+	active_camera.set_projection_type(_type);
+}
+
+void scene_manager::set_camera_position(const glm::vec3& _position) noexcept
+{
+	active_camera.set_position(_position);
+}
+
+void scene_manager::set_camera_direction(const glm::vec3& _direction) noexcept
+{
+	active_camera.set_direction(_direction);
+}
+
+void scene_manager::set_camera_world_up(const glm::vec3& _world_up) noexcept
+{
+	active_camera.set_world_up(_world_up);
 }
 
 vulkan_image& scene_manager::get_render_image() noexcept
@@ -406,10 +437,8 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 
 	// Push constant with camera
 	scene_manager::push_constant pc{
-		active_camera.get_position(),
 		active_camera.get_projection_matrix(),
 		active_camera.get_view_matrix(),
-		active_camera.get_direction(),
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(raster_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant), &pc));
 
@@ -583,10 +612,8 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline.get_pipeline_layout(), 0, *(rt_descriptor_sets.at(current_frame)), nullptr);
 
 	scene_manager::push_constant pc{
-		active_camera.get_position(),
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
-		active_camera.get_direction(),
 		light_direction,
 		light_color,
 		ambient_color,

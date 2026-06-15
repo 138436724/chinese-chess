@@ -1,15 +1,14 @@
 struct Vertex
 {
     float3 position;
+    // float3 normal;
     float2 uv;
 };
 
 struct push_constant
 {
-    float3 camera_origin;
     float4x4 proj_matrix;
     float4x4 view_matrix;
-    float3 camera_direction;
 };
 
 struct model_data

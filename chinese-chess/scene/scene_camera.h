@@ -3,15 +3,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+enum class projection_type
+{
+	orthographic,
+	perspective
+};
+
 class scene_camera
 {
-public:
-	enum class projection_type
-	{
-		orthographic,
-		perspective
-	};
-
 public:
 	scene_camera() = default;
 	~scene_camera() = default;

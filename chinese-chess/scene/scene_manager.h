@@ -15,7 +15,7 @@ public:
 	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
-	const vulkan_commandbuffer& render(bool _use_ray_tracing);
+	const vulkan_commandbuffer& render();
 	void destroy();
 
 	void need_update();
@@ -26,9 +26,14 @@ public:
 	std::weak_ptr<scene_material> create_material(const std::wstring& _characters);
 	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
 
+	void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
 	void set_light_direction(const glm::vec3& _direction) noexcept;
 	void set_light_color(const glm::vec3& _color) noexcept;
 	void set_ambient_color(const glm::vec3& _color) noexcept;
+	void set_camera_projection_type(projection_type _type) noexcept;
+	void set_camera_position(const glm::vec3& _position) noexcept;
+	void set_camera_direction(const glm::vec3& _direction) noexcept;
+	void set_camera_world_up(const glm::vec3& _world_up) noexcept;
 
 	vulkan_image& get_render_image() noexcept;
 
@@ -48,10 +53,8 @@ private:
 
 	struct push_constant
 	{
-		alignas(16) glm::vec3 camera_origin;
 		alignas(16) glm::mat4x4 proj_or_inv_matrix;
 		alignas(16) glm::mat4x4 view_or_inv_matrix;
-		alignas(16) glm::vec3 camera_direction;
 		alignas(16) glm::vec3 light_direction;
 		alignas(16) glm::vec3 light_color;
 		alignas(16) glm::vec3 ambient_color;
@@ -75,6 +78,7 @@ private:
 
 	bool is_dirty = true;
 
+	bool use_ray_tracing = true;
 	glm::vec3 light_direction = glm::vec3(1.f, 1.f, 1.f);	 // normalized, direction from surface TO light
 	glm::vec3 light_color = glm::vec3(1.0f, 0.95f, 0.85f);	 // warm white light
 	glm::vec3 ambient_color = glm::vec3(0.15f, 0.15f, 0.2f); // low ambient for shadowed areas

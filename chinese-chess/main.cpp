@@ -149,13 +149,10 @@ int main()
 		app->begin();
 
 		UI->update();
-
-		scene->set_light_direction(UI->light_direction);
-		scene->set_light_color(UI->light_color);
 		scene->update();
 
 		const auto& cb1 = UI->render();
-		const auto& cb2 = scene->render(UI->use_ray_tracing);
+		const auto& cb2 = scene->render();
 
 		std::vector<vk::CommandBuffer> cbs = { *cb1,*cb2 };
 		app->render(cbs);
