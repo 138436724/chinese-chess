@@ -77,22 +77,68 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	return material;
 }
 
-void scene_material_manager::clear_unused() noexcept
+void scene_material_manager::remove(const std::weak_ptr<scene_material>& _material) noexcept
+{
+	std::owner_less<void> cmp;
+	std::erase_if(images, [&](const auto& p)
+		{
+			return !cmp(p, _material.lock()->alpha_map) && !cmp(_material.lock()->alpha_map, p);
+		});
+	std::erase_if(materials, [&](const auto& p)
+		{
+			return !cmp(p, _material) && !cmp(_material, p);
+		});
+}
+
+void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	std::erase_if(materials, [](const auto& p)
 		{
-			return p.expired();
+			return !p;
 		});
 
 	std::erase_if(images, [](const auto& p)
 		{
-			return p.expired();
+			return !p;
 		});
 
 	std::erase_if(images_cache, [](const auto& p)
 		{
 			return p.second.expired();
 		});
+
+	_commandbuffer.add_staging_buffer(std::move(ssbo));
+
+	if (!materials.empty())
+	{
+		auto materials_ssbo = materials
+			| std::views::transform([this](const auto& p)
+				{
+					return material_data{
+						.background_color = p->background_color,
+						.foreground_color = p->foreground_color,
+						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max())
+					};
+				})
+			| std::ranges::to<std::vector>();
+
+		// begin a commandbuffer
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+		vk::DeviceSize materials_ssbo_size = sizeof(materials_ssbo.front()) * materials_ssbo.size();
+		ssbo.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		vulkan_buffer staging_buffer;
+		staging_buffer.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		memcpy(staging_buffer.get_buffer_address().hostAddress, materials_ssbo.data(), materials_ssbo_size);
+		vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, materials_ssbo_size));
+
+		// commandbuffer submit
+		commandbuffer.end_record();
+		commandbuffer.submit({}, {}, true);
+	}
 }
 
 void scene_material_manager::clear() noexcept
@@ -100,6 +146,31 @@ void scene_material_manager::clear() noexcept
 	materials.clear();
 	images.clear();
 	images_cache.clear();
+}
+
+const vulkan_buffer& scene_material_manager::get_ssbo_buffer() const noexcept
+{
+	return ssbo;
+}
+
+std::optional<uint32_t> scene_material_manager::get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept
+{
+	auto materials_with_index = materials | std::views::enumerate;
+
+	std::owner_less<void> cmp;
+	auto iter = std::ranges::find_if(materials_with_index, [&](const auto& p)
+		{
+			return !cmp(std::get<1>(p), _material) && !cmp(_material, std::get<1>(p));
+		});
+
+	if (iter != materials_with_index.end())
+	{
+		return static_cast<uint32_t>(std::get<0>(*iter));
+	}
+	else
+	{
+		return std::nullopt;
+	}
 }
 
 std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<vulkan_image>& _texture) const noexcept
@@ -129,7 +200,7 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
 		return images
 			| std::views::transform([&](const auto& image)
 				{
-					return vk::DescriptorImageInfo(_samplers.front(), image.lock()->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+					return vk::DescriptorImageInfo(_samplers.front(), image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 				})
 			| std::ranges::to<std::vector>();
 	}
@@ -139,7 +210,7 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
 			| std::views::transform([&](const auto& _pair)
 				{
 					const auto& [sampler, image] = _pair;
-					return vk::DescriptorImageInfo(sampler, image.lock()->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+					return vk::DescriptorImageInfo(sampler, image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 				})
 			| std::ranges::to<std::vector>();
 	}

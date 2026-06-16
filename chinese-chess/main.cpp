@@ -1,7 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
 
 #include "scene/scene_manager.h"
-#include "ui/ui_record.h"
+#include "ui/ui_manager.h"
 #include "vulkan_core/vulkan_application.h"
 #include <GLFW/glfw3.h>
 
@@ -98,7 +98,7 @@ int main()
 
 
 	// create ui
-	std::unique_ptr<ui_record> UI = std::make_unique<ui_record>();
+	std::unique_ptr<ui_manager> UI = std::make_unique<ui_manager>();
 	UI->create(window, app.get(), scene.get(), static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
 

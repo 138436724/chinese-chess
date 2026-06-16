@@ -66,7 +66,7 @@
     <ClCompile Include="scene\scene_camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="ui\ui_record.cpp">
+    <ClCompile Include="ui\ui_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="scene\scene_manager.cpp">
@@ -90,7 +90,7 @@
     <ClCompile Include="scene\scene_material_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="ui\ui_chess_manager.cpp">
+    <ClCompile Include="ui\ui_record.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="scene\scene_model.cpp">
@@ -155,7 +155,7 @@
     <ClInclude Include="scene\scene_camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="ui\ui_record.h">
+    <ClInclude Include="ui\ui_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="scene\scene_manager.h">
@@ -179,7 +179,7 @@
     <ClInclude Include="scene\scene_material_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="ui\ui_chess_manager.h">
+    <ClInclude Include="ui\ui_record.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="scene\scene_model.h">

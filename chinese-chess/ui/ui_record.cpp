@@ -1,225 +1,68 @@
-#include "tools/font_loader.h"
-#include "tools/record_loader.h"
-#include "tools/string_helper.h"
 #include "ui_record.h"
-#include "vulkan_core/vulkan_common.h"
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_vulkan.h>
+#include <algorithm>
 #include <ranges>
-#ifdef _WIN32
-#include <Windows.h>
-#include <commdlg.h>
-#endif // _WIN32
 
-constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
-constexpr std::u8string_view LIGHT_DIRECTION = u8"平行光方向";
-constexpr std::u8string_view LIGHT_COLOR = u8"平行光颜色";
-
-constexpr std::u8string_view CAMERA_TYPE = u8"摄像机类型";
-constexpr std::u8string_view CAMERA_POSITION = u8"摄像机位置";
-
-constexpr std::u8string_view CHESS_RECORD = u8"象棋棋谱";
 constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";
-constexpr std::u8string_view OPEN_RECORDS = u8"加载棋谱";
+constexpr std::u8string_view LOAD_RECORDS = u8"加载棋谱";
 constexpr std::u8string_view LAST_STEP = u8"上一步";
 constexpr std::u8string_view NEXT_STEP = u8"下一步";
 
-void ui_record::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
+void ui_record::create(scene_manager* _manager)
 {
-	app = _app;
-
 	manager = _manager;
 
-	chess_manager = std::make_unique<ui_chess_manager>();
-	chess_manager->create(manager);
+
+	// create board
+	auto chess_board_material = manager->create_material(L"楚河汉界");
+	chess_board_material->background_color = glm::vec3(0.87843, 0.69020, 0.48627);
+	chess_board_material->foreground_color = glm::vec3(0., 0., 0.);
+
+	chess_board = manager->create_model(u8"chess_board.glb");
+	chess_board.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
+	chess_board.lock()->custom_index = 0;
+	chess_board.lock()->material = std::move(chess_board_material);
 
 
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	(void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
-	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
+	// create board line
+	chess_board_line = manager->create_model(u8"chess_board_line.glb");
+	chess_board_line.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
+	chess_board_line.lock()->custom_index = 1;
 
-	ImGui::StyleColorsDark();
-	ImGuiStyle& style = ImGui::GetStyle();
-	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-	{
-		style.WindowRounding = 0.0f;
-		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-	}
 
-	io.Fonts->AddFontFromFileTTF(STRING_HELPER::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf").c_str(), 13.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+	// create all pieces and all materials
+	std::ranges::for_each(all_chess_pieces, [this](auto& p)
+		{
+			p = manager->create_model(u8"chess_piece.glb");
+			p->custom_index = 2u;
+		});
 
-	ImGui_ImplGlfw_InitForVulkan(_window, true);
 
-	std::array pool_size{ vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1), vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1) };
-	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_info);
+	std::ranges::for_each(std::views::zip(std::wstring_view(L"帥仕相傌俥炮兵"), std::u16string_view(u"帥仕相傌俥炮兵")), [this](const auto& _pair)
+		{
+			const auto& [chw, chu] = _pair;
+			auto piece_material = manager->create_material(std::wstring(1, chw));
+			piece_material->background_color = glm::vec3(1.0, 0.85, 0.75);
+			piece_material->foreground_color = glm::vec3(0.6, 0.1, 0.1);
+			red_chess_piece_materials.emplace(RECORD_LOADER.get_piece_type(chu), std::move(piece_material));
+		});
 
-	color_format = app->get_swapchain().get_format();
-	ImGui_ImplVulkan_PipelineInfo create_info = {
-		.MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_common::MSAA_SAMPLE_COUNT),
-		.PipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo({}, color_format, vk::Format::eUndefined, vk::Format::eUndefined, nullptr),
-	};
+	std::ranges::for_each(std::views::zip(std::wstring_view(L"將士象馬車砲卒"), std::u16string_view(u"將士象馬車砲卒")), [this](const auto& _pair)
+		{
+			const auto& [chw, chu] = _pair;
+			auto piece_material = manager->create_material(std::wstring(1, chw));
+			piece_material->background_color = glm::vec3(0.85, 0.75, 0.65);
+			piece_material->foreground_color = glm::vec3(0.1, 0.1, 0.1);
+			black_chess_piece_materials.emplace(RECORD_LOADER.get_piece_type(chu), std::move(piece_material));
+		});
 
-	ImGui_ImplVulkan_InitInfo init_info = {
-		.ApiVersion = vk::ApiVersion13,
-		.Instance = *(app->get_instance()),
-		.PhysicalDevice = *(app->get_physical_device()),
-		.Device = *(app->get_device()),
-		.QueueFamily = app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_index(),
-		.Queue = *(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()),
-		.DescriptorPool = *descriptor_pool,
-		.MinImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
-		.ImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
-		.PipelineInfoMain = create_info,
-		.UseDynamicRendering = true,
-	};
-	ImGui_ImplVulkan_Init(&init_info);
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
-
-	resize(_width, _height);
+	// init
+	restore_board_state(0);
 }
 
-void ui_record::resize(uint32_t _width, uint32_t _height)
+void ui_record::update() noexcept
 {
-	//ImGui_ImplVulkanH_CreateOrResizeWindow(g_Instance, g_PhysicalDevice, g_Device, wd, g_QueueFamily, g_Allocator, fb_width, fb_height, g_MinImageCount, 0);
-
-	// render_output
-	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
-
-	// msaa color
-	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
-}
-
-void ui_record::update()
-{
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
-
-	bool show_demo_window = true;
-
-	//ImGui::ShowDemoWindow(&show_demo_window);
-
-	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
-
-	ray_tracing_ui();
-	camera_ui();
-	records_ui();
-
-	ImGui::End();
-
-	ImGui::Render();
-	draw_data = ImGui::GetDrawData();
-}
-
-const vulkan_commandbuffer& ui_record::render()
-{
-	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
-	commandbuffer.begin_record({});
-
-	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
-	begin_barrier.emplace_back(color_image.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
-	begin_barrier.emplace_back(render_output.set_layout(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
-	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
-
-	vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
-		render_output.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
-
-	vk::RenderingInfo renderingInfo({}, vk::Rect2D({ 0, 0 }, app->get_swapchain().get_extent()), 1, {}, colorAttachmentInfo, nullptr, nullptr, nullptr);
-
-	(*commandbuffer).beginRendering(renderingInfo);
-
-	ImGui_ImplVulkan_RenderDrawData(draw_data, *(*(commandbuffer)));
-
-	(*commandbuffer).endRendering();
-
-	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-	{
-		ImGui::UpdatePlatformWindows();
-		ImGui::RenderPlatformWindowsDefault();
-	}
-
-	commandbuffer.end_record();
-
-	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
-
-	return commandbuffer;
-}
-
-void ui_record::destroy()
-{
-	ImGui_ImplVulkan_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-}
-
-void ui_record::load_previous() noexcept
-{
-	if (selected_index > 0)
-	{
-		selected_index--;
-		chess_manager->set_now_record_index(selected_index);
-	}
-}
-
-void ui_record::load_next() noexcept
-{
-	if (selected_index < all_records.size() - 1)
-	{
-		selected_index++;
-		chess_manager->set_now_record_index(selected_index);
-	}
-}
-
-vulkan_image& ui_record::get_render_image() noexcept
-{
-	return render_output;
-}
-
-void ui_record::ray_tracing_ui() noexcept
-{
-	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
-	{
-		manager->set_use_ray_tracing(use_ray_tracing);
-	}
-
-	if (ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_direction)))
-	{
-		manager->set_light_direction(light_direction);
-	}
-
-	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_color)))
-	{
-		manager->set_light_color(light_color);
-	}
-}
-
-void ui_record::camera_ui() noexcept
-{
-	if (ImGui::Checkbox(reinterpret_cast<const char*>(CAMERA_TYPE.data()), &camera_type))
-	{
-		manager->set_camera_projection_type(static_cast<projection_type>(camera_type));
-	}
-
-	if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_POSITION.data()), glm::value_ptr(camera_position)))
-	{
-		manager->set_camera_position(camera_position);
-	}
-}
-
-void ui_record::records_ui() noexcept
-{
-	if (ImGui::Button(reinterpret_cast<const char*>(OPEN_RECORDS.data())))
+	if (ImGui::Button(reinterpret_cast<const char*>(LOAD_RECORDS.data())))
 	{
 		std::filesystem::path file_path;
 
@@ -244,16 +87,15 @@ void ui_record::records_ui() noexcept
 		if (!file_path.empty())
 		{
 			load_records(file_path);
-			chess_manager->load_records(file_path);
-			chess_manager->set_now_record_index(1);
+			restore_board_state(0);
 		}
 	}
 
 	if (!all_records.empty())
 	{
-		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &selected_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
+		if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &now_record_index, all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
 		{
-			chess_manager->set_now_record_index(selected_index);
+			restore_board_state(static_cast<uint32_t>(now_record_index));
 		}
 		if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
 		{
@@ -267,6 +109,24 @@ void ui_record::records_ui() noexcept
 	}
 }
 
+void ui_record::load_previous() noexcept
+{
+	if (now_record_index > 0)
+	{
+		now_record_index--;
+		restore_board_state(static_cast<uint32_t>(now_record_index));
+	}
+}
+
+void ui_record::load_next() noexcept
+{
+	if (now_record_index < board_state.size() - 1)
+	{
+		now_record_index++;
+		restore_board_state(static_cast<uint32_t>(now_record_index));
+	}
+}
+
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
 	all_records = RECORD_LOADER.read_record<std::u8string>(_record_path);
@@ -274,4 +134,97 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
 	all_records_c_str = all_records
 		| std::views::transform([](const auto& _record) {return reinterpret_cast<const char*>(_record.data()); })
 		| std::ranges::to<std::vector>();
+
+	now_record_index = 0;
+
+	board_state = RECORD_LOADER.load_records(_record_path);
+}
+
+//all_board_state ui_record::capture_board_state()
+//{
+//	all_board_state state;
+//
+//	for (auto [_color, _pieces] : all_chess_pieces | std::views::enumerate)
+//	{
+//		for (auto& _piece : _pieces)
+//		{
+//			if (_piece.get_is_on_board())
+//			{
+//				state.at(_color).emplace_back(piece_state(_piece.get_piece_type(), _piece.get_piece_location().first, _piece.get_piece_location().second));
+//			}
+//		}
+//	}
+//
+//	return state;
+//}
+
+void ui_record::restore_board_state(uint32_t _index) noexcept
+{
+	std::ranges::for_each(all_chess_pieces, [](const auto& p)
+		{
+			p->is_show = false;
+		});
+
+	const all_board_state& state = board_state.at(_index);
+	size_t index_offset = 0;
+	std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::BLACK)) | std::views::enumerate, [&](const auto& _pair)
+		{
+			const auto& [index, state] = _pair;
+			const auto& sp = all_chess_pieces.at(index + index_offset);
+			sp->material = std::shared_ptr<scene_material>(black_chess_piece_materials.at(state.piece_type));
+			sp->is_show = true;
+			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), -3.f));
+		});
+
+	index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
+	std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::RED)) | std::views::enumerate, [&](const auto& _pair)
+		{
+			const auto& [index, state] = _pair;
+			const auto& sp = all_chess_pieces.at(index + index_offset);
+			sp->material = std::shared_ptr<scene_material>(red_chess_piece_materials.at(state.piece_type));
+			sp->is_show = true;
+			sp->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), -3.f));
+		});
+
+	manager->need_update();
+}
+
+glm::vec2 ui_record::location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
+{
+	// 棋盘中心为坐标的(0, 0)点，而右下和左上作为双方棋子的定位原点
+	glm::vec2 location;
+	if (_use_color == PIECE_COLOR::RED)
+	{
+		if (_piece_color == PIECE_COLOR::RED)
+		{
+			// 红方红子从右到左是一到九，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(10 - _x - 1);
+			location.y = static_cast<float>(9 - _y);
+		}
+		else
+		{
+			// 红方黑子从左到右是1到9，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(_x - 1);
+			location.y = static_cast<float>(_y);
+		}
+	}
+	else
+	{
+		if (_piece_color == PIECE_COLOR::RED)
+		{
+			// 黑方红子从左到右是一到九，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(_x - 1);
+			location.y = static_cast<float>(_y);
+		}
+		else
+		{
+			// 黑方黑子从右到左是1到9，先将_x映射到坐标对应的位置，然后-1计算格子数
+			location.x = static_cast<float>(10 - _x - 1);
+			location.y = static_cast<float>(9 - _y);
+		}
+	}
+
+	constexpr float board_unit_distance = 0.25f;
+	location = (location - glm::vec2(4, 4.5)) * board_unit_distance;
+	return location;
 }

@@ -3,6 +3,13 @@
 #include "vulkan_core/vulkan_image.h"
 #include <glm/glm.hpp>
 
+struct material_data
+{
+	alignas(8) glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
+	alignas(8) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
+	uint32_t texture_index = std::numeric_limits<uint32_t>::max();
+};
+
 class scene_material
 {
 public:

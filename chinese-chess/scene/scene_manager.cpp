@@ -21,8 +21,8 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 {
 	app = _app;
 
-	model_manager = std::make_unique<scene_model_manager>(app);
 	material_manager = std::make_unique<scene_material_manager>(app);
+	model_manager = std::make_unique<scene_model_manager>(app, material_manager.get());
 
 
 	// create sampler
@@ -59,7 +59,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	// camera projection
 	constexpr float camera_height = 1.3f;
 	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
-	active_camera.set_perspective_projection(glm::radians(90.f), width / height, 0.01f, 100.f);
+	active_camera.set_perspective_projection(glm::radians(90.f), static_cast<float>(width / height), 0.01f, 100.f);
 
 	is_dirty = true;
 
@@ -80,84 +80,8 @@ void scene_manager::update()
 	}
 
 	is_dirty = false;
-	model_manager->clear_unused(true, &(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT)));
-	material_manager->clear_unused();
-
-	// get all unique materials
-	auto materials = models
-		| std::views::transform([](const auto& m) { return m->material.get(); })
-		| std::views::filter([](const auto& m) { return m != nullptr; })
-		| std::ranges::to<std::unordered_set>()
-		| std::ranges::to<std::vector>();
-
-	auto get_material_index = [&materials](const std::shared_ptr<scene_material>& m) -> std::optional<uint32_t>
-		{
-			auto materials_with_index = materials | std::views::enumerate;
-
-			auto iter = std::ranges::find_if(materials_with_index, [&m](const auto& p)
-				{
-					return m.get() == std::get<1>(p);
-				});
-
-			if (iter != materials_with_index.end())
-			{
-				return static_cast<uint32_t>(std::get<0>(*iter));
-			}
-			else
-			{
-				return std::nullopt;
-			}
-		};
-
-	auto models_ubo = models
-		| std::views::transform([&](const auto& m)
-			{
-				return scene_manager::model_data{
-					.model_matrix = m->model_matrix,
-					.material_index = get_material_index(m->material).value_or(std::numeric_limits<uint32_t>::max()),
-					.vertex_address = model_manager->get_vertices_buffer().get_buffer_address().deviceAddress + m->model_info->vertex_offset,
-					.index_address = model_manager->get_indices_buffer().get_buffer_address().deviceAddress + m->model_info->index_offset,
-				};
-			})
-		| std::ranges::to<std::vector>();
-
-	auto materials_ubo = materials
-		| std::views::transform([this](const auto& m)
-			{
-				return scene_manager::material_data{
-					.background_color = m->background_color,
-					.foreground_color = m->foreground_color,
-					.texture_index = material_manager->get_texture_index(m->alpha_map).value_or(std::numeric_limits<uint32_t>::max())
-				};
-			})
-		| std::ranges::to<std::vector>();
-
-	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	vk::DeviceSize models_ubo_size = sizeof(models_ubo.front()) * models_ubo.size();
-	model_ubo_buffer.create(app->get_physical_device(), app->get_device(), models_ubo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-	vulkan_buffer models_ubo_staging_buffer;
-	models_ubo_staging_buffer.create(app->get_physical_device(), app->get_device(), models_ubo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-	memcpy(models_ubo_staging_buffer.get_buffer_address().hostAddress, models_ubo.data(), models_ubo_size);
-	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), models_ubo_staging_buffer.get_buffer(), model_ubo_buffer.get_buffer(), vk::BufferCopy2(0, 0, models_ubo_size));
-
-	vk::DeviceSize materials_ubo_size = sizeof(materials_ubo.front()) * materials_ubo.size();
-	material_ubo_buffer.create(app->get_physical_device(), app->get_device(), materials_ubo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-	vulkan_buffer materials_ubo_staging_buffer;
-	materials_ubo_staging_buffer.create(app->get_physical_device(), app->get_device(), materials_ubo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-	memcpy(materials_ubo_staging_buffer.get_buffer_address().hostAddress, materials_ubo.data(), materials_ubo_size);
-	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), materials_ubo_staging_buffer.get_buffer(), material_ubo_buffer.get_buffer(), vk::BufferCopy2(0, 0, materials_ubo_size));
-
-	// commandbuffer submit
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
+	material_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
+	model_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 
 	update_rasterization();
 	update_ray_tracing();
@@ -186,63 +110,35 @@ const vulkan_commandbuffer& scene_manager::render()
 
 void scene_manager::destroy()
 {
-	models.clear();
-	model_manager->clear();
 	material_manager->clear();
+	model_manager->clear();
 }
 
-void scene_manager::need_update()
+void scene_manager::need_update() noexcept
 {
 	is_dirty = true;
 }
 
-std::weak_ptr<scene_model> scene_manager::create_model(const std::u8string& _model_name)
+std::shared_ptr<scene_model> scene_manager::create_model(const std::u8string& _model_name)
 {
 	is_dirty = true;
-
-	models.emplace_back(model_manager->create(std::u8string(MODELS_PATH) + _model_name));
-	return models.back();
+	return model_manager->create(std::u8string(MODELS_PATH) + _model_name);
 }
 
 void scene_manager::remove_model(const std::weak_ptr<scene_model>& _model) noexcept
 {
-	is_dirty = true;
-
-	std::owner_less<void> cmp;
-	std::erase_if(models, [&](const auto& p)
-		{
-			return !cmp(p, _model) && !cmp(_model, p);
-		});
-	std::erase_if(materials, [&](const auto& p)
-		{
-			return p.use_count() == 1;
-		});
+	model_manager->remove(_model);
 }
 
-std::weak_ptr<scene_material> scene_manager::create_material(const std::wstring& _characters)
+std::shared_ptr<scene_material> scene_manager::create_material(const std::wstring& _characters)
 {
 	is_dirty = true;
-
-	materials.emplace_back(material_manager->create(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(height / 9.0 * 2), _characters));
-	return materials.back();
+	return material_manager->create(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(height / 9.0 * 2), _characters);
 }
 
 void scene_manager::remove_material(const std::weak_ptr<scene_material>& _material) noexcept
 {
-	is_dirty = true;
-
-	std::owner_less<void> cmp;
-	std::erase_if(materials, [&](const auto& p)
-		{
-			return !cmp(p, _material) && !cmp(_material, p);
-		});
-	std::ranges::for_each(models, [&](const auto& p)
-		{
-			if (!cmp(p->material, _material) && !cmp(_material, p->material))
-			{
-				p->material = nullptr;
-			}
-		});
+	material_manager->remove(_material);
 }
 
 void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
@@ -342,7 +238,7 @@ void scene_manager::resize_rasterization()
 void scene_manager::update_rasterization()
 {
 	// update draw commands
-	auto draw_commands = models
+	auto draw_commands = model_manager->get_models()
 		| std::views::transform([](const auto& m)
 			{
 				return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(m->model_info->indices.size()), 1, static_cast<uint32_t>(m->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(m->model_info->vertex_offset / sizeof(model_vertex)), 0);
@@ -361,7 +257,7 @@ void scene_manager::update_rasterization()
 	draw_commands_staging_buffer.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 	memcpy(draw_commands_staging_buffer.get_buffer_address().hostAddress, draw_commands.data(), draw_commands_size);
-	vulkan_buffer::copy_buffer_to_buffer((*commandbuffer), draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
+	vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
 
 	// commandbuffer submit
 	commandbuffer.end_record();
@@ -390,10 +286,10 @@ void scene_manager::update_rasterization()
 			const auto& [index, descriptor_set] = _pair;
 			std::vector<vk::WriteDescriptorSet> write_sets;
 
-			vk::DescriptorBufferInfo model_buffer_info(model_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			vk::DescriptorBufferInfo model_buffer_info(model_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eStorageBuffer, {}, model_buffer_info));
 
-			vk::DescriptorBufferInfo material_buffer_info(material_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			vk::DescriptorBufferInfo material_buffer_info(material_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageBuffer, {}, material_buffer_info));
 
 			std::array sampler = { *image_sampler };
@@ -444,7 +340,7 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 
 	_commandbuffer.bindVertexBuffers(0, *(model_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
 	_commandbuffer.bindIndexBuffer(*(model_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
-	_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(models.size()), sizeof(vk::DrawIndexedIndirectCommand));
+	_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(model_manager->get_models().size()), sizeof(vk::DrawIndexedIndirectCommand));
 
 	_commandbuffer.endRendering();
 }
@@ -519,7 +415,7 @@ void scene_manager::update_ray_tracing()
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// create top level acceleration structure
-	auto rt_instances = models
+	auto rt_instances = model_manager->get_models()
 		| std::views::transform([](const auto& m)
 			{
 				return m->get_blas_instance();
@@ -582,10 +478,10 @@ void scene_manager::update_ray_tracing()
 			vk::DescriptorImageInfo storage_image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageImage, storage_image_info, {}));
 
-			vk::DescriptorBufferInfo model_buffer_info(model_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			vk::DescriptorBufferInfo model_buffer_info(model_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 2, {}, vk::DescriptorType::eStorageBuffer, {}, model_buffer_info));
 
-			vk::DescriptorBufferInfo material_buffer_info(material_ubo_buffer.get_buffer(), 0, vk::WholeSize);
+			vk::DescriptorBufferInfo material_buffer_info(material_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 3, {}, vk::DescriptorType::eStorageBuffer, {}, material_buffer_info));
 
 			std::array sampler = { *image_sampler };

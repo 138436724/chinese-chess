@@ -21,7 +21,7 @@ file_watcher::file_watcher()
 
 		if (header == file_cache_header)
 		{
-			size_t cache_count;
+			size_t cache_count = 0;
 			file_cache.read(reinterpret_cast<char*>(&cache_count), sizeof(cache_count));
 
 			for (size_t i = 0; i < cache_count; i++)
@@ -101,7 +101,7 @@ std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_
 	file_hash << std::hex << std::uppercase << std::setfill('0');
 	std::ranges::for_each(std::views::iota(0u, hash_len), [&](unsigned int i) {
 		file_hash << std::setw(2) << static_cast<int>(hash[i]);
-	});
+		});
 	return file_hash.str();
 }
 

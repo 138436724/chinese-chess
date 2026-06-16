@@ -157,8 +157,8 @@
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
-    <ClCompile Include="ui\ui_chess_manager.cpp" />
     <ClCompile Include="ui\ui_record.cpp" />
+    <ClCompile Include="ui\ui_manager.cpp" />
     <ClCompile Include="vulkan_core\vulkan_acceleration_structure.cpp" />
     <ClCompile Include="vulkan_core\vulkan_application.cpp" />
     <ClCompile Include="vulkan_core\vulkan_buffer.cpp" />
@@ -188,8 +188,8 @@
     <ClInclude Include="tools\record_loader.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
-    <ClInclude Include="ui\ui_chess_manager.h" />
     <ClInclude Include="ui\ui_record.h" />
+    <ClInclude Include="ui\ui_manager.h" />
     <ClInclude Include="vulkan_core\vulkan_acceleration_structure.h" />
     <ClInclude Include="vulkan_core\vulkan_application.h" />
     <ClInclude Include="vulkan_core\vulkan_buffer.h" />

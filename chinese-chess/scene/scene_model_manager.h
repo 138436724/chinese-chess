@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scene_material_manager.h"
 #include "scene_model.h"
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_buffer.h"
@@ -10,25 +11,32 @@
 class scene_model_manager
 {
 public:
-	scene_model_manager(vulkan_application* _app);
+	scene_model_manager(vulkan_application* _app, scene_material_manager* _manager);
 	~scene_model_manager() = default;
 
-	std::shared_ptr<scene_model> create(const std::u8string& _model_path); // return shared_ptr, no save in this class
-	void clear_unused(bool _need_reload = true, vulkan_commandbuffer* _commandbuffer = nullptr) noexcept; // _commandbuffer only used when _need_reload is true
+	std::shared_ptr<scene_model> create(const std::u8string& _model_path);
+	void remove(const std::weak_ptr<scene_model>& _model) noexcept;
+	void update(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void clear() noexcept;
 
-	void reload_buffer(vulkan_commandbuffer& _commandbuffer) noexcept;
-
+	const std::vector<std::shared_ptr<scene_model>>& get_models() const noexcept;
 	const vulkan_buffer& get_vertices_buffer() const noexcept;
 	const vulkan_buffer& get_indices_buffer() const noexcept;
+	const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
 private:
-	vulkan_application* app = nullptr;
+	void update_meshs(vulkan_commandbuffer& _commandbuffer) noexcept;
+	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 
-	std::vector<std::weak_ptr<scene_model>> models;
-	std::vector<std::weak_ptr<model_infomation>> meshs; // submit to gpu in order
-	std::unordered_map<std::u8string, std::tuple<std::weak_ptr<model_infomation>, std::weak_ptr<vulkan_acceleration_structure>>> models_cache; // no need order
+	vulkan_application* app = nullptr;
+	scene_material_manager* manager = nullptr;
+
+	std::vector<std::shared_ptr<scene_model>> models;
+	std::vector<std::shared_ptr<model_infomation>> meshs; // submit to gpu in order
+	std::unordered_map<std::u8string, std::weak_ptr<model_infomation>> models_cache; // no need order
 
 	vulkan_buffer vertices_buffer;
 	vulkan_buffer indices_buffer;
+
+	vulkan_buffer ssbo;
 };

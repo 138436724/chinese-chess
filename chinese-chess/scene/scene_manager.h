@@ -18,12 +18,11 @@ public:
 	const vulkan_commandbuffer& render();
 	void destroy();
 
-	void need_update();
+	void need_update() noexcept;
 
-	std::weak_ptr<scene_model> create_model(const std::u8string& _model_name);
+	std::shared_ptr<scene_model> create_model(const std::u8string& _model_name);
 	void remove_model(const std::weak_ptr<scene_model>& _model) noexcept;
-
-	std::weak_ptr<scene_material> create_material(const std::wstring& _characters);
+	std::shared_ptr<scene_material> create_material(const std::wstring& _characters);
 	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
 
 	void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
@@ -61,21 +60,6 @@ private:
 		uint32_t frame_index = 0;
 	};
 
-	struct model_data
-	{
-		alignas(16) glm::mat4 model_matrix = glm::mat4(1.f); // std430 layout
-		alignas(8) uint32_t material_index = std::numeric_limits<uint32_t>::max();
-		alignas(8) vk::DeviceAddress vertex_address = 0;
-		alignas(8) vk::DeviceAddress index_address = 0;
-	};
-
-	struct material_data
-	{
-		alignas(8) glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
-		alignas(8) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
-		uint32_t texture_index = std::numeric_limits<uint32_t>::max();
-	};
-
 	bool is_dirty = true;
 
 	bool use_ray_tracing = true;
@@ -97,11 +81,6 @@ private:
 	scene_camera active_camera;
 
 	vk::raii::Sampler image_sampler = nullptr;
-	std::vector<std::shared_ptr<scene_model>> models;
-	std::vector<std::shared_ptr<scene_material>> materials;
-
-	vulkan_buffer model_ubo_buffer;
-	vulkan_buffer material_ubo_buffer;
 
 	vk::Format color_format = vk::Format::eUndefined;
 	vulkan_image render_output;
