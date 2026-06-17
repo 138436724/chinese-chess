@@ -7,7 +7,7 @@
 #include <string>
 #include <unordered_set>
 
-enum class stage_indices
+enum class stage_indices :uint32_t
 {
 	ray_gen,
 	miss,
@@ -58,8 +58,8 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 	// camera projection
 	constexpr float camera_height = 1.3f;
-	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
 	active_camera.set_perspective_projection(glm::radians(90.f), static_cast<float>(width / height), 0.01f, 100.f);
+	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
 
 	is_dirty = true;
 

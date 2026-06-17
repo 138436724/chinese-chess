@@ -9,7 +9,7 @@
 #define MODEL_LOADER model_loader::get_model_loader()
 constexpr std::u8string_view MODELS_PATH = u8"resources\\models\\";
 
-enum class model_vertex_type
+enum class model_vertex_type :uint32_t
 {
 	position,
 	normal,

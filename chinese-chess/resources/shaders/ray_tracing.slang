@@ -1,8 +1,7 @@
 struct Vertex
 {
     float3 position;
-    float normalx;
-    float2 normalyz;
+    float3 normal;
     float2 uv;
 };
 
@@ -198,9 +197,9 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     float3 world_position = mul(now_model.model_matrix, float4(local_position, 1.f)).xyz;
 
     // reconstruct and interpolate normals
-    float3 n0 = float3(v0.normalx, v0.normalyz.x, v0.normalyz.y);
-    float3 n1 = float3(v1.normalx, v1.normalyz.x, v1.normalyz.y);
-    float3 n2 = float3(v2.normalx, v2.normalyz.x, v2.normalyz.y);
+    float3 n0 = v0.normal;
+    float3 n1 = v1.normal;
+    float3 n2 = v2.normal;
     float3 local_normal = normalize(interpolate(bary, n0, n1, n2));
 
     // transform normal to world space

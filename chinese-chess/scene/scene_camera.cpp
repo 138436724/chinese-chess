@@ -2,7 +2,7 @@
 
 void scene_camera::set_orthographic_projection(float _left, float _right, float _bottom, float _top, float _near, float _far) noexcept
 {
-	active_projection = projection_type::orthographic;
+	active_type = projection_type::orthographic;
 	left = _left;
 	right = _right;
 	bottom = _bottom;
@@ -14,7 +14,7 @@ void scene_camera::set_orthographic_projection(float _left, float _right, float 
 
 void scene_camera::set_perspective_projection(float _fov_y, float _aspect, float _near, float _far) noexcept
 {
-	active_projection = projection_type::perspective;
+	active_type = projection_type::perspective;
 	fov_y = _fov_y;
 	aspect = _aspect;
 	near = _near;
@@ -24,7 +24,7 @@ void scene_camera::set_perspective_projection(float _fov_y, float _aspect, float
 
 void scene_camera::set_projection_type(projection_type _type) noexcept
 {
-	active_projection = _type;
+	active_type = _type;
 	update_camera_matrix();
 }
 
@@ -48,7 +48,7 @@ void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 
 projection_type scene_camera::get_projection_type() const noexcept
 {
-	return active_projection;
+	return active_type;
 }
 
 glm::vec3 scene_camera::get_position() const noexcept
@@ -80,7 +80,7 @@ void scene_camera::update_camera_axis() noexcept
 
 void scene_camera::update_camera_matrix() noexcept
 {
-	if (active_projection == projection_type::perspective)
+	if (active_type == projection_type::perspective)
 	{
 		projection_matrix = glm::perspective(fov_y, aspect, near, far);
 	}

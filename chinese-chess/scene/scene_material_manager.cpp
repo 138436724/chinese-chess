@@ -14,7 +14,8 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	{
 		if (!iter->second.expired())
 		{
-			auto material = std::make_shared<scene_material>(glm::vec3(1.f, 1.f, 1.f), glm::vec3(1.f, 1.f, 1.f), std::shared_ptr<vulkan_image>(iter->second));
+			auto material = std::make_shared<scene_material>();
+			material->alpha_map = std::shared_ptr<vulkan_image>(iter->second);
 			materials.emplace_back(material);
 			return material;
 		}
@@ -64,16 +65,19 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	end_barrier.emplace_back(font_image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
+	images.emplace_back(font_image);
+	images_cache.emplace(std::make_tuple(_characters, _font_size), std::weak_ptr<vulkan_image>(font_image));
+
+	auto material = std::make_shared<scene_material>();
+	material->alpha_map = font_image;
+	materials.emplace_back(material);
+
+	update_ssbo(commandbuffer);
 
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
 
-
-	images.emplace_back(font_image);
-	images_cache.emplace(std::make_tuple(_characters, _font_size), std::weak_ptr<vulkan_image>(font_image));
-	auto material = std::make_shared<scene_material>(glm::vec3(1.f, 1.f, 1.f), glm::vec3(1.f, 1.f, 1.f), font_image);
-	materials.emplace_back(material);
 	return material;
 }
 
@@ -107,38 +111,19 @@ void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexce
 			return p.second.expired();
 		});
 
+
 	_commandbuffer.add_staging_buffer(std::move(ssbo));
 
-	if (!materials.empty())
-	{
-		auto materials_ssbo = materials
-			| std::views::transform([this](const auto& p)
-				{
-					return material_data{
-						.background_color = p->background_color,
-						.foreground_color = p->foreground_color,
-						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max())
-					};
-				})
-			| std::ranges::to<std::vector>();
 
-		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+	// begin a commandbuffer
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-		vk::DeviceSize materials_ssbo_size = sizeof(materials_ssbo.front()) * materials_ssbo.size();
-		ssbo.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	update_ssbo(commandbuffer);
 
-		vulkan_buffer staging_buffer;
-		staging_buffer.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-		memcpy(staging_buffer.get_buffer_address().hostAddress, materials_ssbo.data(), materials_ssbo_size);
-		vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, materials_ssbo_size));
-
-		// commandbuffer submit
-		commandbuffer.end_record();
-		commandbuffer.submit({}, {}, true);
-	}
+	// commandbuffer submit
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
 }
 
 void scene_material_manager::clear() noexcept
@@ -219,4 +204,31 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
 		throw std::runtime_error("Must match size and generate!");
 	}
 	return {};
+}
+
+void scene_material_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept
+{
+	if (!materials.empty())
+	{
+		auto materials_ssbo = materials
+			| std::views::transform([this](const auto& p)
+				{
+					return material_data{
+						.background_color = p->background_color,
+						.foreground_color = p->foreground_color,
+						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max())
+					};
+				})
+			| std::ranges::to<std::vector>();
+
+		vk::DeviceSize materials_ssbo_size = sizeof(materials_ssbo.front()) * materials_ssbo.size();
+		ssbo.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		vulkan_buffer staging_buffer;
+		staging_buffer.create(app->get_physical_device(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		memcpy(staging_buffer.get_buffer_address().hostAddress, materials_ssbo.data(), materials_ssbo_size);
+		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, materials_ssbo_size));
+		_commandbuffer.add_staging_buffer(std::move(staging_buffer));
+	}
 }

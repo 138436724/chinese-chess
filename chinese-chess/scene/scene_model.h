@@ -21,15 +21,10 @@ struct model_infomation
 	vulkan_acceleration_structure blas_info;
 };
 
-class scene_model
+struct scene_model
 {
-public:
-	scene_model(std::shared_ptr<model_infomation> _model_info) noexcept;
-	~scene_model() = default;
-
 	vk::AccelerationStructureInstanceKHR get_blas_instance() const noexcept;
 
-public:
 	std::shared_ptr<model_infomation> model_info = nullptr;
 	std::shared_ptr<scene_material> material = nullptr;
 

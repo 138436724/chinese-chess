@@ -15,7 +15,8 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::u8string& _m
 	{
 		if (!iter->second.expired())
 		{
-			auto model = std::make_shared<scene_model>(std::shared_ptr<model_infomation>(iter->second));
+			auto model = std::make_shared<scene_model>();
+			model->model_info = std::shared_ptr<model_infomation>(iter->second);
 			models.emplace_back(model);
 			return model;
 		}
@@ -30,8 +31,9 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::u8string& _m
 	}
 
 	models_cache.emplace(_model_path, std::weak_ptr<model_infomation>(mesh));
-	
-	auto model = std::make_shared<scene_model>(mesh);
+
+	auto model = std::make_shared<scene_model>();
+	model->model_info = mesh;
 	models.emplace_back(model);
 
 	// begin commandbuffer

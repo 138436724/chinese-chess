@@ -24,6 +24,8 @@ public:
 	std::vector<vk::DescriptorImageInfo> get_descriptor_info(const std::span<vk::Sampler> _samplers) const;
 
 private:
+	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
+
 	vulkan_application* app = nullptr;
 
 	std::vector<std::shared_ptr<scene_material>> materials;

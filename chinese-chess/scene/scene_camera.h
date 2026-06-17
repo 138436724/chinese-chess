@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-enum class projection_type
+enum class projection_type :uint32_t
 {
 	orthographic,
 	perspective
@@ -33,7 +33,7 @@ private:
 	void update_camera_axis() noexcept;
 	void update_camera_matrix() noexcept;
 
-	projection_type active_projection = projection_type::orthographic;
+	projection_type active_type = projection_type::orthographic;
 
 	// orthographic parameters
 	float left = -10.f;

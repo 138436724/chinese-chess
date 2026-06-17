@@ -396,6 +396,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
 					&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
 					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
@@ -462,7 +463,7 @@ void vulkan_application::create_device_and_queue()
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True).setRuntimeDescriptorArray(vk::True),
+			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True).setRuntimeDescriptorArray(vk::True).setScalarBlockLayout(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),
 			vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True).setAccelerationStructureCaptureReplay(vk::True).setDescriptorBindingAccelerationStructureUpdateAfterBind(vk::True),
