@@ -18,6 +18,8 @@ public:
 
 	const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
+    const std::vector<std::shared_ptr<scene_light>>& get_lights() const noexcept;
+
 private:
 	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 

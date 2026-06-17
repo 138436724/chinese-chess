@@ -1,3 +1,5 @@
+import lighting;
+
 struct Vertex
 {
     float3 position;
@@ -9,9 +11,8 @@ struct push_constant
 {
     float4x4 proj_inv_matrix;
     float4x4 view_inv_matrix;
-    float3 light_direction; // normalized direction from surface TO light (directional light)
-    float3 light_color;     // light intensity/color
     float3 ambient_color;   // ambient term for shadowed areas
+    uint light_count;       // 灯光数量（0 = 无灯光，仅环境光）
     uint frame_index;       // frame counter for progressive rendering and RNG seeding
 };
 
@@ -36,7 +37,8 @@ RaytracingAccelerationStructure top_level_acceleration_structure; // ray tracing
 RWTexture2D<float4> render_output;                                // output image, like render output in rasterization
 StructuredBuffer<model_data> models;                              // SSBO, has all model info
 StructuredBuffer<material_data> materials;                        // SSBO, has all material info
-Sampler2D[] samplers;                                             // bindless descriptor, texture used in materials
+StructuredBuffer<light_data> lights;                                 // SSBO，灯光数据（binding 4）
+[[vk::binding(5)]] Sampler2D[] samplers;                          // bindless descriptor, texture used in materials
 // attention please, SSBO is std430 layout default, but UBO is std140
 
 // Ray payload structure - carries data through the primary ray tracing pipeline
@@ -47,36 +49,6 @@ struct HitPayload
     int depth;         // Current recursion depth
     uint seed;         // Random seed for Monte Carlo sampling
 };
-
-// Shadow ray payload - lightweight, only needs to know if shadowed
-struct ShadowPayload
-{
-    bool is_shadowed;
-};
-
-// ---- Utility functions ----
-
-// Henry0 (PCG-derived) random number generator
-uint wang_hash(uint seed)
-{
-    seed = (seed ^ 61) ^ (seed >> 16);
-    seed *= 9;
-    seed = seed ^ (seed >> 4);
-    seed *= 0x27d4eb2d;
-    seed = seed ^ (seed >> 15);
-    return seed;
-}
-
-float random_float(inout uint seed)
-{
-    seed = wang_hash(seed);
-    return float(seed) / float(0xFFFFFFFFu);
-}
-
-float2 random_float2(inout uint seed)
-{
-    return float2(random_float(seed), random_float(seed));
-}
 
 // Cosine-weighted hemisphere sampling around a normal
 // PDF = cos(theta) / PI
@@ -225,42 +197,25 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
         }
     }
 
-    // ===== Direct lighting from directional light (sun) =====
-    float3 light_dir = normalize(push_const.light_direction);
-    float NdotL = max(dot(world_normal, light_dir), 0.f);
-
-    // ===== Shadow ray for direct lighting =====
-    const float shadow_epsilon = 0.001f;
-    const uint shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
-
-    RayDesc shadow_ray;
-    shadow_ray.Origin = world_position + world_normal * shadow_epsilon;
-    shadow_ray.Direction = light_dir;
-    shadow_ray.TMin = shadow_epsilon;
-    shadow_ray.TMax = 1e10f;
-
-    ShadowPayload shadow_payload;
-    shadow_payload.is_shadowed = false;
-
-    // Use sbtRecordOffset=1 (shadow hit group) and missIndex=1 (shadow miss)
-    TraceRay(top_level_acceleration_structure, shadow_ray_flags, 0xff,
-             1, // RayContributionToHitGroupIndex: shadow hit group (index 1 in hit region)
-             0, // MultiplierForGeometryContributionToHitGroupIndex
-             1, // MissShaderIndex: shadow miss shader (index 1 in miss region)
-             shadow_ray, shadow_payload);
-
-    // Compute direct lighting contribution
+    // ===== Direct lighting: NEE（Next Event Estimation）多光源直接光照 =====
+    // 对每个灯光做重要性采样 + 阴影光线追踪
+    // 物理 Lambertian: Lo = ambient + Σ (Li × albedo/π × NdotL)
     float3 direct_lighting = push_const.ambient_color;
-    if (!shadow_payload.is_shadowed)
+    for (uint li = 0; li < push_const.light_count; li++)
     {
-        direct_lighting += push_const.light_color * NdotL;
+        light_data light = lights[li];
+        if (light.intensity <= 0.0f) continue;
+        light_sample ls = sample_light(light, world_position, payload.seed);
+        if (all(ls.color <= 0.0f)) continue;
+        float NdotL = max(dot(world_normal, ls.direction), 0.0f);
+        if (NdotL <= 0.0f) continue;
+        float3 shadow_origin = world_position + world_normal * SHADOW_EPSILON;
+        bool is_shadowed = trace_shadow_ray(top_level_acceleration_structure, shadow_origin, ls.direction, ls.distance, payload.seed);
+        if (is_shadowed) continue;
+        // Lambertian: Li × (albedo/π) × NdotL
+        direct_lighting += ls.color * evaluate_lambertian(material_color) * NdotL;
     }
-
-    // Add direct lighting contribution to accumulated color
-    // This is: throughput * BRDF * Li * cos_theta / PDF
-    // For a directional light: BRDF * cos_theta * Li = material_color / PI * NdotL * light_color
-    // But for simplicity, we treat the directional light as a delta source
-    payload.color += payload.throughput * material_color * direct_lighting;
+    payload.color += payload.throughput * direct_lighting;
 
     // ===== Indirect lighting: path tracing bounce =====
     // Check max depth
@@ -288,8 +243,10 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     new_throughput /= p_continue;
 
     // Sample a random direction from cosine-weighted hemisphere for indirect bounce
-    float2 rng = random_float2(payload.seed);
-    float3 bounce_direction = sample_cosine_hemisphere(rng, world_normal);
+    // 使用 Lambertian BRDF 采样出射方向（余弦加权半球，对接 lighting.slang）
+    // bs.value = albedo，与 material_color 一致，保持吞吐量计算不变
+    brdf_sample bs = sample_lambertian(material_color, world_normal, payload.seed);
+    float3 bounce_direction = bs.direction;
 
     // Prepare ray for next bounce
     const float bounce_epsilon = 0.001f;
@@ -326,21 +283,21 @@ void rayMissMain(inout HitPayload payload)
 {
     // Sky color (simple gradient based on ray direction)
     // Add sky contribution to accumulated color
-    float3 sky_color = float3(0.53f, 0.81f, 0.98f); // Light blue sky
+    float3 sky_color = sample_sky(WorldRayDirection());
 
     payload.color += payload.throughput * sky_color;
 }
 
 // Shadow miss shader - called when shadow ray doesn't hit anything (point is lit)
 [shader("miss")]
-void rayShadowMissMain(inout ShadowPayload payload)
+void rayShadowMissMain(inout shadow_payload payload)
 {
     payload.is_shadowed = false;
 }
 
 // Shadow any-hit shader - called when shadow ray hits something (point is in shadow)
 [shader("anyhit")]
-void rayShadowAnyHitMain(inout ShadowPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+void rayShadowAnyHitMain(inout shadow_payload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
     payload.is_shadowed = true;
     AcceptHitAndEndSearch();

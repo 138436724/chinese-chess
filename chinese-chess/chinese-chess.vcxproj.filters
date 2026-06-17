@@ -105,6 +105,9 @@
     <ClCompile Include="scene\scene_light_manager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="ui\ui_light.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -194,6 +197,9 @@
     <ClInclude Include="scene\scene_light_manager.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="ui\ui_light.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang">
@@ -212,6 +218,9 @@
       <Filter>资源文件</Filter>
     </None>
     <None Include="resources\shaders\rasterization.slang">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="resources\shaders\lighting.slang">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

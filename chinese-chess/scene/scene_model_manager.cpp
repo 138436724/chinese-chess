@@ -36,17 +36,6 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::u8string& _m
 	model->model_info = mesh;
 	models.emplace_back(model);
 
-	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	update_meshs(commandbuffer);
-	update_ssbo(commandbuffer);
-
-	// submit commandbuffer
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
 	return model;
 }
 

@@ -31,8 +31,8 @@ private:
 
 	scene_manager* manager = nullptr;
 
-	std::weak_ptr<scene_model> chess_board;
-	std::weak_ptr<scene_model> chess_board_line;
+	std::shared_ptr<scene_model> chess_board;
+	std::shared_ptr<scene_model> chess_board_line;
 
 	std::vector<all_board_state> board_state = { RECORD_LOADER.get_init_all_borad() };
 	std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;

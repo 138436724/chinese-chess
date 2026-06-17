@@ -1,4 +1,4 @@
-#include "tools/font_loader.h"
+﻿#include "tools/font_loader.h"
 #include "tools/string_helper.h"
 #include "ui_manager.h"
 #include "vulkan_core/vulkan_common.h"
@@ -9,14 +9,12 @@
 #include <commdlg.h>
 #endif // _WIN32
 
+constexpr std::u8string_view SCENE_SETTING = u8"场景设置";
+constexpr std::u8string_view SCENE_MANAGER = u8"场景管理";
 constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
-constexpr std::u8string_view LIGHT_DIRECTION = u8"平行光方向";
-constexpr std::u8string_view LIGHT_COLOR = u8"平行光颜色";
-
+constexpr std::u8string_view AMBIENT_COLOR = u8"环境光颜色";
 constexpr std::u8string_view CAMERA_TYPE = u8"摄像机类型";
 constexpr std::u8string_view CAMERA_POSITION = u8"摄像机位置";
-
-constexpr std::u8string_view CHESS_RECORD = u8"象棋棋谱";
 
 void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
@@ -26,6 +24,9 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 
 	chess_manager = std::make_unique<ui_record>();
 	chess_manager->create(manager);
+
+	light_manager = std::make_unique<ui_light>();
+	light_manager->create(manager);
 
 
 	IMGUI_CHECKVERSION();
@@ -104,11 +105,12 @@ void ui_manager::update()
 
 	//ImGui::ShowDemoWindow(&show_demo_window);
 
-	ImGui::Begin(reinterpret_cast<const char*>(CHESS_RECORD.data()), &show_demo_window);
+	ImGui::Begin(reinterpret_cast<const char*>(SCENE_SETTING.data()), &show_demo_window);
 
 	ray_tracing_ui();
 	camera_ui();
 	chess_manager->update();
+	light_manager->update();
 
 	ImGui::End();
 
@@ -174,19 +176,16 @@ vulkan_image& ui_manager::get_render_image() noexcept
 
 void ui_manager::ray_tracing_ui() noexcept
 {
+	ImGui::SeparatorText(reinterpret_cast<const char*>(SCENE_MANAGER.data()));
+
 	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
 	{
 		manager->set_use_ray_tracing(use_ray_tracing);
 	}
 
-	if (ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_direction)))
+	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(AMBIENT_COLOR.data()), glm::value_ptr(ambient_color)))
 	{
-		manager->set_light_direction(light_direction);
-	}
-
-	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_color)))
-	{
-		manager->set_light_color(light_color);
+		manager->set_ambient_color(ambient_color);
 	}
 }
 

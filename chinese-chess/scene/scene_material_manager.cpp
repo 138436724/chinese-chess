@@ -72,7 +72,6 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	material->alpha_map = font_image;
 	materials.emplace_back(material);
 
-	update_ssbo(commandbuffer);
 
 	// commandbuffer submit
 	commandbuffer.end_record();

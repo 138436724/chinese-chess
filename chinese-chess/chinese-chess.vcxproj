@@ -157,6 +157,7 @@
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
+    <ClCompile Include="ui\ui_light.cpp" />
     <ClCompile Include="ui\ui_record.cpp" />
     <ClCompile Include="ui\ui_manager.cpp" />
     <ClCompile Include="vulkan_core\vulkan_acceleration_structure.cpp" />
@@ -188,6 +189,7 @@
     <ClInclude Include="tools\record_loader.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
+    <ClInclude Include="ui\ui_light.h" />
     <ClInclude Include="ui\ui_record.h" />
     <ClInclude Include="ui\ui_manager.h" />
     <ClInclude Include="vulkan_core\vulkan_acceleration_structure.h" />
@@ -204,6 +206,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang" />
+    <None Include="resources\shaders\lighting.slang" />
     <None Include="resources\shaders\rasterization.slang" />
     <None Include="resources\shaders\ray_tracing.slang" />
     <None Include="resources\shaders\scene_brdflut.slang" />

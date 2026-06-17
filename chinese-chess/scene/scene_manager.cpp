@@ -23,6 +23,7 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 
 	material_manager = std::make_unique<scene_material_manager>(app);
 	model_manager = std::make_unique<scene_model_manager>(app, material_manager.get());
+	light_manager = std::make_unique<scene_light_manager>(app);
 
 
 	// create sampler
@@ -82,6 +83,7 @@ void scene_manager::update()
 	is_dirty = false;
 	material_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 	model_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
+	light_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 
 	update_rasterization();
 	update_ray_tracing();
@@ -112,6 +114,7 @@ void scene_manager::destroy()
 {
 	material_manager->clear();
 	model_manager->clear();
+	light_manager->clear();
 }
 
 void scene_manager::need_update() noexcept
@@ -127,6 +130,7 @@ std::shared_ptr<scene_model> scene_manager::create_model(const std::u8string& _m
 
 void scene_manager::remove_model(const std::weak_ptr<scene_model>& _model) noexcept
 {
+	is_dirty = true;
 	model_manager->remove(_model);
 }
 
@@ -138,25 +142,26 @@ std::shared_ptr<scene_material> scene_manager::create_material(const std::wstrin
 
 void scene_manager::remove_material(const std::weak_ptr<scene_material>& _material) noexcept
 {
+	is_dirty = true;
 	material_manager->remove(_material);
+}
+
+std::shared_ptr<scene_light> scene_manager::create_light(light_type _type) noexcept
+{
+	is_dirty = true;
+	return light_manager->create(_type);
+}
+
+void scene_manager::remove_light(const std::weak_ptr<scene_light>& _light) noexcept
+{
+	is_dirty = true;
+	light_manager->remove(_light);
 }
 
 void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
 {
 	is_dirty = true;
 	use_ray_tracing = _use_ray_tracing;
-}
-
-void scene_manager::set_light_direction(const glm::vec3& _direction) noexcept
-{
-	is_dirty = true;
-	light_direction = glm::normalize(_direction);
-}
-
-void scene_manager::set_light_color(const glm::vec3& _color) noexcept
-{
-	is_dirty = true;
-	light_color = _color;
 }
 
 void scene_manager::set_ambient_color(const glm::vec3& _color) noexcept
@@ -353,7 +358,8 @@ void scene_manager::create_ray_tracing()
 		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
 		vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
 		vk::DescriptorSetLayoutBinding(3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
-		vk::DescriptorSetLayoutBinding(4, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eAll, nullptr)
+		vk::DescriptorSetLayoutBinding(4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
+		vk::DescriptorSetLayoutBinding(5, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eAll, nullptr),
 	};
 
 	vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant));
@@ -452,7 +458,7 @@ void scene_manager::update_ray_tracing()
 	std::array pool_size = {
 		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, 2),
 		vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, 2),
-		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 4),
+		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 6),
 		vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 2048)
 	};
 
@@ -484,13 +490,16 @@ void scene_manager::update_ray_tracing()
 			vk::DescriptorBufferInfo material_buffer_info(material_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
 			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 3, {}, vk::DescriptorType::eStorageBuffer, {}, material_buffer_info));
 
+			vk::DescriptorBufferInfo light_buffer_info(light_manager->get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
+			write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 4, {}, vk::DescriptorType::eStorageBuffer, {}, light_buffer_info));
+
 			std::array sampler = { *image_sampler };
 			auto material_sets = material_manager->get_descriptor_info(sampler)
 				| std::views::enumerate
 				| std::views::transform([&descriptor_set](const auto& _pair)
 					{
 						const auto& [index, image_info] = _pair;
-						return vk::WriteDescriptorSet(descriptor_set, 4, static_cast<uint32_t>(index), vk::DescriptorType::eCombinedImageSampler, image_info, {});
+						return vk::WriteDescriptorSet(descriptor_set, 5, static_cast<uint32_t>(index), vk::DescriptorType::eCombinedImageSampler, image_info, {});
 					});
 			std::ranges::move(material_sets, std::back_inserter(write_sets));
 
@@ -510,9 +519,8 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	scene_manager::push_constant pc{
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
-		light_direction,
-		light_color,
 		ambient_color,
+		static_cast<uint32_t>(light_manager->get_lights().size()),
 		rt_frame_index,
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(rt_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_manager::push_constant), &pc));

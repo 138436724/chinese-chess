@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <ranges>
 
+constexpr std::u8string_view RECORDS_MANAGER = u8"棋局管理";
 constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";
 constexpr std::u8string_view LOAD_RECORDS = u8"加载棋谱";
 constexpr std::u8string_view LAST_STEP = u8"上一步";
@@ -18,15 +19,15 @@ void ui_record::create(scene_manager* _manager)
 	chess_board_material->foreground_color = glm::vec3(0., 0., 0.);
 
 	chess_board = manager->create_model(u8"chess_board.glb");
-	chess_board.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
-	chess_board.lock()->custom_index = 0;
-	chess_board.lock()->material = std::move(chess_board_material);
+	chess_board->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
+	chess_board->custom_index = 0;
+	chess_board->material = std::move(chess_board_material);
 
 
 	// create board line
 	chess_board_line = manager->create_model(u8"chess_board_line.glb");
-	chess_board_line.lock()->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
-	chess_board_line.lock()->custom_index = 1;
+	chess_board_line->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
+	chess_board_line->custom_index = 1;
 
 
 	// create all pieces and all materials
@@ -62,6 +63,8 @@ void ui_record::create(scene_manager* _manager)
 
 void ui_record::update() noexcept
 {
+	ImGui::SeparatorText(reinterpret_cast<const char*>(RECORDS_MANAGER.data()));
+
 	if (ImGui::Button(reinterpret_cast<const char*>(LOAD_RECORDS.data())))
 	{
 		std::filesystem::path file_path;

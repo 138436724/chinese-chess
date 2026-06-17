@@ -26,16 +26,6 @@ std::shared_ptr<scene_light> scene_light_manager::create(light_type _type) noexc
 	}
 	lights.push_back(light);
 
-	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	update_ssbo(commandbuffer);
-
-	// submit commandbuffer
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
 	return light;
 }
 
@@ -80,6 +70,11 @@ const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
 	return ssbo;
 }
 
+const std::vector<std::shared_ptr<scene_light>>& scene_light_manager::get_lights() const noexcept
+{
+    return lights;
+}
+
 void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	if (!lights.empty())
@@ -91,25 +86,25 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 					{
 					case light_type::directional:
 						return light_data{
-							.active_type = static_cast<uint32_t>(p->active_type),
 							.color = std::get<directional_light>(p->light).color,
-							.intensity = std::get<directional_light>(p->light).intensity,
+							.active_type = static_cast<uint32_t>(p->active_type),
 							.direction = std::get<directional_light>(p->light).direction,
+							.intensity = std::get<directional_light>(p->light).intensity,
 						};
 					case light_type::point:
 						return light_data{
-							.active_type = static_cast<uint32_t>(p->active_type),
 							.color = std::get<point_light>(p->light).color,
+							.active_type = static_cast<uint32_t>(p->active_type),
 							.intensity = std::get<point_light>(p->light).intensity,
 							.position = std::get<point_light>(p->light).position,
 							.range = std::get<point_light>(p->light).range,
 						};
 					case light_type::spot:
 						return light_data{
-							.active_type = static_cast<uint32_t>(p->active_type),
 							.color = std::get<spot_light>(p->light).color,
-							.intensity = std::get<spot_light>(p->light).intensity,
+							.active_type = static_cast<uint32_t>(p->active_type),
 							.direction = std::get<spot_light>(p->light).direction,
+							.intensity = std::get<spot_light>(p->light).intensity,
 							.position = std::get<spot_light>(p->light).position,
 							.range = std::get<spot_light>(p->light).range,
 							.inner_cone_angle = std::get<spot_light>(p->light).inner_cone_angle,
@@ -120,10 +115,10 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 					}
 
 					return light_data{
-						.active_type = static_cast<uint32_t>(light_type::directional),
 						.color = glm::vec3(1.f),
-						.intensity = 1.f,
+						.active_type = static_cast<uint32_t>(light_type::directional),
 						.direction = glm::vec3(0.f, -1.f, 0.f),
+						.intensity = 1.f,
 					};
 				})
 			| std::ranges::to<std::vector>();
