@@ -27,8 +27,10 @@ struct model_data
 struct material_data
 {
     float3 background_color;
-    float3 foreground_color;
     uint32_t texture_index;
+    float3 foreground_color;
+    float roughness;
+    float metallic;
 };
 
 [[vk::push_constant]]
@@ -171,9 +173,13 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
 
     // Get material color
     float3 material_color = float3(0.f, 0.f, 0.f); // default
+    float material_roughness = 0.5f;
+    float material_metallic = 0.0f;
     if (now_model.material_index != 0xFFFFFFFFu)
     {
         material_data now_material = materials[now_model.material_index];
+        material_roughness = now_material.roughness;
+        material_metallic = now_material.metallic;
         if (now_material.texture_index != 0xFFFFFFFFu)
         {
             Sampler2D now_texture = samplers[now_material.texture_index];
@@ -187,8 +193,12 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     }
 
     // ===== Direct lighting: NEE（Next Event Estimation）多光源直接光照 =====
-    // 对每个灯光做重要性采样 + 阴影光线追踪
-    // 物理 Lambertian: Lo = ambient + Σ (Li × albedo/π × NdotL)
+    // Cook-Torrance: Lo = Σ Li × (diffuse + specular) × NdotL
+    float3 V = normalize(WorldRayOrigin() - world_position); // 视线方向（从命中点指向摄像机/上一弹射点）
+    float3 F0 = lerp(float3(0.04f), material_color, material_metallic); // Fresnel 基础反射率
+    float NdotV = max(dot(world_normal, V), 0.001f);
+    float3 kS = f_schlick(F0, NdotV); // Fresnel 项
+
     float3 direct_lighting = float3(0.f);
     for (uint li = 0; li < push_const.light_count; li++)
     {
@@ -201,8 +211,11 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
         float3 shadow_origin = world_position + world_normal * SHADOW_EPSILON;
         bool is_shadowed = trace_shadow_ray(top_level_acceleration_structure, shadow_origin, ls.direction, ls.distance, payload.seed);
         if (is_shadowed) continue;
-        // Lambertian: Li × (albedo/π) × NdotL
-        direct_lighting += ls.color * evaluate_lambertian(material_color) * NdotL;
+        // 漫反射 lobe（Lambertian，被金属度和 Fresnel 抑制）
+        float3 diffuse = (float3(1.0f) - kS) * (1.0f - material_metallic) * material_color * INV_PI;
+        // 镜面反射 lobe（GGX Cook-Torrance）
+        float3 specular = evaluate_ggx(F0, material_roughness, world_normal, V, ls.direction);
+        direct_lighting += ls.color * (diffuse + specular) * NdotL;
     }
     payload.color += payload.throughput * direct_lighting;
 

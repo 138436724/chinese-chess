@@ -1,4 +1,4 @@
-#include "scene_material_manager.h"
+﻿#include "scene_material_manager.h"
 #include "tools/font_loader.h"
 #include <ranges>
 
@@ -214,8 +214,10 @@ void scene_material_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) n
 				{
 					return material_data{
 						.background_color = p->background_color,
+						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
 						.foreground_color = p->foreground_color,
-						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max())
+						.roughness = p->roughness,
+						.metallic = p->metallic
 					};
 				})
 			| std::ranges::to<std::vector>();

@@ -220,14 +220,116 @@ float pdf_lambertian(float3 N, float3 L)
 }
 
 // ---- 统一 BRDF 评估（按 brdf_type 调度） ----
+// ============================================================================
+// GGX / Cook-Torrance 微面元 BRDF（高光）
+// ============================================================================
+
+// ---- GGX/Trowbridge-Reitz 法线分布函数 ----
+float d_ggx(float NdotH, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 * INV_PI / max(denom * denom, 1e-5);
+}
+
+// ---- Smith 几何遮蔽函数（Schlick-GGX 近似） ----
+float g_schlick_ggx(float NdotV, float roughness)
+{
+    float a = roughness * roughness;
+    float k = a / 2.0;
+    return NdotV / max(NdotV * (1.0 - k) + k, 1e-5);
+}
+
+float g_smith(float NdotV, float NdotL, float roughness)
+{
+    return g_schlick_ggx(NdotV, roughness) * g_schlick_ggx(NdotL, roughness);
+}
+
+// ---- Fresnel-Schlick ----
+float3 f_schlick(float3 F0, float VdotH)
+{
+    return F0 + (float3(1.0) - F0) * pow(max(1.0 - VdotH, 0.0), 5.0);
+}
+
+// ---- GGX BRDF 评估 ----
+// 返回 fr = D*G*F / (4*NdotV*NdotL)，调用方需自行乘以 NdotL 和 Li
+float3 evaluate_ggx(float3 F0, float roughness, float3 N, float3 V, float3 L)
+{
+    float3 H = normalize(V + L);
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+
+    if (NdotL <= 0.0 || NdotV <= 0.0) return float3(0.0);
+
+    float D = d_ggx(NdotH, roughness);
+    float G = g_smith(NdotV, NdotL, roughness);
+    float3 F = f_schlick(F0, max(dot(V, H), 0.0));
+
+    return D * G * F / max(4.0 * NdotV * NdotL, 0.001);
+}
+
+// ---- GGX 重要性采样（VNDF 采样） ----
+float3 sample_ggx(float3 V, float roughness, float3 N, inout uint seed)
+{
+    float2 r = random_float2(seed);
+    float a = roughness * roughness;
+
+    // 各项同性 GGX 半球采样
+    float phi = 2.0 * PI * r.x;
+    float cos_theta = sqrt(max(0.0, (1.0 - r.y) / (1.0 + (a * a - 1.0) * r.y)));
+    float sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
+    float3 H_local = float3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+
+    // 构建切线空间（以 N 为 Z 轴）
+    float3 T, B;
+    if (abs(N.x) > abs(N.y))
+        T = normalize(cross(N, float3(0.0, 1.0, 0.0)));
+    else
+        T = normalize(cross(N, float3(1.0, 0.0, 0.0)));
+    B = cross(N, T);
+
+    float3 H = T * H_local.x + B * H_local.y + N * H_local.z;
+    return normalize(reflect(-V, H));
+}
+
+// ---- GGX BRDF 采样（返回 brdf_sample） ----
+brdf_sample sample_ggx_brdf(float3 albedo, float3 F0, float roughness, float3 N, float3 V, inout uint seed)
+{
+    brdf_sample bs;
+    float3 L = sample_ggx(V, roughness, N, seed);
+    bs.direction = L;
+
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0)
+    {
+        bs.value = float3(0.0);
+        bs.pdf = 0.0;
+        return bs;
+    }
+
+    float3 H = normalize(V + L);
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotH = max(dot(N, H), 0.0);
+    float VdotH = max(dot(V, H), 0.001);
+
+    // PDF = D * NdotH / (4 * VdotH)
+    bs.pdf = d_ggx(NdotH, roughness) * NdotH / max(4.0 * VdotH, 0.001);
+    // value = f_r * NdotL / pdf
+    bs.value = evaluate_ggx(F0, roughness, N, V, L) * NdotL / max(bs.pdf, 0.001);
+
+    return bs;
+}
+
 float3 evaluate_brdf(uint type, float3 albedo, float3 N, float3 V, float3 L, float roughness)
 {
     switch (type)
     {
     case brdf_type::lambertian:
         return evaluate_lambertian(albedo);
-    // case BrdfType_GGX:
-    //     return evaluate_ggx(albedo, N, V, L, roughness);
+    case brdf_type::ggx:
+        return evaluate_ggx(albedo, roughness, N, V, L);
     default:
         return evaluate_lambertian(albedo);
     }

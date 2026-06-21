@@ -22,8 +22,10 @@ struct model_data
 struct material_data
 {
     float3 background_color;
-    float3 foreground_color;
     uint32_t texture_index;
+    float3 foreground_color;
+    float roughness;
+    float metallic;
 };
 
 [[vk::push_constant]]
