@@ -72,7 +72,7 @@ const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
 
 const std::vector<std::shared_ptr<scene_light>>& scene_light_manager::get_lights() const noexcept
 {
-    return lights;
+	return lights;
 }
 
 void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept
@@ -88,7 +88,7 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 						return light_data{
 							.color = std::get<directional_light>(p->light).color,
 							.active_type = static_cast<uint32_t>(p->active_type),
-							.direction = std::get<directional_light>(p->light).direction,
+							.direction = glm::normalize(std::get<directional_light>(p->light).direction),
 							.intensity = std::get<directional_light>(p->light).intensity,
 						};
 					case light_type::point:
@@ -103,7 +103,7 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 						return light_data{
 							.color = std::get<spot_light>(p->light).color,
 							.active_type = static_cast<uint32_t>(p->active_type),
-							.direction = std::get<spot_light>(p->light).direction,
+							.direction = glm::normalize(std::get<spot_light>(p->light).direction),
 							.intensity = std::get<spot_light>(p->light).intensity,
 							.position = std::get<spot_light>(p->light).position,
 							.range = std::get<spot_light>(p->light).range,

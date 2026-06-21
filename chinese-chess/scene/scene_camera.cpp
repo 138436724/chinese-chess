@@ -42,7 +42,7 @@ void scene_camera::set_direction(const glm::vec3& _direction) noexcept
 
 void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 {
-	world_up = _world_up;
+	world_up = glm::normalize(_world_up);
 	update_camera_axis();
 }
 

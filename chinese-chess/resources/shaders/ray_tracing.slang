@@ -82,9 +82,12 @@ void rayGenMain()
     // Set ray tracing flags (0 = no special flags)
     const uint rayFlags = 0;
 
-    // Convert pixel coordinates to normalized device coordinates (NDC)
-    // Range: [-1,1] for both x and y
-    const float2 clipCoords = launchID / launchSize * 2.f - 1.f;
+    // 初始化 RNG 种子——必须在子像素抖动之前，因为 random_float2 需要种子
+    uint2 pixelIndex = DispatchRaysIndex().xy;
+    uint seed = wang_hash(pixelIndex.x * 1664525u + pixelIndex.y * 1013904223u + push_const.frame_index * 0x9e3779b9u);
+
+    // 子像素抖动：每帧随机偏移 [0,1) 像素，时域累积实现抗锯齿
+    const float2 clipCoords = (launchID + random_float2(seed)) / launchSize * 2.f - 1.f;
 
     // 近平面深度 = 0，远平面深度 = 1 (Vulkan 的 NDC 深度范围)
     float4 nearPointV = mul(push_const.proj_inv_matrix, float4(clipCoords, 0.f, 1.f));
@@ -104,10 +107,6 @@ void rayGenMain()
     ray.Direction = normalize(worldFar - worldNear);
     ray.TMin = 0.001f; // Minimum distance to avoid self-intersection
     ray.TMax = 1e23f;  // Maximum distance (infinite for primary rays)
-
-    // Seed RNG using pixel index, frame index, and a hash
-    uint2 pixelIndex = DispatchRaysIndex().xy;
-    uint seed = wang_hash(pixelIndex.x * 1664525u + pixelIndex.y * 1013904223u + push_const.frame_index * 0x9e3779b9u);
 
     // Initialize ray payload
     HitPayload payload;

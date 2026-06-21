@@ -390,6 +390,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 				bool has_all_required_features = features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
+					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64
 					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
@@ -459,7 +460,7 @@ void vulkan_application::create_device_and_queue()
 		vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
 		/*vk::PhysicalDeviceRayQueryFeaturesKHR,*/ vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> feature_pnext_chain(
-			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True).setMultiDrawIndirect(vk::True)),
+			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True).setMultiDrawIndirect(vk::True).setShaderInt64(vk::True)),
 			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),

@@ -2,12 +2,13 @@
 #include <glm/gtc/type_ptr.hpp>
 
 constexpr std::u8string_view LIGHT_MANAGER = u8"灯光管理";
+constexpr std::u8string_view LIGHT_TYPE = u8"灯光类型";
 constexpr std::u8string_view DIRECTIONAL_LIGHT = u8"平行光";
 constexpr std::u8string_view POINT_LIGHT = u8"点光源";
 constexpr std::u8string_view SPOT_LIGHT = u8"聚光灯";
-constexpr std::u8string_view UNKNOW_LIGHT = u8"未知灯光";
 constexpr std::u8string_view ADD_LIGHT = u8"添加灯光";
 constexpr std::u8string_view DELETE_LIGHT = u8"删除灯光";
+constexpr std::u8string_view NO_LIGHT = u8"无灯光";
 
 void ui_light::create(scene_manager* _manager)
 {
@@ -32,24 +33,20 @@ void ui_light::update() noexcept
 		reinterpret_cast<const char*>(POINT_LIGHT.data()),
 		reinterpret_cast<const char*>(SPOT_LIGHT.data())
 	};
-	ImGui::Combo(reinterpret_cast<const char*>(u8"##灯光类型"), &add_light_type, all_light_types.data(), static_cast<int>(all_light_types.size()));
+	ImGui::Combo(reinterpret_cast<const char*>(LIGHT_TYPE.data()), &add_light_type, all_light_types.data(), static_cast<int>(all_light_types.size()));
 	ImGui::SameLine();
 	if (ImGui::Button(reinterpret_cast<const char*>(ADD_LIGHT.data())))
 	{
 		lights.push_back(manager->create_light(static_cast<light_type>(add_light_type)));
 	}
 
+	std::optional<size_t> delete_index = std::nullopt;
 	for (size_t i = 0; i < lights.size(); ++i)
 	{
-		auto& light_ptr = lights[i];
-		if (!light_ptr)
-		{
-			continue;
-		}
-
 		ImGui::PushID(static_cast<int>(i));
 
-		// 灯光标题行
+		auto& light_ptr = lights[i];
+
 		std::string header_label;
 		switch (light_ptr->active_type)
 		{
@@ -63,75 +60,75 @@ void ui_light::update() noexcept
 			header_label = reinterpret_cast<const char*>(SPOT_LIGHT.data());
 			break;
 		default:
-			header_label = reinterpret_cast<const char*>(UNKNOW_LIGHT.data());
-			break;
+			continue;
 		}
-		header_label += " " + std::to_string(i) + "###Light" + std::to_string(i);
+		header_label = std::format("{} {}", header_label, i);
 
 		bool expanded = (static_cast<int>(i) == selected_light);
-		if (ImGui::CollapsingHeader(header_label.c_str(), expanded ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+		if (ImGui::CollapsingHeader(header_label.c_str(), expanded ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None))
 		{
-			if (static_cast<int>(i) != selected_light) selected_light = static_cast<int>(i);
+			if (static_cast<int>(i) != selected_light)
+			{
+				selected_light = static_cast<int>(i);
+			}
 
 			bool modified = false;
-
-			// 根据灯光类型访问对应字段
-			std::visit([&](auto& light_data) {
-				using T = std::decay_t<decltype(light_data)>;
-
-				// 颜色和强度（所有类型共有）
-				modified |= ImGui::ColorEdit3("颜色", glm::value_ptr(light_data.color));
-				modified |= ImGui::DragFloat("强度", &light_data.intensity, 0.1f, 0.0f, 100.0f);
-
-				if constexpr (std::is_same_v<T, directional_light>)
+			std::visit([&](auto& light_data)
 				{
-					modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f, -1.0f, 1.0f);
-					if (modified)
-						light_data.direction = glm::normalize(light_data.direction);
-				}
-				else if constexpr (std::is_same_v<T, point_light>)
-				{
-					modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
-					modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
-				}
-				else if constexpr (std::is_same_v<T, spot_light>)
-				{
-					modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f, -1.0f, 1.0f);
-					if (modified)
-						light_data.direction = glm::normalize(light_data.direction);
-					modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
-					modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
-					modified |= ImGui::SliderAngle("内锥角", &light_data.inner_cone_angle, 1.0f, 89.0f);
-					modified |= ImGui::SliderAngle("外锥角", &light_data.outer_cone_angle, 1.0f, 90.0f);
-					// 确保 inner < outer
-					if (light_data.inner_cone_angle >= light_data.outer_cone_angle)
-						light_data.inner_cone_angle = light_data.outer_cone_angle - glm::radians(1.0f);
-				}
+					using T = std::decay_t<decltype(light_data)>;
+
+					modified |= ImGui::ColorEdit3("颜色", glm::value_ptr(light_data.color));
+					modified |= ImGui::DragFloat("强度", &light_data.intensity, 0.1f, 0.0f, 100.0f);
+
+					if constexpr (std::is_same_v<T, directional_light>)
+					{
+						modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f);
+					}
+					else if constexpr (std::is_same_v<T, point_light>)
+					{
+						modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
+						modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
+					}
+					else if constexpr (std::is_same_v<T, spot_light>)
+					{
+						modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f);
+						modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
+						modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
+						modified |= ImGui::SliderAngle("内锥角", &light_data.inner_cone_angle, glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
+						modified |= ImGui::SliderAngle("外锥角", &light_data.outer_cone_angle, glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
+					}
 				}, light_ptr->light);
 
 			if (modified)
+			{
 				manager->need_update();
+			}
 
-			// 删除按钮
 			ImGui::Spacing();
 			if (ImGui::Button(reinterpret_cast<const char*>(DELETE_LIGHT.data())))
 			{
-				manager->remove_light(light_ptr);
-				if (selected_light >= static_cast<int>(lights.size()) - 1)
-					selected_light = -1;
+				delete_index = i;
 			}
 		}
 		else
 		{
 			if (static_cast<int>(i) == selected_light)
+			{
 				selected_light = -1;
+			}
 		}
 
 		ImGui::PopID();
 	}
 
+	if (delete_index.has_value())
+	{
+		manager->remove_light(lights.at(delete_index.value()));
+		std::erase_if(lights, [&](const auto& p) { return p == lights.at(delete_index.value()); });
+	}
+
 	if (lights.empty())
 	{
-		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "（无灯光，场景将仅使用环境光）");
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), reinterpret_cast<const char*>(NO_LIGHT.data()));
 	}
 }
