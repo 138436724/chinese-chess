@@ -1,4 +1,4 @@
-#pragma once
+import utils;
 
 // ============================================================================
 // lighting.slang — 光线追踪灯光处理模块
@@ -54,34 +54,6 @@ struct shadow_payload
 {
     bool is_shadowed;
 };
-
-// ---- 全局常量 ----
-static const uint MAX_LIGHTS = 64;
-static const float SHADOW_EPSILON = 0.001f;
-static const float PI = 3.14159265358979323846;
-static const float INV_PI = 0.31830988618379067154;
-
-// ---- 内部随机数辅助函数 ---- 
-uint wang_hash(uint seed)
-{
-    seed = (seed ^ 61) ^ (seed >> 16);
-    seed *= 9;
-    seed = seed ^ (seed >> 4);
-    seed *= 0x27d4eb2d;
-    seed = seed ^ (seed >> 15);
-    return seed;
-}
-
-float random_float(inout uint seed)
-{
-    seed = wang_hash(seed);
-    return float(seed) / float(0xFFFFFFFFu);
-}
-
-float2 random_float2(inout uint seed)
-{
-    return float2(random_float(seed), random_float(seed));
-}
 
 // ---- 半球均匀采样（以法线为中心的切线空间） ----
 float3 sample_hemisphere_uniform(float3 N, inout uint seed)
@@ -196,7 +168,6 @@ light_sample sample_spot_light(light_data light, float3 hit_pos, inout uint seed
     return ls;
 }
 
-// ---- 统一光源采样入口 ----
 // 根据 light.active_type 调度到对应的采样函数
 light_sample sample_light(light_data light, float3 hit_pos, inout uint seed)
 {
@@ -223,14 +194,14 @@ light_sample sample_light(light_data light, float3 hit_pos, inout uint seed)
 // ============================================================================
 
 // ---- Lambertian BRDF 评估 ----
-// 返回 f_r = albedo / π
+// 返回 f_r = albedo / PI
 float3 evaluate_lambertian(float3 albedo)
 {
     return albedo * INV_PI;
 }
 
 // ---- Lambertian BRDF 采样（余弦加权半球） ----
-// 使用重要性采样：pdf = cos_theta / π
+// 使用重要性采样：pdf = cos_theta / PI
 // value = f_r * cos_theta / pdf = albedo
 brdf_sample sample_lambertian(float3 albedo, float3 N, inout uint seed)
 {
@@ -242,7 +213,7 @@ brdf_sample sample_lambertian(float3 albedo, float3 N, inout uint seed)
 }
 
 // ---- Lambertian BRDF PDF ----
-// 给定入射方向 L，返回 pdf(L) = max(cos(N·L), 0) / π
+// 给定入射方向 L，返回 pdf(L) = max(cos(N·L), 0) / PI
 float pdf_lambertian(float3 N, float3 L)
 {
     return max(0.0, dot(N, L)) * INV_PI;

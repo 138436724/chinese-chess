@@ -1,3 +1,4 @@
+#include "tools/model_loader.h"
 #include "vulkan_acceleration_structure.h"
 #include "vulkan_common.h"
 

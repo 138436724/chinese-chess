@@ -40,14 +40,14 @@ private:
 	float right = 10.f;
 	float bottom = -10.f;
 	float top = 10.f;
+	float orthographic_near = 0.1f;
+	float orthographic_far = 100.f;
 
 	// perspective parameters
-	float fov_y = glm::radians(45.f);
+	float fov_y = glm::radians(90.f);
 	float aspect = 16.f / 9.f;
-
-	// shared parameters
-	float near = 0.1f;
-	float far = 100.f;
+	float perspective_near = 0.1f;
+	float perspective_far = 100.f;
 
 	glm::vec3 position = glm::vec3(0.f);
 	glm::vec3 direction = glm::vec3(0.f, 0.f, -1.f);
@@ -55,6 +55,6 @@ private:
 	glm::vec3 right_axis = glm::normalize(glm::cross(direction, world_up));
 	glm::vec3 up_axis = glm::normalize(glm::cross(right_axis, direction));
 
-	glm::mat4 projection_matrix = glm::ortho(left, right, bottom, top, near, far);
+	glm::mat4 projection_matrix = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);
 	glm::mat4 view_matrix = glm::lookAt(position, position + direction, up_axis);
 };

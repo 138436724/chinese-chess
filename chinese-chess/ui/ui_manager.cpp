@@ -12,15 +12,15 @@
 constexpr std::u8string_view SCENE_SETTING = u8"场景设置";
 constexpr std::u8string_view SCENE_MANAGER = u8"场景管理";
 constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
-constexpr std::u8string_view AMBIENT_COLOR = u8"环境光颜色";
-constexpr std::u8string_view CAMERA_TYPE = u8"摄像机类型";
-constexpr std::u8string_view CAMERA_POSITION = u8"摄像机位置";
 
 void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
 	app = _app;
 
 	manager = _manager;
+
+	camera_manager = std::make_unique<ui_camera>();
+	camera_manager->create(manager);
 
 	chess_manager = std::make_unique<ui_record>();
 	chess_manager->create(manager);
@@ -93,6 +93,8 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+
+	camera_manager->resize(_width, _height);
 }
 
 void ui_manager::update()
@@ -108,7 +110,7 @@ void ui_manager::update()
 	ImGui::Begin(reinterpret_cast<const char*>(SCENE_SETTING.data()), &show_demo_window);
 
 	ray_tracing_ui();
-	camera_ui();
+	camera_manager->update();
 	chess_manager->update();
 	light_manager->update();
 
@@ -181,23 +183,5 @@ void ui_manager::ray_tracing_ui() noexcept
 	if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
 	{
 		manager->set_use_ray_tracing(use_ray_tracing);
-	}
-
-	if (ImGui::ColorEdit3(reinterpret_cast<const char*>(AMBIENT_COLOR.data()), glm::value_ptr(ambient_color)))
-	{
-		manager->set_ambient_color(ambient_color);
-	}
-}
-
-void ui_manager::camera_ui() noexcept
-{
-	if (ImGui::Checkbox(reinterpret_cast<const char*>(CAMERA_TYPE.data()), &camera_type))
-	{
-		manager->set_camera_projection_type(static_cast<projection_type>(camera_type));
-	}
-
-	if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_POSITION.data()), glm::value_ptr(camera_position)))
-	{
-		manager->set_camera_position(camera_position);
 	}
 }

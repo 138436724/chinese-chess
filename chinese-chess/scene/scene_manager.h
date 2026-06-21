@@ -29,12 +29,8 @@ public:
 	void remove_light(const std::weak_ptr<scene_light>& _light) noexcept;
 
 	void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
-	void set_ambient_color(const glm::vec3& _color) noexcept;
-	void set_camera_projection_type(projection_type _type) noexcept;
-	void set_camera_position(const glm::vec3& _position) noexcept;
-	void set_camera_direction(const glm::vec3& _direction) noexcept;
-	void set_camera_world_up(const glm::vec3& _world_up) noexcept;
 
+	scene_camera& get_active_camera() noexcept;
 	vulkan_image& get_render_image() noexcept;
 
 private:
@@ -54,15 +50,13 @@ private:
 	{
 		alignas(16) glm::mat4x4 proj_or_inv_matrix;
 		alignas(16) glm::mat4x4 view_or_inv_matrix;
-		alignas(16) glm::vec3 ambient_color;
-		uint32_t light_count = 0;
+		alignas(16) uint32_t light_count = 0;
 		uint32_t frame_index = 0;
 	};
 
 	bool is_dirty = true;
 
 	bool use_ray_tracing = true;
-	glm::vec3 ambient_color = glm::vec3(0.15f, 0.15f, 0.2f); // low ambient for shadowed areas
 
 	uint32_t width = 0;
 	uint32_t height = 0;

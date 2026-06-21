@@ -57,11 +57,6 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	width = _width;
 	height = _height;
 
-	// camera projection
-	constexpr float camera_height = 1.3f;
-	active_camera.set_perspective_projection(glm::radians(90.f), static_cast<float>(width / height), 0.01f, 100.f);
-	active_camera.set_orthographic_projection(-camera_height * width / height, camera_height * width / height, -camera_height, camera_height, 0.01f, 100.f);
-
 	is_dirty = true;
 
 	// render_output
@@ -164,31 +159,9 @@ void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
 	use_ray_tracing = _use_ray_tracing;
 }
 
-void scene_manager::set_ambient_color(const glm::vec3& _color) noexcept
+scene_camera& scene_manager::get_active_camera() noexcept
 {
-	is_dirty = true;
-	ambient_color = _color;
-}
-
-void scene_manager::set_camera_projection_type(projection_type _type) noexcept
-{
-	is_dirty = true;
-	active_camera.set_projection_type(_type);
-}
-
-void scene_manager::set_camera_position(const glm::vec3& _position) noexcept
-{
-	active_camera.set_position(_position);
-}
-
-void scene_manager::set_camera_direction(const glm::vec3& _direction) noexcept
-{
-	active_camera.set_direction(_direction);
-}
-
-void scene_manager::set_camera_world_up(const glm::vec3& _world_up) noexcept
-{
-	active_camera.set_world_up(_world_up);
+	return active_camera;
 }
 
 vulkan_image& scene_manager::get_render_image() noexcept
@@ -519,7 +492,6 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	scene_manager::push_constant pc{
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
-		ambient_color,
 		static_cast<uint32_t>(light_manager->get_lights().size()),
 		rt_frame_index,
 	};

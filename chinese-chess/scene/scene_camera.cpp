@@ -7,8 +7,8 @@ void scene_camera::set_orthographic_projection(float _left, float _right, float 
 	right = _right;
 	bottom = _bottom;
 	top = _top;
-	near = _near;
-	far = _far;
+	orthographic_near = _near;
+	orthographic_far = _far;
 	update_camera_matrix();
 }
 
@@ -17,8 +17,8 @@ void scene_camera::set_perspective_projection(float _fov_y, float _aspect, float
 	active_type = projection_type::perspective;
 	fov_y = _fov_y;
 	aspect = _aspect;
-	near = _near;
-	far = _far;
+	perspective_near = _near;
+	perspective_far = _far;
 	update_camera_matrix();
 }
 
@@ -80,13 +80,13 @@ void scene_camera::update_camera_axis() noexcept
 
 void scene_camera::update_camera_matrix() noexcept
 {
-	if (active_type == projection_type::perspective)
+	if (active_type == projection_type::orthographic)
 	{
-		projection_matrix = glm::perspective(fov_y, aspect, near, far);
+		projection_matrix = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);
 	}
 	else
 	{
-		projection_matrix = glm::ortho(left, right, bottom, top, near, far);
+		projection_matrix = glm::perspective(fov_y, aspect, perspective_near, perspective_far);
 	}
 
 	view_matrix = glm::lookAt(position, position + direction, up_axis);

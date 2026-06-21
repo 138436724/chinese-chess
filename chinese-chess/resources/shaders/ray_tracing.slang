@@ -1,3 +1,4 @@
+import utils;
 import lighting;
 
 struct Vertex
@@ -11,8 +12,7 @@ struct push_constant
 {
     float4x4 proj_inv_matrix;
     float4x4 view_inv_matrix;
-    float3 ambient_color;   // ambient term for shadowed areas
-    uint light_count;       // 灯光数量（0 = 无灯光，仅环境光）
+    uint light_count;       // 灯光数量
     uint frame_index;       // frame counter for progressive rendering and RNG seeding
 };
 
@@ -65,22 +65,12 @@ float3 sample_cosine_hemisphere(float2 uv, float3 normal)
     return normalize(tangent * (sin_theta * cos(phi)) + bitangent * (sin_theta * sin(phi)) + normal * cos_theta);
 }
 
-// 重心坐标插值函数
-__generic<T : IFloat> T interpolate(float2 bary, T v0, T v1, T v2)
-{
-    return T(1.f - bary.x - bary.y) * v0 + T(bary.x) * v1 + T(bary.y) * v2;
-}
-
 float max_component(float3 v)
 {
     return max(max(v.x, v.y), v.z);
 }
 
-// Maximum number of indirect bounces
-static const int MAX_BOUNCES = 8;
-
 // ---- Shader entry points ----
-
 // Ray generation shader - entry point for each pixel
 [shader("raygeneration")]
 void rayGenMain()
@@ -200,7 +190,7 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     // ===== Direct lighting: NEE（Next Event Estimation）多光源直接光照 =====
     // 对每个灯光做重要性采样 + 阴影光线追踪
     // 物理 Lambertian: Lo = ambient + Σ (Li × albedo/π × NdotL)
-    float3 direct_lighting = push_const.ambient_color;
+    float3 direct_lighting = float3(0.f);
     for (uint li = 0; li < push_const.light_count; li++)
     {
         light_data light = lights[li];

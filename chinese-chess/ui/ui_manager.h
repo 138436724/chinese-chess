@@ -2,11 +2,12 @@
 #define GLFW_INCLUDE_VULKAN
 
 #include "scene/scene_manager.h"
+#include "ui_camera.h"
 #include "ui_light.h"
 #include "ui_record.h"
 #include "vulkan_core/vulkan_application.h"
-#include <GLFW/glfw3.h>
 #include <filesystem>
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 
 class ui_manager
@@ -28,12 +29,7 @@ public:
 
 private:
 	void ray_tracing_ui() noexcept;
-	void camera_ui() noexcept;
-
 	bool use_ray_tracing = true;
-	glm::vec3 ambient_color = glm::vec3(1.0f, 0.95f, 0.85f);
-	bool camera_type = static_cast<bool>(projection_type::orthographic);
-	glm::vec3 camera_position = glm::vec3(0.f, 0.f, 0.f);
 
 private:
 	vk::Format color_format = vk::Format::eUndefined;
@@ -47,6 +43,7 @@ private:
 	vulkan_image render_output;
 
 	scene_manager* manager = nullptr;
+	std::unique_ptr<ui_camera> camera_manager = nullptr;
 	std::unique_ptr<ui_record> chess_manager = nullptr;
 	std::unique_ptr<ui_light> light_manager = nullptr;
 

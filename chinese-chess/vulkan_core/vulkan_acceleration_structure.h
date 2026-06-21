@@ -1,6 +1,5 @@
 #pragma once
 
-#include "tools/model_loader.h"
 #include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
 #include <vulkan/vulkan_raii.hpp>
