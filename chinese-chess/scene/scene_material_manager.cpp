@@ -1,4 +1,4 @@
-﻿#include "scene_material_manager.h"
+#include "scene_material_manager.h"
 #include "tools/font_loader.h"
 #include <ranges>
 
@@ -37,7 +37,6 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	}
 	uint32_t all_height = max_bearing_height_up + max_bearing_height_down;
 
-	// todo use RGBA format
 	auto font_image = std::make_shared<vulkan_image>();
 	vk::ImageCreateInfo font_image_info({}, vk::ImageType::e2D, vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo font_view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);

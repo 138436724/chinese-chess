@@ -9,6 +9,13 @@ constexpr std::u8string_view SPOT_LIGHT = u8"聚光灯";
 constexpr std::u8string_view ADD_LIGHT = u8"添加灯光";
 constexpr std::u8string_view DELETE_LIGHT = u8"删除灯光";
 constexpr std::u8string_view NO_LIGHT = u8"无灯光";
+constexpr std::u8string_view LIGHT_COLOR = u8"灯光颜色";
+constexpr std::u8string_view LIGHT_INTENSITY = u8"灯光强度";
+constexpr std::u8string_view LIGHT_DIRECTION = u8"灯光方向";
+constexpr std::u8string_view LIGHT_POSITION = u8"灯光位置";
+constexpr std::u8string_view LIGHT_RANGE = u8"灯光范围";
+constexpr std::u8string_view LIGHT_INNER_CONE = u8"内锥角";
+constexpr std::u8string_view LIGHT_OUTER_CONE = u8"外锥角";
 
 void ui_light::create(scene_manager* _manager)
 {
@@ -34,7 +41,7 @@ void ui_light::update() noexcept
 		reinterpret_cast<const char*>(SPOT_LIGHT.data())
 	};
 	ImGui::Combo(reinterpret_cast<const char*>(LIGHT_TYPE.data()), &add_light_type, all_light_types.data(), static_cast<int>(all_light_types.size()));
-	ImGui::SameLine();
+
 	if (ImGui::Button(reinterpret_cast<const char*>(ADD_LIGHT.data())))
 	{
 		lights.push_back(manager->create_light(static_cast<light_type>(add_light_type)));
@@ -64,38 +71,32 @@ void ui_light::update() noexcept
 		}
 		header_label = std::format("{} {}", header_label, i);
 
-		bool expanded = (static_cast<int>(i) == selected_light);
-		if (ImGui::CollapsingHeader(header_label.c_str(), expanded ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None))
+		if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
 		{
-			if (static_cast<int>(i) != selected_light)
-			{
-				selected_light = static_cast<int>(i);
-			}
-
 			bool modified = false;
 			std::visit([&](auto& light_data)
 				{
 					using T = std::decay_t<decltype(light_data)>;
 
-					modified |= ImGui::ColorEdit3("颜色", glm::value_ptr(light_data.color));
-					modified |= ImGui::DragFloat("强度", &light_data.intensity, 0.1f, 0.0f, 100.0f);
+					modified |= ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_data.color));
+					modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_INTENSITY.data()), &light_data.intensity, 0.1f, 0.0f, 100.0f);
 
 					if constexpr (std::is_same_v<T, directional_light>)
 					{
-						modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f);
+						modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_data.direction), 0.01f);
 					}
 					else if constexpr (std::is_same_v<T, point_light>)
 					{
-						modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
-						modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
+						modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_POSITION.data()), glm::value_ptr(light_data.position), 0.1f);
+						modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_RANGE.data()), &light_data.range, 0.1f, 0.1f, 1000.0f);
 					}
 					else if constexpr (std::is_same_v<T, spot_light>)
 					{
-						modified |= ImGui::DragFloat3("方向", glm::value_ptr(light_data.direction), 0.01f);
-						modified |= ImGui::DragFloat3("位置", glm::value_ptr(light_data.position), 0.1f);
-						modified |= ImGui::DragFloat("范围", &light_data.range, 0.1f, 0.1f, 1000.0f);
-						modified |= ImGui::SliderAngle("内锥角", &light_data.inner_cone_angle, glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
-						modified |= ImGui::SliderAngle("外锥角", &light_data.outer_cone_angle, glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
+						modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()), glm::value_ptr(light_data.direction), 0.01f);
+						modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_POSITION.data()), glm::value_ptr(light_data.position), 0.1f);
+						modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_RANGE.data()), &light_data.range, 0.1f, 0.1f, 1000.0f);
+						modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_INNER_CONE.data()), &light_data.inner_cone_angle, glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
+						modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_OUTER_CONE.data()), &light_data.outer_cone_angle, glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
 					}
 				}, light_ptr->light);
 
@@ -104,17 +105,9 @@ void ui_light::update() noexcept
 				manager->need_update();
 			}
 
-			ImGui::Spacing();
 			if (ImGui::Button(reinterpret_cast<const char*>(DELETE_LIGHT.data())))
 			{
 				delete_index = i;
-			}
-		}
-		else
-		{
-			if (static_cast<int>(i) == selected_light)
-			{
-				selected_light = -1;
 			}
 		}
 

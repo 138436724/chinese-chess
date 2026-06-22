@@ -1,4 +1,4 @@
-﻿#include "tools/font_loader.h"
+#include "tools/font_loader.h"
 #include "tools/string_helper.h"
 #include "ui_manager.h"
 #include "vulkan_core/vulkan_common.h"

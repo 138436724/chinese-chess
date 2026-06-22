@@ -215,32 +215,34 @@ void scene_manager::resize_rasterization()
 
 void scene_manager::update_rasterization()
 {
-	// update draw commands
-	auto draw_commands = model_manager->get_models()
-		| std::views::transform([](const auto& m)
-			{
-				return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(m->model_info->indices.size()), 1, static_cast<uint32_t>(m->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(m->model_info->vertex_offset / sizeof(model_vertex)), 0);
-			})
-		| std::ranges::to<std::vector>();
+	if (!model_manager->get_models().empty())
+	{
+		// update draw commands
+		auto draw_commands = model_manager->get_models()
+			| std::views::transform([](const auto& m)
+				{
+					return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(m->model_info->indices.size()), 1, static_cast<uint32_t>(m->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(m->model_info->vertex_offset / sizeof(model_vertex)), 0);
+				})
+			| std::ranges::to<std::vector>();
 
 
-	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+		// begin a commandbuffer
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
-	raster_draw_commands.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
+		raster_draw_commands.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-	vulkan_buffer draw_commands_staging_buffer;
-	draw_commands_staging_buffer.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		vulkan_buffer draw_commands_staging_buffer;
+		draw_commands_staging_buffer.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	memcpy(draw_commands_staging_buffer.get_buffer_address().hostAddress, draw_commands.data(), draw_commands_size);
-	vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
+		memcpy(draw_commands_staging_buffer.get_buffer_address().hostAddress, draw_commands.data(), draw_commands_size);
+		vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
 
-	// commandbuffer submit
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
+		// commandbuffer submit
+		commandbuffer.end_record();
+		commandbuffer.submit({}, {}, true);
+	}
 
 	// update descriptor pool
 	raster_descriptor_sets.clear();
@@ -388,42 +390,44 @@ void scene_manager::update_ray_tracing()
 {
 	// reset path tracing accumulation
 	rt_frame_index = 0;
-
-	// generate tlas
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
-	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	// create top level acceleration structure
-	auto rt_instances = model_manager->get_models()
-		| std::views::transform([](const auto& m)
-			{
-				return m->get_blas_instance();
-			})
-		| std::ranges::to<std::vector>();
-
-	vk::DeviceSize instance_buffer_size = sizeof(rt_instances.front()) * rt_instances.size();
 	rt_tlas.resize(vulkan_common::MAX_FRAMES_IN_FLIGHT);
-	std::ranges::for_each(rt_tlas, [&](auto& _tlas)
-		{
-			vulkan_buffer instance_staging_buffer;
-			instance_staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-			vulkan_buffer staging_buffer;
-			staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	if (!model_manager->get_models().empty())
+	{
+		// generate tlas
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-			memcpy(staging_buffer.get_buffer_address().hostAddress, rt_instances.data(), instance_buffer_size);
-			vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
+		// create top level acceleration structure
+		auto rt_instances = model_manager->get_models()
+			| std::views::transform([](const auto& m)
+				{
+					return m->get_blas_instance();
+				})
+			| std::ranges::to<std::vector>();
 
-			_tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
+		vk::DeviceSize instance_buffer_size = sizeof(rt_instances.front()) * rt_instances.size();
+		std::ranges::for_each(rt_tlas, [&](auto& _tlas)
+			{
+				vulkan_buffer instance_staging_buffer;
+				instance_staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-			commandbuffer.add_staging_buffer(std::move(instance_staging_buffer));
-			commandbuffer.add_staging_buffer(std::move(staging_buffer));
-		});
+				vulkan_buffer staging_buffer;
+				staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+				memcpy(staging_buffer.get_buffer_address().hostAddress, rt_instances.data(), instance_buffer_size);
+				vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
+
+				_tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
+
+				commandbuffer.add_staging_buffer(std::move(instance_staging_buffer));
+				commandbuffer.add_staging_buffer(std::move(staging_buffer));
+			});
 
 
-	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
-
+		commandbuffer.end_record();
+		commandbuffer.submit({}, {}, true);
+	}
 
 	// update descriptor pool
 	rt_descriptor_sets.clear();
@@ -448,7 +452,7 @@ void scene_manager::update_ray_tracing()
 			const auto& [index, descriptor_set] = _pair;
 			std::vector<vk::WriteDescriptorSet> write_sets;
 
-			vk::DescriptorBufferInfo as_buffer_info(rt_tlas.at(index).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * rt_instances.size());
+			vk::DescriptorBufferInfo as_buffer_info(rt_tlas.at(index).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * model_manager->get_models().size()); // todo if some model not show, maybe need rt_instances.size()
 			vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
 				vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
 				vk::WriteDescriptorSetAccelerationStructureKHR(*(rt_tlas.at(index).get_acceleration_structure())));
