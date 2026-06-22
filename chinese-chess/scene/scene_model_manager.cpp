@@ -8,7 +8,7 @@ scene_model_manager::scene_model_manager(vulkan_application* _app, scene_materia
 {
 }
 
-std::shared_ptr<scene_model> scene_model_manager::create(const std::u8string& _model_path)
+std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::path& _model_path)
 {
 	// find in cache
 	if (auto iter = std::ranges::find_if(models_cache, [&_model_path](const auto& s) {return s.first == _model_path; }); iter != models_cache.end())

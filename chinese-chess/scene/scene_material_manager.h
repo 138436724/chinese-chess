@@ -29,7 +29,7 @@ private:
 	vulkan_application* app = nullptr;
 
 	std::vector<std::shared_ptr<scene_material>> materials;
-	std::vector<std::shared_ptr<vulkan_image>> images; // need order
+	std::vector<std::weak_ptr<vulkan_image>> images; // need order
 	std::map<std::tuple<std::wstring, uint32_t>, std::weak_ptr<vulkan_image>> images_cache;
 
 	vulkan_buffer ssbo;

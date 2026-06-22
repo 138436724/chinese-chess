@@ -52,7 +52,7 @@ void ui_light::update() noexcept
 	{
 		ImGui::PushID(static_cast<int>(i));
 
-		auto& light_ptr = lights[i];
+		auto& light_ptr = lights.at(i);
 
 		std::string header_label;
 		switch (light_ptr->active_type)

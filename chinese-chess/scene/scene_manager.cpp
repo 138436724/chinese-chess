@@ -117,10 +117,10 @@ void scene_manager::need_update() noexcept
 	is_dirty = true;
 }
 
-std::shared_ptr<scene_model> scene_manager::create_model(const std::u8string& _model_name)
+std::shared_ptr<scene_model> scene_manager::create_model(const std::filesystem::path& _model_name)
 {
 	is_dirty = true;
-	return model_manager->create(std::u8string(MODELS_PATH) + _model_name);
+	return model_manager->create(_model_name);
 }
 
 void scene_manager::remove_model(const std::weak_ptr<scene_model>& _model) noexcept

@@ -28,6 +28,9 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 	light_manager = std::make_unique<ui_light>();
 	light_manager->create(manager);
 
+	model_manager = std::make_unique<ui_node>();
+	model_manager->create(manager);
+
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -113,6 +116,7 @@ void ui_manager::update()
 	camera_manager->update();
 	chess_manager->update();
 	light_manager->update();
+	model_manager->update();
 
 	ImGui::End();
 

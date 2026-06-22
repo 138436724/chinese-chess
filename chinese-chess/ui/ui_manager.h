@@ -4,9 +4,9 @@
 #include "scene/scene_manager.h"
 #include "ui_camera.h"
 #include "ui_light.h"
+#include "ui_node.h"
 #include "ui_record.h"
 #include "vulkan_core/vulkan_application.h"
-#include <filesystem>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
@@ -43,9 +43,11 @@ private:
 	vulkan_image render_output;
 
 	scene_manager* manager = nullptr;
+
 	std::unique_ptr<ui_camera> camera_manager = nullptr;
 	std::unique_ptr<ui_record> chess_manager = nullptr;
 	std::unique_ptr<ui_light> light_manager = nullptr;
+	std::unique_ptr<ui_node> model_manager = nullptr;
 
 	std::vector<vulkan_commandbuffer> commandbuffers;
 	uint32_t current_frame = 0;

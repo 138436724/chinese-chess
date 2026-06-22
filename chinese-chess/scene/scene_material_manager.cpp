@@ -101,7 +101,7 @@ void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexce
 
 	std::erase_if(images, [](const auto& p)
 		{
-			return !p;
+			return p.expired();
 		});
 
 	std::erase_if(images_cache, [](const auto& p)
@@ -183,7 +183,7 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
 		return images
 			| std::views::transform([&](const auto& image)
 				{
-					return vk::DescriptorImageInfo(_samplers.front(), image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+					return vk::DescriptorImageInfo(_samplers.front(), image.lock()->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 				})
 			| std::ranges::to<std::vector>();
 	}
@@ -193,7 +193,7 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
 			| std::views::transform([&](const auto& _pair)
 				{
 					const auto& [sampler, image] = _pair;
-					return vk::DescriptorImageInfo(sampler, image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+					return vk::DescriptorImageInfo(sampler, image.lock()->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
 				})
 			| std::ranges::to<std::vector>();
 	}

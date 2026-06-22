@@ -159,6 +159,7 @@
     <ClCompile Include="tools\string_helper.cpp" />
     <ClCompile Include="ui\ui_camera.cpp" />
     <ClCompile Include="ui\ui_light.cpp" />
+    <ClCompile Include="ui\ui_node.cpp" />
     <ClCompile Include="ui\ui_record.cpp" />
     <ClCompile Include="ui\ui_manager.cpp" />
     <ClCompile Include="vulkan_core\vulkan_acceleration_structure.cpp" />
@@ -192,6 +193,7 @@
     <ClInclude Include="tools\string_helper.h" />
     <ClInclude Include="ui\ui_camera.h" />
     <ClInclude Include="ui\ui_light.h" />
+    <ClInclude Include="ui\ui_node.h" />
     <ClInclude Include="ui\ui_record.h" />
     <ClInclude Include="ui\ui_manager.h" />
     <ClInclude Include="vulkan_core\vulkan_acceleration_structure.h" />

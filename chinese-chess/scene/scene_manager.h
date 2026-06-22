@@ -21,7 +21,7 @@ public:
 
 	void need_update() noexcept;
 
-	std::shared_ptr<scene_model> create_model(const std::u8string& _model_name);
+	std::shared_ptr<scene_model> create_model(const std::filesystem::path& _model_name);
 	void remove_model(const std::weak_ptr<scene_model>& _model) noexcept;
 	std::shared_ptr<scene_material> create_material(const std::wstring& _characters);
 	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
