@@ -10,6 +10,7 @@ public:
 	~ui_light() = default;
 
 	void create(scene_manager* _manager);
+	void resize(uint32_t _width, uint32_t _height) noexcept;
 	void update() noexcept;
 
 private:

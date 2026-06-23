@@ -21,12 +21,9 @@ public:
 
 	void need_update() noexcept;
 
-	std::shared_ptr<scene_model> create_model(const std::filesystem::path& _model_name);
-	void remove_model(const std::weak_ptr<scene_model>& _model) noexcept;
-	std::shared_ptr<scene_material> create_material(const std::wstring& _characters);
-	void remove_material(const std::weak_ptr<scene_material>& _material) noexcept;
-	std::shared_ptr<scene_light> create_light(light_type _type) noexcept;
-	void remove_light(const std::weak_ptr<scene_light>& _light) noexcept;
+	template <typename T, typename... Args>
+		requires (std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image> || std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+	auto create(Args&&... args) noexcept;
 
 	void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
 
@@ -34,6 +31,14 @@ public:
 	vulkan_image& get_render_image() noexcept;
 
 private:
+	template <typename T>
+		requires (std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+	std::shared_ptr<scene_light> create(std::type_identity<T>) noexcept;
+	std::shared_ptr<scene_model> create(std::type_identity<scene_model>, const std::filesystem::path& _model_name) noexcept;
+	std::shared_ptr<scene_material> create(std::type_identity<scene_material>) noexcept;
+	std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters) noexcept;
+	std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _image_path) noexcept;
+
 	// for rasterization
 	void create_rasterization();
 	void resize_rasterization();
@@ -95,3 +100,18 @@ private:
 	vulkan_shader_binding_table rt_sbt;
 	std::vector<vulkan_acceleration_structure> rt_tlas;
 };
+
+template<typename T, typename ...Args>
+	requires (std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image> || std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+inline auto scene_manager::create(Args && ...args) noexcept
+{
+	is_dirty = true;
+	return create(std::type_identity<T>{}, std::forward<Args>(args)...);
+}
+
+template<typename T>
+	requires (std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+inline std::shared_ptr<scene_light> scene_manager::create(std::type_identity<T>) noexcept
+{
+	return light_manager->create<T>();
+}

@@ -11,21 +11,33 @@ public:
 	scene_light_manager(vulkan_application* _app);
 	~scene_light_manager() = default;
 
-	std::shared_ptr<scene_light> create(light_type _type) noexcept;
-	void remove(const std::weak_ptr<scene_light>& _light) noexcept;
+	template <typename T>
+		requires (std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+	std::shared_ptr<scene_light> create() noexcept;
+
 	void update(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void clear() noexcept;
 
 	const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
-	const std::vector<std::shared_ptr<scene_light>>& get_lights() const noexcept;
+	const std::vector<std::weak_ptr<scene_light>>& get_lights() const noexcept;
 
 private:
 	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 
 	vulkan_application* app = nullptr;
 
-	std::vector<std::shared_ptr<scene_light>> lights;
+	std::vector<std::weak_ptr<scene_light>> lights;
 
 	vulkan_buffer ssbo;
 };
+
+template<typename T>
+	requires (std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+inline std::shared_ptr<scene_light> scene_light_manager::create() noexcept
+{
+	auto light = std::make_shared<scene_light>();
+	*light = T();
+	lights.push_back(light);
+	return light;
+}

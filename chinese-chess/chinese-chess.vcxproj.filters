@@ -114,6 +114,9 @@
     <ClCompile Include="ui\ui_node.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="ui\ui_base.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -210,6 +213,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="ui\ui_node.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\ui_base.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

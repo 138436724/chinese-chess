@@ -1,6 +1,4 @@
 #include "scene_manager.h"
-#include "tools/font_loader.h"
-#include "tools/image_helper.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_common.h"
 #include <ranges>
@@ -117,42 +115,6 @@ void scene_manager::need_update() noexcept
 	is_dirty = true;
 }
 
-std::shared_ptr<scene_model> scene_manager::create_model(const std::filesystem::path& _model_name)
-{
-	is_dirty = true;
-	return model_manager->create(_model_name);
-}
-
-void scene_manager::remove_model(const std::weak_ptr<scene_model>& _model) noexcept
-{
-	is_dirty = true;
-	model_manager->remove(_model);
-}
-
-std::shared_ptr<scene_material> scene_manager::create_material(const std::wstring& _characters)
-{
-	is_dirty = true;
-	return material_manager->create(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf", static_cast<uint32_t>(height / 9.0 * 2), _characters);
-}
-
-void scene_manager::remove_material(const std::weak_ptr<scene_material>& _material) noexcept
-{
-	is_dirty = true;
-	material_manager->remove(_material);
-}
-
-std::shared_ptr<scene_light> scene_manager::create_light(light_type _type) noexcept
-{
-	is_dirty = true;
-	return light_manager->create(_type);
-}
-
-void scene_manager::remove_light(const std::weak_ptr<scene_light>& _light) noexcept
-{
-	is_dirty = true;
-	light_manager->remove(_light);
-}
-
 void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
 {
 	is_dirty = true;
@@ -167,6 +129,26 @@ scene_camera& scene_manager::get_active_camera() noexcept
 vulkan_image& scene_manager::get_render_image() noexcept
 {
 	return render_output;
+}
+
+std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name) noexcept
+{
+	return model_manager->create(_model_name);
+}
+
+std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>) noexcept
+{
+	return material_manager->create();
+}
+
+std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters) noexcept
+{
+	return material_manager->create(_font_path, _font_size, _characters);
+}
+
+std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path) noexcept
+{
+	return material_manager->create(_image_path);
 }
 
 void scene_manager::create_rasterization()
@@ -219,9 +201,10 @@ void scene_manager::update_rasterization()
 	{
 		// update draw commands
 		auto draw_commands = model_manager->get_models()
-			| std::views::transform([](const auto& m)
+			| std::views::transform([](const auto& p)
 				{
-					return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(m->model_info->indices.size()), 1, static_cast<uint32_t>(m->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(m->model_info->vertex_offset / sizeof(model_vertex)), 0);
+					auto sp = p.lock();
+					return vk::DrawIndexedIndirectCommand(static_cast<uint32_t>(sp->model_info->indices.size()), 1, static_cast<uint32_t>(sp->model_info->index_offset / sizeof(uint32_t)), static_cast<uint32_t>(sp->model_info->vertex_offset / sizeof(model_vertex)), 0);
 				})
 			| std::ranges::to<std::vector>();
 
@@ -318,9 +301,12 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(raster_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant), &pc));
 
-	_commandbuffer.bindVertexBuffers(0, *(model_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
-	_commandbuffer.bindIndexBuffer(*(model_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
-	_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(model_manager->get_models().size()), sizeof(vk::DrawIndexedIndirectCommand));
+	if (!model_manager->get_models().empty())
+	{
+		_commandbuffer.bindVertexBuffers(0, *(model_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
+		_commandbuffer.bindIndexBuffer(*(model_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
+		_commandbuffer.drawIndexedIndirect(raster_draw_commands.get_buffer(), 0, static_cast<uint32_t>(model_manager->get_models().size()), sizeof(vk::DrawIndexedIndirectCommand));
+	}
 
 	_commandbuffer.endRendering();
 }
@@ -400,9 +386,9 @@ void scene_manager::update_ray_tracing()
 
 		// create top level acceleration structure
 		auto rt_instances = model_manager->get_models()
-			| std::views::transform([](const auto& m)
+			| std::views::transform([](const auto& p)
 				{
-					return m->get_blas_instance();
+					return p.lock()->get_blas_instance();
 				})
 			| std::ranges::to<std::vector>();
 

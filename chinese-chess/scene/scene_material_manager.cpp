@@ -1,23 +1,37 @@
 #include "scene_material_manager.h"
 #include "tools/font_loader.h"
+#include "tools/image_helper.h"
 #include <ranges>
+
+struct material_data
+{
+	alignas(16) glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
+	uint32_t texture_index = std::numeric_limits<uint32_t>::max();
+	alignas(16) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
+	float roughness = 0.5f;
+	alignas(16) float metallic = 0.0f;
+};
 
 scene_material_manager::scene_material_manager(vulkan_application* _app)
 	: app(_app)
 {
 }
 
-std::shared_ptr<scene_material> scene_material_manager::create(const std::u8string& _font_path, uint32_t _font_size, const std::wstring& _characters)
+std::shared_ptr<scene_material> scene_material_manager::create()
+{
+	auto material = std::make_shared<scene_material>();
+	materials.emplace_back(material);
+	return material;
+}
+
+std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters)
 {
 	// find in cache
-	if (auto iter = std::ranges::find_if(images_cache, [&](const auto& s) {return std::get<0>(s.first) == _characters && std::get<1>(s.first) == _font_size; }); iter != images_cache.end())
+	if (auto iter = std::ranges::find_if(images_cache, [&](const auto& s) {return s.first == _font_path / std::to_wstring(_font_size) / _characters; }); iter != images_cache.end())
 	{
 		if (!iter->second.expired())
 		{
-			auto material = std::make_shared<scene_material>();
-			material->alpha_map = std::shared_ptr<vulkan_image>(iter->second);
-			materials.emplace_back(material);
-			return material;
+			return std::shared_ptr<scene_image>(iter->second);
 		}
 	}
 
@@ -37,7 +51,7 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	}
 	uint32_t all_height = max_bearing_height_up + max_bearing_height_down;
 
-	auto font_image = std::make_shared<vulkan_image>();
+	auto font_image = std::make_shared<scene_image>();
 	vk::ImageCreateInfo font_image_info({}, vk::ImageType::e2D, vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo font_view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	font_image->create(app->get_physical_device(), app->get_device(), font_image_info, font_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
@@ -64,39 +78,70 @@ std::shared_ptr<scene_material> scene_material_manager::create(const std::u8stri
 	end_barrier.emplace_back(font_image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
-	images.emplace_back(font_image);
-	images_cache.emplace(std::make_tuple(_characters, _font_size), std::weak_ptr<vulkan_image>(font_image));
 
-	auto material = std::make_shared<scene_material>();
-	material->alpha_map = font_image;
-	materials.emplace_back(material);
+	// commandbuffer submit
+	commandbuffer.end_record();
+	commandbuffer.submit({}, {}, true);
+
+	images.emplace_back(font_image);
+	images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(font_image));
+	return std::shared_ptr<scene_image>(font_image);
+}
+
+std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path& _image_path)
+{
+	// find in cache
+	if (auto iter = std::ranges::find_if(images_cache, [&](const auto& s) {return s.first == _image_path; }); iter != images_cache.end())
+	{
+		if (!iter->second.expired())
+		{
+			return std::shared_ptr<scene_image>(iter->second);
+		}
+	}
+
+	// begin a commandbuffer
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+
+	// load font and transition to image
+	auto image_data = IMAGE_HELPER.read_image<uint8_t>(_image_path, 4u);
+
+	auto image = std::make_shared<scene_image>();
+	vk::ImageCreateInfo image_info({}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D(image_data.width, image_data.height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	image->create(app->get_physical_device(), app->get_device(), image_info, view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+
+	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
+	begin_barrier.emplace_back(image->set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
+
+	vulkan_buffer stage_buffer;
+	stage_buffer.create(app->get_physical_device(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
+
+	vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), image->get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(image_data.width, image_data.height, 1)));
+
+	std::vector<vk::ImageMemoryBarrier2> end_barrier;
+	end_barrier.emplace_back(image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
+	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
 
 	// commandbuffer submit
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
 
-	return material;
-}
 
-void scene_material_manager::remove(const std::weak_ptr<scene_material>& _material) noexcept
-{
-	std::owner_less<void> cmp;
-	std::erase_if(images, [&](const auto& p)
-		{
-			return !cmp(p, _material.lock()->alpha_map) && !cmp(_material.lock()->alpha_map, p);
-		});
-	std::erase_if(materials, [&](const auto& p)
-		{
-			return !cmp(p, _material) && !cmp(_material, p);
-		});
+	images.emplace_back(image);
+	images_cache.emplace(_image_path, std::weak_ptr<scene_image>(image));
+	return image;
 }
 
 void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	std::erase_if(materials, [](const auto& p)
 		{
-			return !p;
+			return p.expired();
 		});
 
 	std::erase_if(images, [](const auto& p)
@@ -156,7 +201,7 @@ std::optional<uint32_t> scene_material_manager::get_material_index(const std::we
 	}
 }
 
-std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<vulkan_image>& _texture) const noexcept
+std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<scene_image>& _texture) const noexcept
 {
 	auto images_with_index = images | std::views::enumerate;
 
@@ -211,12 +256,13 @@ void scene_material_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) n
 		auto materials_ssbo = materials
 			| std::views::transform([this](const auto& p)
 				{
+					auto sp = p.lock();
 					return material_data{
-						.background_color = p->background_color,
-						.texture_index = get_texture_index(p->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
-						.foreground_color = p->foreground_color,
-						.roughness = p->roughness,
-						.metallic = p->metallic
+						.background_color = sp->background_color,
+						.texture_index = get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
+						.foreground_color = sp->foreground_color,
+						.roughness = sp->roughness,
+						.metallic = sp->metallic
 					};
 				})
 			| std::ranges::to<std::vector>();

@@ -366,7 +366,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 	auto filtered_physical_devices = all_physical_devices
 		| std::views::filter([this](const auto& _physical_device)
 			{
-				bool support_vulkan_1_3 = _physical_device.getProperties().apiVersion >= vk::ApiVersion13;
+				bool support_vulkan_1_4 = _physical_device.getProperties().apiVersion >= vk::ApiVersion14;
 
 				auto queue_families = _physical_device.getQueueFamilyProperties();
 				bool support_graphics = std::ranges::any_of(queue_families, [](const auto& qfp)
@@ -408,7 +408,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipelineTraceRaysIndirect
 					&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTraversalPrimitiveCulling;
 
-				return support_vulkan_1_3 && support_graphics && has_all_required_extensions && has_all_required_features;
+				return support_vulkan_1_4 && support_graphics && has_all_required_extensions && has_all_required_features;
 			})
 		| std::ranges::to<std::vector>();
 

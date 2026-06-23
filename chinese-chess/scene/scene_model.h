@@ -4,14 +4,6 @@
 #include "vulkan_core/vulkan_acceleration_structure.h"
 #include <memory>
 
-struct model_data
-{
-	alignas(16) glm::mat4 model_matrix = glm::mat4(1.f); // std430 layout
-	alignas(8) uint32_t material_index = std::numeric_limits<uint32_t>::max();
-	alignas(8) vk::DeviceAddress vertex_address = 0;
-	alignas(8) vk::DeviceAddress index_address = 0;
-};
-
 struct model_infomation
 {
 	size_t vertex_offset = 0;

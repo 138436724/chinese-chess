@@ -1,48 +1,35 @@
 #include "scene_light_manager.h"
 #include <ranges>
 
+enum class light_type :uint32_t
+{
+	directional,
+	point,
+	spot
+};
+
+struct light_data
+{
+	alignas(16) glm::vec3 color = glm::vec3(1.f);
+	uint32_t active_type = static_cast<uint32_t>(light_type::directional);
+	alignas(16) glm::vec3 direction = glm::vec3(0.f, -1.f, 0.f);
+	float intensity = 1.f;
+	alignas(16) glm::vec3 position = glm::vec3(0.f);
+	float range = 10.f;
+	alignas(16) float inner_cone_angle = glm::radians(15.f);
+	float outer_cone_angle = glm::radians(30.f);
+};
+
 scene_light_manager::scene_light_manager(vulkan_application* _app)
 	: app(_app)
 {
-}
-
-std::shared_ptr<scene_light> scene_light_manager::create(light_type _type) noexcept
-{
-	auto light = std::make_shared<scene_light>();
-	light->active_type = _type;
-	switch (_type)
-	{
-	case light_type::directional:
-		light->light = directional_light();
-		break;
-	case light_type::point:
-		light->light = point_light();
-		break;
-	case light_type::spot:
-		light->light = spot_light();
-		break;
-	default:
-		break;
-	}
-	lights.push_back(light);
-
-	return light;
-}
-
-void scene_light_manager::remove(const std::weak_ptr<scene_light>& _light) noexcept
-{
-	std::owner_less<void> cmp;
-	std::erase_if(lights, [&](const auto& p)
-		{
-			return !cmp(p, _light) && !cmp(_light, p);
-		});
 }
 
 void scene_light_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	std::erase_if(lights, [](const auto& p)
 		{
-			return !p;
+			return p.expired();
 		});
 
 
@@ -70,7 +57,7 @@ const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
 	return ssbo;
 }
 
-const std::vector<std::shared_ptr<scene_light>>& scene_light_manager::get_lights() const noexcept
+const std::vector<std::weak_ptr<scene_light>>& scene_light_manager::get_lights() const noexcept
 {
 	return lights;
 }
@@ -82,44 +69,44 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 		auto lights_ssbo = lights
 			| std::views::transform([this](const auto& p)
 				{
-					switch (p->active_type)
-					{
-					case light_type::directional:
-						return light_data{
-							.color = std::get<directional_light>(p->light).color,
-							.active_type = static_cast<uint32_t>(p->active_type),
-							.direction = glm::normalize(std::get<directional_light>(p->light).direction),
-							.intensity = std::get<directional_light>(p->light).intensity,
-						};
-					case light_type::point:
-						return light_data{
-							.color = std::get<point_light>(p->light).color,
-							.active_type = static_cast<uint32_t>(p->active_type),
-							.intensity = std::get<point_light>(p->light).intensity,
-							.position = std::get<point_light>(p->light).position,
-							.range = std::get<point_light>(p->light).range,
-						};
-					case light_type::spot:
-						return light_data{
-							.color = std::get<spot_light>(p->light).color,
-							.active_type = static_cast<uint32_t>(p->active_type),
-							.direction = glm::normalize(std::get<spot_light>(p->light).direction),
-							.intensity = std::get<spot_light>(p->light).intensity,
-							.position = std::get<spot_light>(p->light).position,
-							.range = std::get<spot_light>(p->light).range,
-							.inner_cone_angle = std::get<spot_light>(p->light).inner_cone_angle,
-							.outer_cone_angle = std::get<spot_light>(p->light).outer_cone_angle,
-						};
-					default:
-						break;
-					}
+					auto sp = p.lock();
+					return std::visit([](auto& light)
+						{
+							using T = std::decay_t<decltype(light)>;
 
-					return light_data{
-						.color = glm::vec3(1.f),
-						.active_type = static_cast<uint32_t>(light_type::directional),
-						.direction = glm::vec3(0.f, -1.f, 0.f),
-						.intensity = 1.f,
-					};
+							if constexpr (std::is_same_v<T, directional_light>)
+							{
+								return light_data{
+									.color = light.color,
+									.active_type = static_cast<uint32_t>(light_type::directional),
+									.direction = glm::normalize(light.direction),
+									.intensity = light.intensity,
+								};
+							}
+							else if constexpr (std::is_same_v<T, point_light>)
+							{
+								return light_data{
+									.color = light.color,
+									.active_type = static_cast<uint32_t>(light_type::point),
+									.intensity = light.intensity,
+									.position = light.position,
+									.range = light.range,
+								};
+							}
+							else if constexpr (std::is_same_v<T, spot_light>)
+							{
+								return light_data{
+									.color = light.color,
+									.active_type = static_cast<uint32_t>(light_type::spot),
+									.direction = glm::normalize(light.direction),
+									.intensity = light.intensity,
+									.position = light.position,
+									.range = light.range,
+									.inner_cone_angle = light.inner_cone_angle,
+									.outer_cone_angle = light.outer_cone_angle,
+								};
+							}
+						}, *sp);
 				})
 			| std::ranges::to<std::vector>();
 

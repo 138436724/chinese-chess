@@ -174,8 +174,8 @@ int main()
 	// wait and destroy
 	app->wait();
 
-	scene->destroy();
 	UI->destroy();
+	scene->destroy();
 
 	glfwDestroyWindow(window);
 	glfwTerminate();

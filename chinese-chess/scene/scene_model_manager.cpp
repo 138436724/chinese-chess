@@ -2,6 +2,14 @@
 #include <algorithm>
 #include <ranges>
 
+struct model_data
+{
+	alignas(16) glm::mat4 model_matrix = glm::mat4(1.f); // std430 layout
+	alignas(8) uint32_t material_index = std::numeric_limits<uint32_t>::max();
+	alignas(8) vk::DeviceAddress vertex_address = 0;
+	alignas(8) vk::DeviceAddress index_address = 0;
+};
+
 scene_model_manager::scene_model_manager(vulkan_application* _app, scene_material_manager* _manager)
 	:app(_app),
 	manager(_manager)
@@ -39,29 +47,16 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
 	return model;
 }
 
-void scene_model_manager::remove(const std::weak_ptr<scene_model>& _model) noexcept
-{
-	std::owner_less<void> cmp;
-	std::erase_if(meshs, [&](const auto& p)
-		{
-			return !cmp(p, _model.lock()->model_info) && !cmp(_model.lock()->model_info, p);
-		});
-	std::erase_if(models, [&](const auto& p)
-		{
-			return !cmp(p, _model) && !cmp(_model, p);
-		});
-}
-
 void scene_model_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 {
 	std::erase_if(models, [](const auto& p)
 		{
-			return !p;
+			return p.expired();
 		});
 
 	std::erase_if(meshs, [](const auto& p)
 		{
-			return !p;
+			return p.expired();
 		});
 
 	std::erase_if(models_cache, [](const auto& p)
@@ -97,7 +92,7 @@ void scene_model_manager::clear() noexcept
 	indices_buffer.clear();
 }
 
-const std::vector<std::shared_ptr<scene_model>>& scene_model_manager::get_models() const noexcept
+const std::vector<std::weak_ptr<scene_model>>& scene_model_manager::get_models() const noexcept
 {
 	return models;
 }
@@ -124,8 +119,9 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 		// recreate vertex buffer
 		vk::DeviceSize vertices_size = std::ranges::fold_left(meshs, static_cast<size_t>(0), [](size_t s, const auto& p)
 			{
-				p->vertex_offset = s;
-				return s + p->vertices.size() * sizeof(p->vertices.front());
+				auto sp = p.lock();
+				sp->vertex_offset = s;
+				return s + sp->vertices.size() * sizeof(sp->vertices.front());
 			});
 
 		vulkan_buffer vertices_staging_buffer;
@@ -133,7 +129,8 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
-				memcpy(static_cast<uint8_t*>(vertices_staging_buffer.get_buffer_address().hostAddress) + p->vertex_offset, p->vertices.data(), p->vertices.size() * sizeof(p->vertices.front()));
+				auto sp = p.lock();
+				memcpy(static_cast<uint8_t*>(vertices_staging_buffer.get_buffer_address().hostAddress) + sp->vertex_offset, sp->vertices.data(), sp->vertices.size() * sizeof(sp->vertices.front()));
 			});
 
 		vertices_buffer.create(app->get_physical_device(), app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -143,8 +140,9 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 		// recreate index buffer
 		vk::DeviceSize indices_size = std::ranges::fold_left(meshs, static_cast<size_t>(0), [](size_t s, const auto& p)
 			{
-				p->index_offset = s;
-				return s + p->indices.size() * sizeof(p->indices.front());
+				auto sp = p.lock();
+				sp->index_offset = s;
+				return s + sp->indices.size() * sizeof(sp->indices.front());
 			});
 
 		vulkan_buffer indices_staging_buffer;
@@ -152,7 +150,8 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
-				memcpy(static_cast<uint8_t*>(indices_staging_buffer.get_buffer_address().hostAddress) + p->index_offset, p->indices.data(), p->indices.size() * sizeof(p->indices.front()));
+				auto sp = p.lock();
+				memcpy(static_cast<uint8_t*>(indices_staging_buffer.get_buffer_address().hostAddress) + sp->index_offset, sp->indices.data(), sp->indices.size() * sizeof(sp->indices.front()));
 			});
 
 		indices_buffer.create(app->get_physical_device(), app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -163,9 +162,10 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 		// update blas
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
-				p->blas_info.create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), *_commandbuffer,
-					static_cast<uint32_t>(p->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + p->vertex_offset,
-					static_cast<uint32_t>(p->indices.size()), indices_buffer.get_buffer_address().deviceAddress + p->index_offset);
+				auto sp = p.lock();
+				sp->blas_info.create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), *_commandbuffer,
+					static_cast<uint32_t>(sp->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + sp->vertex_offset,
+					static_cast<uint32_t>(sp->indices.size()), indices_buffer.get_buffer_address().deviceAddress + sp->index_offset);
 			});
 	}
 }
@@ -176,13 +176,14 @@ void scene_model_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 	{
 		// update ssbo
 		auto models_ssbo = models
-			| std::views::transform([&](const auto& m)
+			| std::views::transform([&](const auto& p)
 				{
+					auto sp = p.lock();
 					return model_data{
-						.model_matrix = m->model_matrix,
-						.material_index = manager->get_material_index(m->material).value_or(std::numeric_limits<uint32_t>::max()),
-						.vertex_address = vertices_buffer.get_buffer_address().deviceAddress + m->model_info->vertex_offset,
-						.index_address = indices_buffer.get_buffer_address().deviceAddress + m->model_info->index_offset,
+						.model_matrix = sp->model_matrix,
+						.material_index = manager->get_material_index(sp->material).value_or(std::numeric_limits<uint32_t>::max()),
+						.vertex_address = vertices_buffer.get_buffer_address().deviceAddress + sp->model_info->vertex_offset,
+						.index_address = indices_buffer.get_buffer_address().deviceAddress + sp->model_info->index_offset,
 					};
 				})
 			| std::ranges::to<std::vector>();

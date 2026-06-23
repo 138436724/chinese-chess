@@ -157,6 +157,7 @@
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
+    <ClCompile Include="ui\ui_base.cpp" />
     <ClCompile Include="ui\ui_camera.cpp" />
     <ClCompile Include="ui\ui_light.cpp" />
     <ClCompile Include="ui\ui_node.cpp" />
@@ -191,6 +192,7 @@
     <ClInclude Include="tools\record_loader.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
+    <ClInclude Include="ui\ui_base.h" />
     <ClInclude Include="ui\ui_camera.h" />
     <ClInclude Include="ui\ui_light.h" />
     <ClInclude Include="ui\ui_node.h" />

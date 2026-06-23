@@ -21,14 +21,17 @@ void ui_light::create(scene_manager* _manager)
 {
 	manager = _manager;
 
-	auto light = manager->create_light(light_type::directional);
-	std::get<directional_light>(light->light) = directional_light{
+	auto light = manager->create<directional_light>();
+	*light = directional_light{
 		.color = glm::vec3(1.0f, 0.95f, 0.85f),
 		.intensity = 5.f,
 		.direction = glm::vec3(1.f, 1.f, 10.f)
 	};
 	lights.push_back(std::move(light));
-	manager->need_update();
+}
+
+void ui_light::resize(uint32_t _width, uint32_t _height) noexcept
+{
 }
 
 void ui_light::update() noexcept
@@ -44,7 +47,20 @@ void ui_light::update() noexcept
 
 	if (ImGui::Button(reinterpret_cast<const char*>(ADD_LIGHT.data())))
 	{
-		lights.push_back(manager->create_light(static_cast<light_type>(add_light_type)));
+		switch (add_light_type)
+		{
+		case 0:
+			lights.push_back(manager->create<std::variant_alternative_t<0u, scene_light>>());
+			break;
+		case 1:
+			lights.push_back(manager->create<std::variant_alternative_t<1u, scene_light>>());
+			break;
+		case 2:
+			lights.push_back(manager->create<std::variant_alternative_t<2u, scene_light>>());
+			break;
+		default:
+			break;
+		}
 	}
 
 	std::optional<size_t> delete_index = std::nullopt;
@@ -52,32 +68,27 @@ void ui_light::update() noexcept
 	{
 		ImGui::PushID(static_cast<int>(i));
 
-		auto& light_ptr = lights.at(i);
+		std::visit([&](auto& light_data)
+			{
+				using T = std::decay_t<decltype(light_data)>;
 
-		std::string header_label;
-		switch (light_ptr->active_type)
-		{
-		case light_type::directional:
-			header_label = reinterpret_cast<const char*>(DIRECTIONAL_LIGHT.data());
-			break;
-		case light_type::point:
-			header_label = reinterpret_cast<const char*>(POINT_LIGHT.data());
-			break;
-		case light_type::spot:
-			header_label = reinterpret_cast<const char*>(SPOT_LIGHT.data());
-			break;
-		default:
-			continue;
-		}
-		header_label = std::format("{} {}", header_label, i);
-
-		if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
-		{
-			bool modified = false;
-			std::visit([&](auto& light_data)
+				std::string header_label;
+				if constexpr (std::is_same_v<T, directional_light>)
 				{
-					using T = std::decay_t<decltype(light_data)>;
+					header_label = std::format("{} {}", reinterpret_cast<const char*>(DIRECTIONAL_LIGHT.data()), i);
+				}
+				else if constexpr (std::is_same_v<T, point_light>)
+				{
+					header_label = std::format("{} {}", reinterpret_cast<const char*>(POINT_LIGHT.data()), i);
+				}
+				else if constexpr (std::is_same_v<T, spot_light>)
+				{
+					header_label = std::format("{} {}", reinterpret_cast<const char*>(SPOT_LIGHT.data()), i);
+				}
 
+				bool modified = false;
+				if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
+				{
 					modified |= ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()), glm::value_ptr(light_data.color));
 					modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_INTENSITY.data()), &light_data.intensity, 0.1f, 0.0f, 100.0f);
 
@@ -98,26 +109,26 @@ void ui_light::update() noexcept
 						modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_INNER_CONE.data()), &light_data.inner_cone_angle, glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
 						modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_OUTER_CONE.data()), &light_data.outer_cone_angle, glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
 					}
-				}, light_ptr->light);
 
-			if (modified)
-			{
-				manager->need_update();
-			}
+					if (modified)
+					{
+						manager->need_update();
+					}
 
-			if (ImGui::Button(reinterpret_cast<const char*>(DELETE_LIGHT.data())))
-			{
-				delete_index = i;
-			}
-		}
+					if (ImGui::Button(reinterpret_cast<const char*>(DELETE_LIGHT.data())))
+					{
+						delete_index = i;
+					}
+				}
+			}, *lights.at(i));
 
 		ImGui::PopID();
 	}
 
 	if (delete_index.has_value())
 	{
-		manager->remove_light(lights.at(delete_index.value()));
 		std::erase_if(lights, [&](const auto& p) { return p == lights.at(delete_index.value()); });
+		manager->need_update();
 	}
 
 	if (lights.empty())

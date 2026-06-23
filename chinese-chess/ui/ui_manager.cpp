@@ -1,5 +1,4 @@
 #include "tools/font_loader.h"
-#include "tools/string_helper.h"
 #include "ui_manager.h"
 #include "vulkan_core/vulkan_common.h"
 #include <imgui_impl_glfw.h>
@@ -16,21 +15,17 @@ constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
 void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
 	app = _app;
-
 	manager = _manager;
 
-	camera_manager = std::make_unique<ui_camera>();
-	camera_manager->create(manager);
+	ui_managers.emplace_back(pro::make_proxy<ui_base, ui_camera>());
+	ui_managers.emplace_back(pro::make_proxy<ui_base, ui_light>());
+	ui_managers.emplace_back(pro::make_proxy<ui_base, ui_node>());
 
-	chess_manager = std::make_unique<ui_record>();
-	chess_manager->create(manager);
+	auto r = std::make_unique<ui_record>();
+	chess_manager = r.get();
+	ui_managers.emplace_back(std::move(r));
 
-	light_manager = std::make_unique<ui_light>();
-	light_manager->create(manager);
-
-	model_manager = std::make_unique<ui_node>();
-	model_manager->create(manager);
-
+	std::ranges::for_each(ui_managers, [this](auto& m) { m->create(manager); });
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -64,7 +59,7 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 	};
 
 	ImGui_ImplVulkan_InitInfo init_info = {
-		.ApiVersion = vk::ApiVersion13,
+		.ApiVersion = vk::ApiVersion14,
 		.Instance = *(app->get_instance()),
 		.PhysicalDevice = *(app->get_physical_device()),
 		.Device = *(app->get_device()),
@@ -97,7 +92,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
-	camera_manager->resize(_width, _height);
+	std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });
 }
 
 void ui_manager::update()
@@ -113,10 +108,7 @@ void ui_manager::update()
 	ImGui::Begin(reinterpret_cast<const char*>(SCENE_SETTING.data()), &show_demo_window);
 
 	ray_tracing_ui();
-	camera_manager->update();
-	chess_manager->update();
-	light_manager->update();
-	model_manager->update();
+	std::ranges::for_each(ui_managers, [](auto& m) { m->update(); });
 
 	ImGui::End();
 

@@ -11,6 +11,7 @@ public:
 	~ui_record() = default;
 
 	void create(scene_manager* _manager);
+	void resize(uint32_t _width, uint32_t _height) noexcept;
 	void update() noexcept;
 
 	void load_previous() noexcept;
@@ -25,6 +26,9 @@ private:
 	static glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept;
 
 private:
+	uint32_t width = 0;
+	uint32_t height = 0;
+
 	int now_record_index = 0;
 	std::vector<std::u8string> all_records;
 	std::vector<const char*> all_records_c_str;
@@ -33,9 +37,9 @@ private:
 
 	std::shared_ptr<scene_model> chess_board;
 	std::shared_ptr<scene_model> chess_board_line;
+	std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;
 
 	std::vector<all_board_state> board_state = { RECORD_LOADER.get_init_all_borad() };
-	std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;
-	std::unordered_map<PIECE_TYPE, std::weak_ptr<scene_material>> red_chess_piece_materials;
-	std::unordered_map<PIECE_TYPE, std::weak_ptr<scene_material>> black_chess_piece_materials;
+	std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> red_chess_piece_materials;
+	std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> black_chess_piece_materials;
 };

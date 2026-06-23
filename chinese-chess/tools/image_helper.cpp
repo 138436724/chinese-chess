@@ -1,6 +1,4 @@
 #include "image_helper.h"
-#include "string_helper.h"
-#include <OpenImageIO/imageio.h>
 
 image_helper image_helper::helper;
 

@@ -16,11 +16,10 @@ public:
 	~scene_model_manager() = default;
 
 	std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
-	void remove(const std::weak_ptr<scene_model>& _model) noexcept;
 	void update(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void clear() noexcept;
 
-	const std::vector<std::shared_ptr<scene_model>>& get_models() const noexcept;
+	const std::vector<std::weak_ptr<scene_model>>& get_models() const noexcept;
 	const vulkan_buffer& get_vertices_buffer() const noexcept;
 	const vulkan_buffer& get_indices_buffer() const noexcept;
 	const vulkan_buffer& get_ssbo_buffer() const noexcept;
@@ -32,9 +31,9 @@ private:
 	vulkan_application* app = nullptr;
 	scene_material_manager* manager = nullptr;
 
-	std::vector<std::shared_ptr<scene_model>> models;
-	std::vector<std::shared_ptr<model_infomation>> meshs; // submit to gpu in order
-	std::unordered_map<std::filesystem::path, std::weak_ptr<model_infomation >> models_cache; // no need order
+	std::vector<std::weak_ptr<scene_model>> models;
+	std::vector<std::weak_ptr<model_infomation>> meshs; // submit to gpu in order
+	std::unordered_map<std::filesystem::path, std::weak_ptr<model_infomation>> models_cache; // no need order
 
 	vulkan_buffer vertices_buffer;
 	vulkan_buffer indices_buffer;
