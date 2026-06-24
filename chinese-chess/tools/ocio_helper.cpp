@@ -79,7 +79,7 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 		return;
 	}
 
-	std::ranges::for_each(std::views::iota(0u, num_uniforms), [&](const uint32_t i) {
+	std::ranges::for_each(std::views::iota(0u, num_uniforms), [&](const uint32_t/* i*/) {
 		OCIO::GpuShaderDesc::UniformData uniform_data;
 		//const auto name = _shader_desc->getUniform(i, uniform_data);
 

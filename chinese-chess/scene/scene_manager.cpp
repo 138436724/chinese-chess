@@ -60,7 +60,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	// render_output
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage/*for ray tracing*/, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	render_output.create(app->get_allocator(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	resize_rasterization();
 	resize_ray_tracing();
@@ -187,12 +187,12 @@ void scene_manager::resize_rasterization()
 	// msaa color
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	raster_color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	raster_color_image.create(app->get_allocator(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	// depth
 	vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
-	raster_depth_image.create(app->get_physical_device(), app->get_device(), depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearDepthStencilValue(1.f, 0));
+	raster_depth_image.create(app->get_allocator(), app->get_device(), depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearDepthStencilValue(1.f, 0));
 }
 
 void scene_manager::update_rasterization()
@@ -214,10 +214,10 @@ void scene_manager::update_rasterization()
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
-		raster_draw_commands.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		raster_draw_commands.create(app->get_allocator(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vulkan_buffer draw_commands_staging_buffer;
-		draw_commands_staging_buffer.create(app->get_physical_device(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		draw_commands_staging_buffer.create(app->get_allocator(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		memcpy(draw_commands_staging_buffer.get_buffer_address().hostAddress, draw_commands.data(), draw_commands_size);
 		vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, draw_commands_staging_buffer.get_buffer(), raster_draw_commands.get_buffer(), vk::BufferCopy2(0, 0, draw_commands_size));
@@ -362,7 +362,7 @@ void scene_manager::create_ray_tracing()
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// create shader binding table (now needs 5 groups)
-	rt_sbt.create(app->get_physical_device(), app->get_device(), commandbuffer, rt_pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()));
+	rt_sbt.create(app->get_physical_device(), app->get_device(), app->get_allocator(), commandbuffer, rt_pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()));
 
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
@@ -396,15 +396,15 @@ void scene_manager::update_ray_tracing()
 		std::ranges::for_each(rt_tlas, [&](auto& _tlas)
 			{
 				vulkan_buffer instance_staging_buffer;
-				instance_staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
+				instance_staging_buffer.create(app->get_allocator(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 				vulkan_buffer staging_buffer;
-				staging_buffer.create(app->get_physical_device(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+				staging_buffer.create(app->get_allocator(), app->get_device(), instance_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 				memcpy(staging_buffer.get_buffer_address().hostAddress, rt_instances.data(), instance_buffer_size);
 				vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
 
-				_tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
+				_tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
 
 				commandbuffer.add_staging_buffer(std::move(instance_staging_buffer));
 				commandbuffer.add_staging_buffer(std::move(staging_buffer));

@@ -1,4 +1,3 @@
-#include "vulkan_common.h"
 #include "vulkan_image.h"
 
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
@@ -7,8 +6,7 @@ vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
 	layout(std::exchange(_other.layout, {})),
 	clear_value(std::exchange(_other.clear_value, {})),
 	image(std::exchange(_other.image, nullptr)),
-	imageview(std::exchange(_other.imageview, nullptr)),
-	image_memory(std::exchange(_other.image_memory, nullptr))
+	imageview(std::exchange(_other.imageview, nullptr))
 {
 }
 
@@ -22,12 +20,11 @@ vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
 		std::ranges::swap(clear_value, _other.clear_value);
 		std::ranges::swap(image, _other.image);
 		std::ranges::swap(imageview, _other.imageview);
-		std::ranges::swap(image_memory, _other.image_memory);
 	}
 	return *this;
 }
 
-void vulkan_image::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vk::ImageCreateInfo& _image_info, vk::ImageViewCreateInfo& _imageview_info, vk::MemoryPropertyFlags _properties, const vk::ClearValue& _clear_value)
+void vulkan_image::create(const vma::raii::Allocator& _allocator, const vk::raii::Device& _device, const vk::ImageCreateInfo& _image_info, vk::ImageViewCreateInfo& _imageview_info, vk::MemoryPropertyFlags _properties, const vk::ClearValue& _clear_value)
 {
 	if (_image_info.format != _imageview_info.format || _image_info.arrayLayers != _imageview_info.subresourceRange.layerCount)
 	{
@@ -39,15 +36,26 @@ void vulkan_image::create(const vk::raii::PhysicalDevice& _physical_device, cons
 	layout = vk::ImageLayout::eUndefined;
 	clear_value = _clear_value;
 
-	image = vk::raii::Image(_device, _image_info);
+	vma::AllocationCreateInfo create_info{};
+	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+	{
+		create_info.setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
+			.setUsage(vma::MemoryUsage::eAutoPreferHost);
+	}
+	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+	{
+		create_info.setFlags(vma::AllocationCreateFlagBits::eDedicatedMemory /*| vma::AllocationCreateFlagBits::eMapped*/)
+			.setUsage(vma::MemoryUsage::eGpuOnly);
+	}
+	else
+	{
+		create_info.setUsage(vma::MemoryUsage::eAuto);
+	}
 
-	vk::MemoryRequirements memory_requirements = image.getMemoryRequirements();
-	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties).value());
-	image_memory = vk::raii::DeviceMemory(_device, memory_info);
-	image.bindMemory(image_memory, 0);
+	image = _allocator.createImage(_image_info, create_info);
 
 	_imageview_info.image = image;
-	imageview = vk::raii::ImageView(_device, _imageview_info);
+	imageview = vk::raii::ImageView(_device, _imageview_info, _allocator.getAllocationCallbacks());
 }
 
 vk::ImageMemoryBarrier2 vulkan_image::set_layout(vk::ImageLayout _new_layout, const vk::ImageSubresourceRange& _resource_range) noexcept

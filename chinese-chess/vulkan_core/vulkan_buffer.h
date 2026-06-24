@@ -1,6 +1,7 @@
 #pragma once
 
-#include <vulkan/vulkan_raii.hpp>
+// need replace "vk_mem_alloc.h" by <vma/vk_mem_alloc.h> if use vcpkg install
+#include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp> 
 
 class vulkan_buffer
 {
@@ -12,7 +13,7 @@ public:
 	vulkan_buffer& operator=(vulkan_buffer&) = delete;
 	vulkan_buffer& operator=(vulkan_buffer&& _other) noexcept;
 
-	void create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties);
+	void create(const vma::raii::Allocator& _allocator, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties);
 	void clear() noexcept;
 
 	const vk::raii::Buffer& get_buffer() const noexcept;
@@ -22,7 +23,6 @@ public:
 	static void copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::BufferImageCopy2& _copy_info) noexcept;
 
 private:
-	vk::raii::Buffer buffer = nullptr;
-	vk::raii::DeviceMemory buffer_memory = nullptr;
+	vma::raii::Buffer buffer = nullptr;
 	vk::DeviceOrHostAddressKHR buffer_address = nullptr;
 };

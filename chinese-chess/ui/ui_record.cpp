@@ -3,6 +3,9 @@
 #include "ui_record.h"
 #include <algorithm>
 #include <ranges>
+#ifdef _WIN32
+#include <commdlg.h>
+#endif // _WIN32
 
 constexpr std::u8string_view RECORDS_MANAGER = u8"棋局管理";
 constexpr std::u8string_view RECORDS_LIST = u8"棋谱列表";

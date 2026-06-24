@@ -24,6 +24,7 @@ void vulkan_application::create(vk::SurfaceKHR _surface, bool _enable_graphics, 
 	pick_msaa_sample_count();
 	pick_depth_format();
 
+	allocator = vma::raii::Allocator(instance, device, vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
 	swapchain.create(instance, physical_device, device, _surface, _width, _height);
 
 	create_pipeline();
@@ -181,7 +182,7 @@ void vulkan_application::save_image(vulkan_image& _image) const
 	VkFormat image_format = static_cast<VkFormat>(_image.get_format());
 
 	vulkan_buffer save_buffer;
-	save_buffer.create(physical_device, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	save_buffer.create(allocator, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -269,6 +270,11 @@ const vk::raii::PhysicalDevice& vulkan_application::get_physical_device() const 
 const vk::raii::Device& vulkan_application::get_device() const noexcept
 {
 	return device;
+}
+
+const vma::raii::Allocator& vulkan_application::get_allocator() const noexcept
+{
+	return allocator;
 }
 
 std::optional<std::reference_wrapper<const vulkan_queue>> vulkan_application::get_queue(vk::QueueFlagBits _queue_type) const noexcept
@@ -555,7 +561,7 @@ void vulkan_application::create_pipeline()
 	{
 		if (shader_desc->getNumUniforms() > 0 && shader_desc->getUniformBufferSize() > 0)
 		{
-			ocio_ubo.create(physical_device, device, shader_desc->getUniformBufferSize(), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			ocio_ubo.create(allocator, device, shader_desc->getUniformBufferSize(), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			OCIO_HELPER.copy_uniform_to_buffer(shader_desc, ocio_ubo.get_buffer_address().hostAddress);
 		}
 
@@ -604,7 +610,7 @@ void vulkan_application::create_pipeline()
 			vulkan_image ocio_image;
 			vk::ImageCreateInfo ocio_image_info({}, vk::ImageType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 			vk::ImageViewCreateInfo ocio_view_info({}, {}, vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-			ocio_image.create(physical_device, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+			ocio_image.create(allocator, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 
 			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
@@ -614,7 +620,7 @@ void vulkan_application::create_pipeline()
 
 			vulkan_buffer stage_buffer;
 			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
-			stage_buffer.create(physical_device, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			stage_buffer.create(allocator, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
 
 			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(edge_len, edge_len, edge_len)));
@@ -704,7 +710,7 @@ void vulkan_application::create_pipeline()
 			vulkan_image ocio_image;
 			vk::ImageCreateInfo ocio_image_info({}, image_type, format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 			vk::ImageViewCreateInfo ocio_view_info({}, {}, image_view_type, format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-			ocio_image.create(physical_device, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+			ocio_image.create(allocator, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 
 			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
@@ -714,7 +720,7 @@ void vulkan_application::create_pipeline()
 
 			vulkan_buffer stage_buffer;
 			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
-			stage_buffer.create(physical_device, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			stage_buffer.create(allocator, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
 
 			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(width, height, 1)));

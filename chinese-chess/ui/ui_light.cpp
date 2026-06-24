@@ -30,7 +30,7 @@ void ui_light::create(scene_manager* _manager)
 	lights.push_back(std::move(light));
 }
 
-void ui_light::resize(uint32_t _width, uint32_t _height) noexcept
+void ui_light::resize(uint32_t/* _width*/, uint32_t/* _height*/) noexcept
 {
 }
 

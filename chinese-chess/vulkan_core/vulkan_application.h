@@ -39,6 +39,7 @@ public:
 	const vk::raii::Instance& get_instance() const noexcept;
 	const vk::raii::PhysicalDevice& get_physical_device() const noexcept;
 	const vk::raii::Device& get_device() const noexcept;
+	const vma::raii::Allocator& get_allocator() const noexcept;
 	std::optional<std::reference_wrapper<const vulkan_queue>> get_queue(vk::QueueFlagBits _queue_type) const noexcept;
 	const vulkan_swapchain& get_swapchain() const noexcept;
 
@@ -66,6 +67,7 @@ private:
 
 	vk::raii::PhysicalDevice physical_device = nullptr;
 	vk::raii::Device device = nullptr;
+	vma::raii::Allocator allocator = nullptr;
 
 	std::vector<const char*> required_device_extensions = {
 		vk::KHRSwapchainExtensionName,

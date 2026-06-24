@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -14,20 +13,6 @@ public:
 	inline static vk::Format DEPTH_FORMAT = vk::Format::eUndefined;
 	inline static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 	inline static constexpr bool USE_OCIO = true;
-
-	inline static std::optional<uint32_t> find_memory_type(const vk::raii::PhysicalDevice& _physical_device, uint32_t _type_filter, vk::MemoryPropertyFlags _properties) noexcept
-	{
-		auto memory_properties = _physical_device.getMemoryProperties();
-		auto properties_filter = memory_properties.memoryTypes
-			| std::views::enumerate
-			| std::views::filter([&](const auto& _tuple)
-				{
-					return (_type_filter & (1 << std::get<0>(_tuple))) && ((std::get<1>(_tuple).propertyFlags & _properties) == _properties);
-				})
-			| std::views::transform([](const auto& _tuple) { return std::get<0>(_tuple); });
-
-		return properties_filter.empty() ? std::nullopt : std::optional<uint32_t>(static_cast<uint32_t>(properties_filter.front()));
-	}
 
 	inline static std::optional<vk::Format> find_supported_format(const vk::raii::PhysicalDevice& _physical_device, const std::vector<vk::Format>& _candidates, vk::ImageTiling _tiling, vk::FormatFeatureFlags _features) noexcept
 	{

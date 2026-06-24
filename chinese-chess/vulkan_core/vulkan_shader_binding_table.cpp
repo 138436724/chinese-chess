@@ -30,7 +30,7 @@ vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shade
 	return *this;
 }
 
-void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vulkan_commandbuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count)
+void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator, vulkan_commandbuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count)
 {
 	if (handle_size == 0 && handle_alignment == 0 && base_alignment == 0)
 	{
@@ -72,10 +72,10 @@ void vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physic
 	uint32_t miss_stride = miss_shadow_offset - miss_primary_offset;
 	uint32_t hit_stride = hit_shadow_offset - hit_primary_offset;
 
-	sbt_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	sbt_buffer.create(_allocator, _device, buffer_size, vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	vulkan_buffer staging_buffer;
-	staging_buffer.create(_physical_device, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	staging_buffer.create(_allocator, _device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 	std::vector<uint8_t> shader_handles = _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
 

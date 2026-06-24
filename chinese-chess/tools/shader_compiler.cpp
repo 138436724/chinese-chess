@@ -39,8 +39,8 @@ void shader_compiler::print_entrypoint_hashes(int _entrypoint_count, int _target
 		});
 }
 #else
-void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept {}
-void shader_compiler::print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Slang::ComPtr<slang::IComponentType>& _composed_program) noexcept {}
+void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
+void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) noexcept {}
 #endif
 
 shader_compiler::shader_compiler()
@@ -69,7 +69,10 @@ shader_compiler::shader_compiler()
 	};
 
 	auto result = slang::createGlobalSession(global_session.writeRef());
-	assert(SLANG_SUCCEEDED(result));
+	if (!SLANG_SUCCEEDED(result))
+	{
+		throw std::runtime_error("Can not create global session.");
+	}
 
 	target_desc.format = SLANG_SPIRV;
 	target_desc.profile = global_session->findProfile("spirv_1_4");

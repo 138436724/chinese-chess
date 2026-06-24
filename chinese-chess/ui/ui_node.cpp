@@ -2,6 +2,9 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <ranges>
+#ifdef _WIN32
+#include <commdlg.h>
+#endif // _WIN32
 
 constexpr std::u8string_view MATERIAL_MANAGER = u8"材质管理";
 constexpr std::u8string_view ADD_MATERIAL = u8"添加材质";
@@ -30,7 +33,7 @@ void ui_node::create(scene_manager* _manager)
 	manager = _manager;
 }
 
-void ui_node::resize(uint32_t _width, uint32_t _height) noexcept
+void ui_node::resize(uint32_t/* _width*/, uint32_t/* _height*/) noexcept
 {
 }
 

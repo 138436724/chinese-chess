@@ -1,9 +1,9 @@
+#define VMA_IMPLEMENTATION
+
 #include "vulkan_buffer.h"
-#include "vulkan_common.h"
 
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
 	:buffer(std::exchange(_other.buffer, nullptr)),
-	buffer_memory(std::exchange(_other.buffer_memory, nullptr)),
 	buffer_address(std::exchange(_other.buffer_address, {}))
 {
 }
@@ -13,35 +13,36 @@ vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
 	if (this != &_other)
 	{
 		std::ranges::swap(buffer, _other.buffer);
-		std::ranges::swap(buffer_memory, _other.buffer_memory);
 		std::ranges::swap(buffer_address, _other.buffer_address);
 	}
 	return *this;
 }
 
-void vulkan_buffer::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties)
+void vulkan_buffer::create(const vma::raii::Allocator& _allocator, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties)
 {
 	vk::BufferCreateInfo buffer_info({}, _buffer_size, _buffer_usage, vk::SharingMode::eExclusive);
-	buffer = vk::raii::Buffer(_device, buffer_info);
 
-	vk::MemoryRequirements memory_requirements = buffer.getMemoryRequirements();
-	vk::MemoryAllocateInfo memory_info(memory_requirements.size, vulkan_common::find_memory_type(_physical_device, memory_requirements.memoryTypeBits, _properties).value());
-
+	vma::AllocationCreateInfo create_info{};
 	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
 	{
-		buffer_memory = vk::raii::DeviceMemory(_device, memory_info);
+		create_info.setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
+			.setUsage(vma::MemoryUsage::eAutoPreferHost);
 	}
 	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
 	{
-		vk::StructureChain<vk::MemoryAllocateInfo, vk::MemoryAllocateFlagsInfo> memory_info_chain(memory_info, vk::MemoryAllocateFlagsInfo(vk::MemoryAllocateFlagBits::eDeviceAddress));
-		buffer_memory = vk::raii::DeviceMemory(_device, memory_info_chain.get<vk::MemoryAllocateInfo>());
+		create_info.setFlags(vma::AllocationCreateFlagBits::eDedicatedMemory /*| vma::AllocationCreateFlagBits::eMapped*/)
+			.setUsage(vma::MemoryUsage::eGpuOnly);
+	}
+	else
+	{
+		create_info.setUsage(vma::MemoryUsage::eAuto);
 	}
 
-	buffer.bindMemory(*(buffer_memory), 0);
+	buffer = _allocator.createBuffer(buffer_info, create_info);
 
 	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
 	{
-		buffer_address = buffer_memory.mapMemory(0, _buffer_size);
+		buffer_address = buffer.getAllocation().getInfo().pMappedData;
 	}
 	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
 	{
@@ -52,7 +53,6 @@ void vulkan_buffer::create(const vk::raii::PhysicalDevice& _physical_device, con
 void vulkan_buffer::clear() noexcept
 {
 	buffer_address = nullptr;
-	buffer_memory.clear();
 	buffer.clear();
 }
 

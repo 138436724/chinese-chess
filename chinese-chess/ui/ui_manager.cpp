@@ -3,10 +3,6 @@
 #include "vulkan_core/vulkan_common.h"
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
-#ifdef _WIN32
-#include <Windows.h>
-#include <commdlg.h>
-#endif // _WIN32
 
 constexpr std::u8string_view SCENE_SETTING = u8"场景设置";
 constexpr std::u8string_view SCENE_MANAGER = u8"场景管理";
@@ -85,12 +81,12 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 	// render_output
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	render_output.create(app->get_physical_device(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+	render_output.create(app->get_allocator(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	// msaa color
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	color_image.create(app->get_physical_device(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+	color_image.create(app->get_allocator(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });
 }

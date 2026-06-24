@@ -111,10 +111,10 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 			| std::ranges::to<std::vector>();
 
 		vk::DeviceSize lights_ssbo_size = sizeof(lights_ssbo.front()) * lights_ssbo.size();
-		ssbo.create(app->get_physical_device(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		ssbo.create(app->get_allocator(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vulkan_buffer staging_buffer;
-		staging_buffer.create(app->get_physical_device(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		staging_buffer.create(app->get_allocator(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, lights_ssbo.data(), lights_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, lights_ssbo_size));
