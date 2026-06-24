@@ -4,19 +4,19 @@
 #include <vulkan/vulkan.hpp>
 
 vulkan_swapchain::vulkan_swapchain(vulkan_swapchain&& _other) noexcept
-	:present_queue(std::move(_other.present_queue)),
-	surface_capabilities(std::move(_other.surface_capabilities)),
-	surface(std::move(_other.surface)),
-	swapchain(std::move(_other.swapchain)),
-	format(std::move(_other.format)),
-	extent(std::move(_other.extent)),
-	present_mode(std::move(_other.present_mode)),
-	images(std::move(_other.images)),
-	imageviews(std::move(_other.imageviews)),
-	current_index(std::move(_other.current_index)),
-	max_index(std::move(_other.max_index)),
-	present_used(std::move(_other.present_used)),
-	present_waited(std::move(_other.present_waited))
+	:present_queue(std::exchange(_other.present_queue, {})),
+	surface_capabilities(std::exchange(_other.surface_capabilities, {})),
+	surface(std::exchange(_other.surface, nullptr)),
+	swapchain(std::exchange(_other.swapchain, nullptr)),
+	format(std::exchange(_other.format, {})),
+	extent(std::exchange(_other.extent, {})),
+	present_mode(std::exchange(_other.present_mode, {})),
+	images(std::exchange(_other.images, {})),
+	imageviews(std::exchange(_other.imageviews, {})),
+	current_index(std::exchange(_other.current_index, {})),
+	max_index(std::exchange(_other.max_index, {})),
+	present_used(std::exchange(_other.present_used, {})),
+	present_waited(std::exchange(_other.present_waited, {}))
 {
 }
 

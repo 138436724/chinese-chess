@@ -3,13 +3,13 @@
 #include "vulkan_common.h"
 
 vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration_structure&& _other) noexcept
-	: scratch_alignment(std::move(_other.scratch_alignment)),
-	geometry(std::move(_other.geometry)),
-	range_info(std::move(_other.range_info)),
-	acceleration_structure(std::move(_other.acceleration_structure)),
-	address(std::move(_other.address)),
-	buffer(std::move(_other.buffer)),
-	scratch_buffer(std::move(_other.scratch_buffer))
+	: scratch_alignment(std::exchange(_other.scratch_alignment, {})),
+	geometry(std::exchange(_other.geometry, {})),
+	range_info(std::exchange(_other.range_info, {})),
+	acceleration_structure(std::exchange(_other.acceleration_structure, nullptr)),
+	address(std::exchange(_other.address, {})),
+	buffer(std::exchange(_other.buffer, {})),
+	scratch_buffer(std::exchange(_other.scratch_buffer, {}))
 {
 }
 

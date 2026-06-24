@@ -3,14 +3,14 @@
 #include "vulkan_shader_binding_table.h"
 
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
-	: handle_size(std::move(_other.handle_size)),
-	handle_alignment(std::move(_other.handle_alignment)),
-	base_alignment(std::move(_other.base_alignment)),
-	raygen_region(std::move(_other.raygen_region)),
-	miss_region(std::move(_other.miss_region)),
-	hit_region(std::move(_other.hit_region)),
-	callable_region(std::move(_other.callable_region)),
-	sbt_buffer(std::move(_other.sbt_buffer))
+	: handle_size(std::exchange(_other.handle_size, {})),
+	handle_alignment(std::exchange(_other.handle_alignment, {})),
+	base_alignment(std::exchange(_other.base_alignment, {})),
+	raygen_region(std::exchange(_other.raygen_region, {})),
+	miss_region(std::exchange(_other.miss_region, {})),
+	hit_region(std::exchange(_other.hit_region, {})),
+	callable_region(std::exchange(_other.callable_region, {})),
+	sbt_buffer(std::exchange(_other.sbt_buffer, {}))
 {
 }
 

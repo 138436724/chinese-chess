@@ -3,11 +3,11 @@
 #include <ranges>
 
 vulkan_descriptor::vulkan_descriptor(vulkan_descriptor&& _other) noexcept
-	:max_size(std::move(_other.max_size)),
-	pool_infos(std::move(_other.pool_infos)),
-	pool_size(std::move(_other.pool_size)),
-	descriptor_pool(std::move(_other.descriptor_pool)),
-	descriptor_sets(std::move(_other.descriptor_sets))
+	:max_size(std::exchange(_other.max_size, {})),
+	pool_infos(std::exchange(_other.pool_infos, {})),
+	pool_size(std::exchange(_other.pool_size, {})),
+	descriptor_pool(std::exchange(_other.descriptor_pool, nullptr)),
+	descriptor_sets(std::exchange(_other.descriptor_sets, {}))
 {
 }
 

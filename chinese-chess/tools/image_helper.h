@@ -25,59 +25,7 @@ class image_helper
 public:
 	template <typename T>
 		requires (std::is_arithmetic_v<T>)
-	image_info<T> read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _use_channels = std::nullopt)
-	{
-		auto image = OIIO::ImageInput::open(_image_path);
-		if (!image)
-		{
-			throw std::runtime_error(std::format("Failed to open image {}.", _image_path.string()));
-		}
-
-		const OIIO::ImageSpec& spec = image->spec();
-		image_info<T> info{
-			.width = static_cast<uint32_t>(spec.width),
-			.height = static_cast<uint32_t>(spec.height),
-			.channels = _use_channels.value_or(static_cast<uint32_t>(spec.nchannels)),
-		};
-
-		auto desc = OIIO::TypeDesc::UNKNOWN;
-		if constexpr (std::is_same_v<T, uint8_t>)
-		{
-			desc = OIIO::TypeDesc::UINT8;
-		}
-		else if constexpr (std::is_same_v<T, int8_t>)
-		{
-			desc = OIIO::TypeDesc::INT8;
-		}
-		else if constexpr (std::is_same_v<T, uint16_t>)
-		{
-			desc = OIIO::TypeDesc::UINT16;
-		}
-		else if constexpr (std::is_same_v<T, int16_t>)
-		{
-			desc = OIIO::TypeDesc::INT16;
-		}
-		else if constexpr (std::is_same_v<T, uint32_t>)
-		{
-			desc = OIIO::TypeDesc::UINT32;
-		}
-		else if constexpr (std::is_same_v<T, int32_t>)
-		{
-			desc = OIIO::TypeDesc::INT32;
-		}
-		else if constexpr (std::is_same_v<T, float>)
-		{
-			desc = OIIO::TypeDesc::FLOAT;
-		}
-
-		info.buffer.resize(static_cast<size_t>(info.width) * info.height * info.channels, static_cast<T>(0));
-		if (!image->read_image(0, 0, 0, info.channels, desc, info.buffer.data()/*, sizeof(T) * info.channels, sizeof(T) * info.channels * info.width, OIIO::AutoStride*/))
-		{
-			throw std::runtime_error(std::format("Failed to read image {}.", _image_path.string()));
-		}
-
-		return info;
-	}
+	image_info<T> read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _use_channels = std::nullopt);
 
 	void read_hdr_image(const std::filesystem::path& _hdr_path, uint32_t& _width, uint32_t& _height, std::vector<float>& _hdr_data);
 	void save_to_local(const std::filesystem::path& _save_path, uint32_t _width, uint32_t _height, uint32_t _channel = 4, OIIO::TypeDesc _format = OIIO::TypeDesc::UINT8, void* _data = nullptr);
@@ -93,3 +41,63 @@ private:
 
 	static image_helper helper;
 };
+
+template<typename T>
+	requires (std::is_arithmetic_v<T>)
+inline image_info<T> image_helper::read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _use_channels)
+{
+	auto image = OIIO::ImageInput::open(_image_path);
+	if (!image)
+	{
+		throw std::runtime_error(std::format("Failed to open image {}.", _image_path.string()));
+	}
+
+	const OIIO::ImageSpec& spec = image->spec();
+	image_info<T> info{
+		.width = static_cast<uint32_t>(spec.width),
+		.height = static_cast<uint32_t>(spec.height),
+		.channels = _use_channels.value_or(static_cast<uint32_t>(spec.nchannels)),
+	};
+
+	auto desc = OIIO::TypeDesc::UNKNOWN;
+	if constexpr (std::is_same_v<T, uint8_t>)
+	{
+		desc = OIIO::TypeDesc::UINT8;
+	}
+	else if constexpr (std::is_same_v<T, int8_t>)
+	{
+		desc = OIIO::TypeDesc::INT8;
+	}
+	else if constexpr (std::is_same_v<T, uint16_t>)
+	{
+		desc = OIIO::TypeDesc::UINT16;
+	}
+	else if constexpr (std::is_same_v<T, int16_t>)
+	{
+		desc = OIIO::TypeDesc::INT16;
+	}
+	else if constexpr (std::is_same_v<T, uint32_t>)
+	{
+		desc = OIIO::TypeDesc::UINT32;
+	}
+	else if constexpr (std::is_same_v<T, int32_t>)
+	{
+		desc = OIIO::TypeDesc::INT32;
+	}
+	else if constexpr (std::is_same_v<T, float>)
+	{
+		desc = OIIO::TypeDesc::FLOAT;
+	}
+	else
+	{
+		static_assert(false, "Unsupport type!");
+	}
+
+	info.buffer.resize(static_cast<size_t>(info.width) * info.height * info.channels, static_cast<T>(0));
+	if (!image->read_image(0, 0, 0, info.channels, desc, info.buffer.data()/*, sizeof(T) * info.channels, sizeof(T) * info.channels * info.width, OIIO::AutoStride*/))
+	{
+		throw std::runtime_error(std::format("Failed to read image {}.", _image_path.string()));
+	}
+
+	return info;
+}

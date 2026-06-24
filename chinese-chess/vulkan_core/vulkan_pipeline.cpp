@@ -1,9 +1,9 @@
 #include "vulkan_pipeline.h"
 
 vulkan_pipeline::vulkan_pipeline(vulkan_pipeline&& _other) noexcept
-	:descriptor_set_layout(std::move(_other.descriptor_set_layout)),
-	pipeline_layout(std::move(_other.pipeline_layout)),
-	pipeline(std::move(_other.pipeline))
+	:descriptor_set_layout(std::exchange(_other.descriptor_set_layout, nullptr)),
+	pipeline_layout(std::exchange(_other.pipeline_layout, nullptr)),
+	pipeline(std::exchange(_other.pipeline, nullptr))
 {
 }
 

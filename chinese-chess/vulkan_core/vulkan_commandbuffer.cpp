@@ -3,11 +3,11 @@
 #include <ranges>
 
 vulkan_commandbuffer::vulkan_commandbuffer(vulkan_commandbuffer&& _other) noexcept
-	:commandbuffer_level(std::move(_other.commandbuffer_level)),
-	commandbuffer(std::move(_other.commandbuffer)),
-	fence(std::move(_other.fence)),
-	device(std::move(_other.device)),
-	queue(std::move(_other.queue))
+	:commandbuffer_level(std::exchange(_other.commandbuffer_level, {})),
+	commandbuffer(std::exchange(_other.commandbuffer, nullptr)),
+	fence(std::exchange(_other.fence, nullptr)),
+	device(std::exchange(_other.device, {})),
+	queue(std::exchange(_other.queue, {}))
 {
 }
 

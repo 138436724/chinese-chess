@@ -2,9 +2,9 @@
 #include "vulkan_common.h"
 
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
-	:buffer(std::move(_other.buffer)),
-	buffer_memory(std::move(_other.buffer_memory)),
-	buffer_address(std::move(_other.buffer_address))
+	:buffer(std::exchange(_other.buffer, nullptr)),
+	buffer_memory(std::exchange(_other.buffer_memory, nullptr)),
+	buffer_address(std::exchange(_other.buffer_address, {}))
 {
 }
 

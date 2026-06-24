@@ -2,13 +2,13 @@
 #include "vulkan_image.h"
 
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
-	: format(std::move(_other.format)),
-	extent(std::move(_other.extent)),
-	layout(std::move(_other.layout)),
-	clear_value(std::move(_other.clear_value)),
-	image(std::move(_other.image)),
-	imageview(std::move(_other.imageview)),
-	image_memory(std::move(_other.image_memory))
+	: format(std::exchange(_other.format, {})),
+	extent(std::exchange(_other.extent, {})),
+	layout(std::exchange(_other.layout, {})),
+	clear_value(std::exchange(_other.clear_value, {})),
+	image(std::exchange(_other.image, nullptr)),
+	imageview(std::exchange(_other.imageview, nullptr)),
+	image_memory(std::exchange(_other.image_memory, nullptr))
 {
 }
 
