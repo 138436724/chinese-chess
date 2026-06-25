@@ -200,61 +200,26 @@ void vulkan_application::save_image(vulkan_image& _image) const
 	commandbuffer.end_record();
 	commandbuffer.submit({}, {}, true);
 
-
 	auto now = std::chrono::system_clock::now();
 	auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
 	std::u8string save_path = std::u8string(CAPTURES_PATH);
 	save_path += STRING_HELPER::convert_to<std::u8string, std::string>(std::format("{:%Y_%m_%d_%H_%M_%S}", now_second));
 
-	OIIO::TypeDesc desc;
-
-	if (vkuFormatIs8bit(image_format))
+	if (vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format))
 	{
-		if (vkuFormatIsUINT(image_format))
-		{
-			desc = OIIO::TypeDesc::UINT8;
-		}
-		else
-		{
-			desc = OIIO::TypeDesc::INT8;
-		}
+		save_path += u8".exr";
+		IMAGE_HELPER.write_image<half>(save_path, _image.get_extent().width, _image.get_extent().height, std::span<half>(static_cast<half*>(save_buffer.get_buffer_address().hostAddress), _image.get_extent().width * _image.get_extent().height * vkuFormatComponentCount(image_format)));
+	}
+	else if (vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format))
+	{
 		save_path += u8".png";
+		IMAGE_HELPER.write_image<uint8_t>(save_path, _image.get_extent().width, _image.get_extent().height, { static_cast<uint8_t*>(save_buffer.get_buffer_address().hostAddress), _image.get_extent().width * _image.get_extent().height * vkuFormatComponentCount(image_format) });
 	}
-	else if (vkuFormatIs16bit(image_format))
+	else
 	{
-		if (vkuFormatIsSFLOAT(image_format))
-		{
-			desc = OIIO::TypeDesc::HALF;
-		}
-		else if (vkuFormatIsUINT(image_format))
-		{
-			desc = OIIO::TypeDesc::UINT16;
-		}
-		else
-		{
-			desc = OIIO::TypeDesc::INT16;
-		}
-		save_path += u8".exr";
+		throw std::runtime_error("Not Support Format!");
 	}
-	else if (vkuFormatIs32bit(image_format))
-	{
-		if (vkuFormatIsSFLOAT(image_format))
-		{
-			desc = OIIO::TypeDesc::FLOAT;
-		}
-		else if (vkuFormatIsUINT(image_format))
-		{
-			desc = OIIO::TypeDesc::UINT32;
-		}
-		else
-		{
-			desc = OIIO::TypeDesc::INT32;
-		}
-		save_path += u8".exr";
-	}
-
-	IMAGE_HELPER.save_to_local(save_path, _image.get_extent().width, _image.get_extent().height, vkuFormatComponentCount(image_format), desc, save_buffer.get_buffer_address().hostAddress);
 }
 
 const vk::raii::Instance& vulkan_application::get_instance() const noexcept

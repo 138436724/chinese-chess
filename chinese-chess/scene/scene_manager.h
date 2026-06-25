@@ -37,7 +37,7 @@ private:
 	std::shared_ptr<scene_model> create(std::type_identity<scene_model>, const std::filesystem::path& _model_name) noexcept;
 	std::shared_ptr<scene_material> create(std::type_identity<scene_material>) noexcept;
 	std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters) noexcept;
-	std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _image_path) noexcept;
+	std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr) noexcept;
 
 	// for rasterization
 	void create_rasterization();
@@ -55,13 +55,16 @@ private:
 	{
 		alignas(16) glm::mat4x4 proj_or_inv_matrix;
 		alignas(16) glm::mat4x4 view_or_inv_matrix;
-		alignas(16) uint32_t light_count = 0;
+		alignas(16) uint32_t hdr_skybox_id = std::numeric_limits<uint32_t>::max();
+		uint32_t light_count = 0;
 		uint32_t frame_index = 0;
 	};
 
 	bool is_dirty = true;
 
 	bool use_ray_tracing = true;
+	uint32_t skybox_index = std::numeric_limits<uint32_t>::max();
+	std::shared_ptr<scene_image> skybox_image = nullptr;
 
 	uint32_t width = 0;
 	uint32_t height = 0;
@@ -71,9 +74,9 @@ private:
 
 	std::vector<vulkan_commandbuffer> commandbuffers;
 
-	std::unique_ptr<scene_model_manager> model_manager;
-	std::unique_ptr<scene_material_manager> material_manager;
-	std::unique_ptr<scene_light_manager> light_manager;
+	std::unique_ptr<scene_model_manager> model_manager = nullptr;
+	std::unique_ptr<scene_material_manager> material_manager = nullptr;
+	std::unique_ptr<scene_light_manager> light_manager = nullptr;
 
 	scene_camera active_camera;
 

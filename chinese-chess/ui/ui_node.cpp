@@ -105,7 +105,7 @@ void ui_node::update_material() noexcept
 					{
 						std::erase_if(textures, [&](const auto& pair) { return pair.first == material_ptr->alpha_map; });
 					}
-					material_ptr->alpha_map = manager->create<scene_image>(file_path);
+					material_ptr->alpha_map = manager->create<scene_image>(file_path, false);
 					textures.insert(std::make_pair(material_ptr->alpha_map, file_path));
 					manager->need_update();
 				}

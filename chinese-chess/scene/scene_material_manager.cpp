@@ -2,6 +2,7 @@
 #include "tools/font_loader.h"
 #include "tools/image_helper.h"
 #include <ranges>
+#include <vulkan/utility/vk_format_utils.h>
 
 struct material_data
 {
@@ -88,7 +89,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	return std::shared_ptr<scene_image>(font_image);
 }
 
-std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path& _image_path)
+std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path& _image_path, bool _is_hdr)
 {
 	// find in cache
 	if (auto iter = std::ranges::find_if(images_cache, [&](const auto& s) {return s.first == _image_path; }); iter != images_cache.end())
@@ -99,28 +100,44 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 		}
 	}
 
+	auto image = std::make_shared<scene_image>();
+	vulkan_buffer stage_buffer;
+	vk::Format image_format = vk::Format::eUndefined;
+	vk::Extent3D image_extent({}, {}, 1);
+
+	if (_is_hdr)
+	{
+		image_format = vk::Format::eR16G16B16A16Sfloat;
+		auto image_data = IMAGE_HELPER.read_image<half>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
+		image_extent = vk::Extent3D(image_data.width, image_data.height, 1);
+
+		stage_buffer.create(app->get_allocator(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
+	}
+	else
+	{
+		image_format = vk::Format::eR8G8B8A8Unorm;
+		auto image_data = IMAGE_HELPER.read_image<uint8_t>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
+		image_extent = vk::Extent3D(image_data.width, image_data.height, 1);
+
+		stage_buffer.create(app->get_allocator(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
+	}
+
 	// begin a commandbuffer
 	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
-	// load font and transition to image
-	auto image_data = IMAGE_HELPER.read_image<uint8_t>(_image_path, 4u);
-
-	auto image = std::make_shared<scene_image>();
-	vk::ImageCreateInfo image_info({}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D(image_data.width, image_data.height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
-	vk::ImageViewCreateInfo view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+	vk::ImageCreateInfo image_info({}, vk::ImageType::e2D, image_format, image_extent, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
+	vk::ImageViewCreateInfo view_info({}, {}, vk::ImageViewType::e2D, image_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	image->create(app->get_allocator(), app->get_device(), image_info, view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(image->set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
-	vulkan_buffer stage_buffer;
-	stage_buffer.create(app->get_allocator(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-	memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
-
-	vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), image->get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(image_data.width, image_data.height, 1)));
+	vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), image->get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), image_extent));
 
 	std::vector<vk::ImageMemoryBarrier2> end_barrier;
 	end_barrier.emplace_back(image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));

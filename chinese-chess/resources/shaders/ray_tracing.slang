@@ -12,6 +12,7 @@ struct push_constant
 {
     float4x4 proj_inv_matrix;
     float4x4 view_inv_matrix;
+    uint skybox_index;
     uint light_count;       // 灯光数量
     uint frame_index;       // frame counter for progressive rendering and RNG seeding
 };
@@ -40,7 +41,7 @@ RWTexture2D<float4> render_output;                                // output imag
 StructuredBuffer<model_data> models;                              // SSBO, has all model info
 StructuredBuffer<material_data> materials;                        // SSBO, has all material info
 StructuredBuffer<light_data> lights;                                 // SSBO，灯光数据（binding 4）
-[[vk::binding(5)]] Sampler2D[] samplers;                          // bindless descriptor, texture used in materials
+Sampler2D[] samplers;                          // bindless descriptor, texture used in materials
 // attention please, SSBO is std430 layout default, but UBO is std140
 
 // Ray payload structure - carries data through the primary ray tracing pipeline
@@ -280,12 +281,17 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
 }
 
 // Miss shader - called when ray doesn't hit any geometry (sky)
+// 优先使用 HDR 环境贴图天空盒；不可用时回退到硬编码默认天空色
 [shader("miss")]
 void rayMissMain(inout HitPayload payload)
 {
-    // Sky color (simple gradient based on ray direction)
-    // Add sky contribution to accumulated color
+    // Sky color from HDR environment map or fallback to default sky
     float3 sky_color = sample_sky(WorldRayDirection());
+    if (push_const.skybox_index != 0xFFFFFFFFu)
+    {
+        // Sky color from HDR environment map or fallback to default sky
+        sky_color = sample_hdr_sky(WorldRayDirection(), samplers[push_const.skybox_index]);
+    }
 
     payload.color += payload.throughput * sky_color;
 }

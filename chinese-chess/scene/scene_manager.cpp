@@ -1,4 +1,5 @@
 #include "scene_manager.h"
+#include "tools/image_helper.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_common.h"
 #include <ranges>
@@ -40,8 +41,9 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 
 	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
 
-
 	color_format = vk::Format::eR16G16B16A16Sfloat;
+
+	skybox_image = material_manager->create(std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr", true);
 
 	create_rasterization();
 	create_ray_tracing();
@@ -77,6 +79,7 @@ void scene_manager::update()
 	material_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 	model_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 	light_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
+	skybox_index = material_manager->get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
 
 	update_rasterization();
 	update_ray_tracing();
@@ -146,9 +149,9 @@ std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_imag
 	return material_manager->create(_font_path, _font_size, _characters);
 }
 
-std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path) noexcept
+std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr) noexcept
 {
-	return material_manager->create(_image_path);
+	return material_manager->create(_image_path, _is_hdr);
 }
 
 void scene_manager::create_rasterization()
@@ -482,6 +485,7 @@ void scene_manager::render_ray_tracing(const vk::raii::CommandBuffer& _commandbu
 	scene_manager::push_constant pc{
 		glm::inverse(active_camera.get_projection_matrix()),
 		glm::inverse(active_camera.get_view_matrix()),
+		skybox_index,
 		static_cast<uint32_t>(light_manager->get_lights().size()),
 		rt_frame_index,
 	};

@@ -1,17 +1,29 @@
 #pragma once
 
-#include <cstdint>
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4996) // disable error in Imath
+#pragma warning(disable: 4267) // disable warning in OpenImageIO
+#pragma warning(disable: 4244) // disable warning in OpenImageIO
+#endif // _MSC_VER
+
 #include <filesystem>
+#include <Imath/half.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/typedesc.h>
+#include <span>
 #include <string_view>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
 
 #define IMAGE_HELPER image_helper::get_image_help()
 constexpr std::u8string_view CAPTURES_PATH = u8"resources\\captures\\";
 constexpr std::u8string_view TEXTURES_PATH = u8"resources\\textures\\";
 
 template <typename T>
-	requires (std::is_arithmetic_v<T>)
+	requires (std::is_arithmetic_v<T> || std::is_same_v<T, half>)
 struct image_info
 {
 	uint32_t width = 0;
@@ -24,11 +36,13 @@ class image_helper
 {
 public:
 	template <typename T>
-		requires (std::is_arithmetic_v<T>)
-	image_info<T> read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _use_channels = std::nullopt);
+		requires (OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
+	image_info<T> read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _channels = std::nullopt);
 
-	void read_hdr_image(const std::filesystem::path& _hdr_path, uint32_t& _width, uint32_t& _height, std::vector<float>& _hdr_data);
-	void save_to_local(const std::filesystem::path& _save_path, uint32_t _width, uint32_t _height, uint32_t _channel = 4, OIIO::TypeDesc _format = OIIO::TypeDesc::UINT8, void* _data = nullptr);
+	template <typename T>
+		requires (OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
+	void write_image(const std::filesystem::path& _image_path, uint32_t _width, uint32_t _height, const std::span<T> _data, std::optional<uint32_t> _channels = std::nullopt);
+
 	static image_helper& get_image_help() noexcept;
 
 private:
@@ -43,8 +57,8 @@ private:
 };
 
 template<typename T>
-	requires (std::is_arithmetic_v<T>)
-inline image_info<T> image_helper::read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _use_channels)
+	requires (OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
+inline image_info<T> image_helper::read_image(const std::filesystem::path& _image_path, std::optional<uint32_t> _channels)
 {
 	auto image = OIIO::ImageInput::open(_image_path);
 	if (!image)
@@ -56,48 +70,33 @@ inline image_info<T> image_helper::read_image(const std::filesystem::path& _imag
 	image_info<T> info{
 		.width = static_cast<uint32_t>(spec.width),
 		.height = static_cast<uint32_t>(spec.height),
-		.channels = _use_channels.value_or(static_cast<uint32_t>(spec.nchannels)),
+		.channels = _channels.value_or(static_cast<uint32_t>(spec.nchannels)),
 	};
 
-	auto desc = OIIO::TypeDesc::UNKNOWN;
-	if constexpr (std::is_same_v<T, uint8_t>)
-	{
-		desc = OIIO::TypeDesc::UINT8;
-	}
-	else if constexpr (std::is_same_v<T, int8_t>)
-	{
-		desc = OIIO::TypeDesc::INT8;
-	}
-	else if constexpr (std::is_same_v<T, uint16_t>)
-	{
-		desc = OIIO::TypeDesc::UINT16;
-	}
-	else if constexpr (std::is_same_v<T, int16_t>)
-	{
-		desc = OIIO::TypeDesc::INT16;
-	}
-	else if constexpr (std::is_same_v<T, uint32_t>)
-	{
-		desc = OIIO::TypeDesc::UINT32;
-	}
-	else if constexpr (std::is_same_v<T, int32_t>)
-	{
-		desc = OIIO::TypeDesc::INT32;
-	}
-	else if constexpr (std::is_same_v<T, float>)
-	{
-		desc = OIIO::TypeDesc::FLOAT;
-	}
-	else
-	{
-		static_assert(false, "Unsupport type!");
-	}
-
 	info.buffer.resize(static_cast<size_t>(info.width) * info.height * info.channels, static_cast<T>(0));
-	if (!image->read_image(0, 0, 0, info.channels, desc, info.buffer.data()/*, sizeof(T) * info.channels, sizeof(T) * info.channels * info.width, OIIO::AutoStride*/))
+	if (!image->read_image(0, 0, 0, info.channels, OIIO::TypeDescFromC<T>().value(), info.buffer.data(), sizeof(T) * info.channels, sizeof(T) * info.channels * info.width, OIIO::AutoStride))
 	{
 		throw std::runtime_error(std::format("Failed to read image {}.", _image_path.string()));
 	}
 
 	return info;
+}
+
+template<typename T>
+	requires (OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
+inline void image_helper::write_image(const std::filesystem::path& _image_path, uint32_t _width, uint32_t _height, const std::span<T> _data, std::optional<uint32_t> _channels)
+{
+	auto image = OIIO::ImageOutput::create(_image_path);
+
+	uint32_t channels = _channels.value_or(static_cast<uint32_t>(_data.size() / (static_cast<size_t>(_width) * _height)));
+	if (!image->open(_image_path, OIIO::ImageSpec(_width, _height, channels, OIIO::TypeDescFromC<T>().value())))
+	{
+		throw std::runtime_error(std::format("Can not open file, please check path: {}", _image_path.generic_string()));
+	}
+	if (!image->write_image(OIIO::TypeDescFromC<T>().value(), _data.data(), sizeof(T) * channels, sizeof(T) * channels * _width, OIIO::AutoStride))
+	{
+		throw std::runtime_error("Can not write file!");
+	}
+
+	image->close();
 }

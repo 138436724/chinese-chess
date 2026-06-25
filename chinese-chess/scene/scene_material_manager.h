@@ -15,7 +15,7 @@ public:
 
 	std::shared_ptr<scene_material> create();
 	std::shared_ptr<scene_image> create(const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters);
-	std::shared_ptr<scene_image> create(const std::filesystem::path& _image_path);
+	std::shared_ptr<scene_image> create(const std::filesystem::path& _image_path, bool _is_hdr);
 	void update(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void clear() noexcept;
 

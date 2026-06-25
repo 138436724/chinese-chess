@@ -454,3 +454,21 @@ float3 sample_sky(float3 direction, float3 sky_color)
 {
     return sky_color;
 }
+
+// ---- HDR 环境贴图天空采样 ----
+// 从等距矩形投影（Equirectangular）的 HDR 环境贴图中采样天空辐射亮度。
+// 参数 direction：世界空间光线方向（单位向量）
+// 参数 hdr_env_map：HDR 环境贴图（2D 纹理，等距矩形投影，线性空间 HDR 浮点格式）
+// 参数 hdr_sampler：用于采样的 SamplerState
+// 返回：天空辐射亮度（线性空间 RGB，HDR 范围）
+float3 sample_hdr_sky(float3 direction, Sampler2D hdr_env_map)
+{
+    // 等距矩形投影：方向向量 → UV 坐标
+    // u ∈ [0, 1] 对应方位角 [-π, π]
+    // v ∈ [0, 1] 对应极角 [π, 0]（从上到下）
+    float2 uv = float2(
+        0.5f + 0.5f * atan2(direction.z, direction.x) * INV_PI,
+        1.0f - acos(clamp(direction.y, -1.0f, 1.0f)) * INV_PI
+    );
+    return hdr_env_map.SampleLevel(uv, 0.0f).rgb;
+}
