@@ -13,7 +13,7 @@ public:
 	~scene_manager() = default;
 
 	// in the scene, all object's pipeline only need one color format and one depth format
-	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
+	void create(const vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
 	const vulkan_commandbuffer& render();
@@ -70,8 +70,10 @@ private:
 	uint32_t height = 0;
 
 	uint32_t current_frame = 0;
-	vulkan_application* app = nullptr;
+	const vulkan_application* app = nullptr;
 
+	vulkan_queue graphic_queue;
+	vulkan_queue transfer_queue;
 	std::vector<vulkan_commandbuffer> commandbuffers;
 
 	std::unique_ptr<scene_model_manager> model_manager = nullptr;

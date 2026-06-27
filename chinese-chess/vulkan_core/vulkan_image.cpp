@@ -110,7 +110,7 @@ void vulkan_image::copy_image_to_image(const vk::raii::CommandBuffer& _commandbu
 	_commandbuffer.copyImage2(vk::CopyImageInfo2(_image_src, _src_layout, _image_dst, _dst_layout, _copy_info));
 }
 
-vk::AccessFlags2 vulkan_image::get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept
+constexpr vk::AccessFlags2 vulkan_image::get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept
 {
 	switch (_layout)
 	{
@@ -131,7 +131,7 @@ vk::AccessFlags2 vulkan_image::get_access_flags_from_image_layout(vk::ImageLayou
 	}
 }
 
-vk::PipelineStageFlags2 vulkan_image::get_pipeline_stage_for_layout(vk::ImageLayout _layout) noexcept
+constexpr vk::PipelineStageFlags2 vulkan_image::get_pipeline_stage_for_layout(vk::ImageLayout _layout) noexcept
 {
 	switch (_layout)
 	{

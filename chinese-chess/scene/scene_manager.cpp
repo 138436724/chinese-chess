@@ -16,13 +16,18 @@ enum class stage_indices :uint32_t
 	shader_group_max_count
 };
 
-void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
+void scene_manager::create(const vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
 	app = _app;
 
-	material_manager = std::make_unique<scene_material_manager>(app);
-	model_manager = std::make_unique<scene_model_manager>(app, material_manager.get());
-	light_manager = std::make_unique<scene_light_manager>(app);
+
+	graphic_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eGraphics));
+	transfer_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eTransfer));
+
+
+	material_manager = std::make_unique<scene_material_manager>(app, &transfer_queue);
+	model_manager = std::make_unique<scene_model_manager>(app, &transfer_queue, material_manager.get());
+	light_manager = std::make_unique<scene_light_manager>(app, &transfer_queue);
 
 
 	// create sampler
@@ -39,7 +44,7 @@ void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _
 	active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
 
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
+	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), graphic_queue.get_queue());
 
 	color_format = vk::Format::eR16G16B16A16Sfloat;
 
@@ -70,7 +75,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 void scene_manager::update()
 {
-	if (!is_dirty) [[likely]]
+	if (!is_dirty)
 	{
 		return;
 	}
@@ -213,7 +218,7 @@ void scene_manager::update_rasterization()
 
 
 		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
@@ -304,7 +309,7 @@ void scene_manager::render_rasterization(const vk::raii::CommandBuffer& _command
 	};
 	_commandbuffer.pushConstants2(vk::PushConstantsInfo(raster_pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_manager::push_constant), &pc));
 
-	if (!model_manager->get_models().empty())
+	if (!model_manager->get_models().empty()) [[likely]]
 	{
 		_commandbuffer.bindVertexBuffers(0, *(model_manager->get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
 		_commandbuffer.bindIndexBuffer(*(model_manager->get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
@@ -361,7 +366,7 @@ void scene_manager::create_ray_tracing()
 	rt_pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::min(9u, properties.maxRayRecursionDepth));
 
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// create shader binding table (now needs 5 groups)
@@ -384,7 +389,7 @@ void scene_manager::update_ray_tracing()
 	if (!model_manager->get_models().empty())
 	{
 		// generate tlas
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		// create top level acceleration structure
@@ -441,7 +446,7 @@ void scene_manager::update_ray_tracing()
 			const auto& [index, descriptor_set] = _pair;
 			std::vector<vk::WriteDescriptorSet> write_sets;
 
-			vk::DescriptorBufferInfo as_buffer_info(rt_tlas.at(index).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * model_manager->get_models().size()); // todo if some model not show, maybe need rt_instances.size()
+			vk::DescriptorBufferInfo as_buffer_info(rt_tlas.at(index).get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * model_manager->get_models().size());
 			vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
 				vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
 				vk::WriteDescriptorSetAccelerationStructureKHR(*(rt_tlas.at(index).get_acceleration_structure())));

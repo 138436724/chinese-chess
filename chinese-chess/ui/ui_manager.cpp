@@ -8,7 +8,7 @@ constexpr std::u8string_view SCENE_SETTING = u8"场景设置";
 constexpr std::u8string_view SCENE_MANAGER = u8"场景管理";
 constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
 
-void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
+void ui_manager::create(GLFWwindow* _window, const vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
 	app = _app;
 	manager = _manager;
@@ -44,6 +44,8 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 
 	ImGui_ImplGlfw_InitForVulkan(_window, true);
 
+	graphic_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eGraphics));
+
 	std::array pool_size{ vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1), vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1) };
 	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
 	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_info);
@@ -59,8 +61,8 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 		.Instance = *(app->get_instance()),
 		.PhysicalDevice = *(app->get_physical_device()),
 		.Device = *(app->get_device()),
-		.QueueFamily = app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_index(),
-		.Queue = *(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()),
+		.QueueFamily = graphic_queue.get_index(),
+		.Queue = *(graphic_queue.get_queue()),
 		.DescriptorPool = *descriptor_pool,
 		.MinImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
 		.ImageCount = vulkan_common::MAX_FRAMES_IN_FLIGHT,
@@ -69,7 +71,7 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 	};
 	ImGui_ImplVulkan_Init(&init_info);
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(_app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), _app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue());
+	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), graphic_queue.get_queue());
 
 	resize(_width, _height);
 }

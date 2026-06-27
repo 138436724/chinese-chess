@@ -5,6 +5,7 @@
 #include "vulkan_application.h"
 #include "vulkan_common.h"
 #include <algorithm>
+#include <bitset>
 #include <format>
 #include <print>
 #include <ranges>
@@ -16,16 +17,16 @@ void vulkan_application::init(const std::vector<const char*>& _instance_layers, 
 	create_instance(_instance_layers, _instance_extensions, _flags);
 }
 
-void vulkan_application::create(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute, uint32_t _width, uint32_t _height)
+void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
-	pick_physical_device_and_queue_family(_surface, _enable_graphics, _enable_compute);
+	pick_physical_device_and_queue_family(_surface);
 	create_device_and_queue();
 
 	pick_msaa_sample_count();
 	pick_depth_format();
 
 	allocator = vma::raii::Allocator(instance, device, vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
-	swapchain.create(instance, physical_device, device, _surface, _width, _height);
+	swapchain.create(instance, physical_device, device, _surface, present_index, _width, _height);
 
 	create_pipeline();
 
@@ -184,7 +185,7 @@ void vulkan_application::save_image(vulkan_image& _image) const
 	vulkan_buffer save_buffer;
 	save_buffer.create(allocator, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, transfer_queue.get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	auto old_layout = _image.get_layout();
@@ -242,7 +243,7 @@ const vma::raii::Allocator& vulkan_application::get_allocator() const noexcept
 	return allocator;
 }
 
-std::optional<std::reference_wrapper<const vulkan_queue>> vulkan_application::get_queue(vk::QueueFlagBits _queue_type) const noexcept
+uint32_t vulkan_application::get_queue_index(vk::QueueFlagBits _queue_type) const noexcept
 {
 	switch (_queue_type)
 	{
@@ -257,15 +258,15 @@ std::optional<std::reference_wrapper<const vulkan_queue>> vulkan_application::ge
 	case vk::QueueFlagBits::eSparseBinding:
 		break;
 	case vk::QueueFlagBits::eTransfer:
-		break;
+		return transfer_index;
 	case vk::QueueFlagBits::eCompute:
-		return std::cref(compute_queue);
+		return compute_index;
 	case vk::QueueFlagBits::eGraphics:
-		return std::cref(graphic_queue);
+		return graphic_index;
 	default:
 		break;
 	}
-	return std::nullopt;
+	return vk::QueueFamilyIgnored;
 }
 
 const vulkan_swapchain& vulkan_application::get_swapchain() const noexcept
@@ -331,7 +332,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 #endif // NDEBUG
 }
 
-void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute)
+void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _surface)
 {
 	auto all_physical_devices = instance.enumeratePhysicalDevices();
 	auto filtered_physical_devices = all_physical_devices
@@ -387,31 +388,61 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 		{
 			auto queue_family_properties = _physical_device.getQueueFamilyProperties();
 
-			for (const auto& [queue_family_index, queue_family_property] : queue_family_properties | std::views::enumerate)
+			auto all_queue_supports = queue_family_properties
+				| std::views::enumerate
+				| std::views::transform([&](const auto& _pair)
+					{
+						const auto& [queue_family_index, queue_family_property] = _pair;
+						bool support_graphics = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eGraphics);
+						bool support_compute = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eCompute);
+						bool support_transfer = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eTransfer);
+						bool support_present = _physical_device.getSurfaceSupportKHR(static_cast<uint32_t>(queue_family_index), _surface) == vk::True;
+						return std::array{ support_graphics, support_compute, support_transfer, support_present };
+					});
+
+			// get all nums, like 0,1,2,3,4
+			auto the_digit = std::views::iota(0u, all_queue_supports.size());
+			// filter the num's position, for example 1 not on persent location
+			auto digits_at = [&](size_t pos)
+				{
+					return the_digit
+						| std::views::filter([&all_queue_supports, pos](size_t d)
+							{
+								return all_queue_supports[d][pos];
+							});
+				};
+			// list all support
+			auto all_kinds = std::views::cartesian_product(digits_at(0), digits_at(1), digits_at(2), digits_at(3));
+			// count the different num, for example 1234->4 0000->1
+			auto unique_count = [](const auto& k)
+				{
+					const auto [g, c, t, p] = k;
+					std::bitset<10> bits;
+					bits.set(g).set(c).set(t).set(p);
+					return bits.count();
+				};
+			// find the most different queue
+			auto best_kind = std::ranges::max_element(all_kinds,
+				[&](const auto& a, const auto& b)
+				{
+					// prefer only support transfer queue
+					const auto [g_a, c_a, t_a, p_a] = a;
+					const auto [g_b, c_b, t_b, p_b] = b;
+					auto a_score = static_cast<size_t>(all_queue_supports[t_a][0] == false && all_queue_supports[t_a][1] == false && all_queue_supports[t_a][2] == true && all_queue_supports[t_a][3] == false) * 10;
+					auto b_score = static_cast<size_t>(all_queue_supports[t_b][0] == false && all_queue_supports[t_b][1] == false && all_queue_supports[t_b][2] == true && all_queue_supports[t_b][3] == false) * 10;
+					return a_score + unique_count(a) < b_score + unique_count(b);
+				});
+
+			if (best_kind != all_kinds.end())
 			{
-				bool support_graphics = _enable_graphics && queue_family_property.queueFlags & vk::QueueFlagBits::eGraphics;
-				bool support_present = _physical_device.getSurfaceSupportKHR(static_cast<uint32_t>(queue_family_index), _surface) == vk::True;
-				bool support_compute = _enable_compute && queue_family_property.queueFlags & vk::QueueFlagBits::eCompute;
+				auto [g, c, t, p] = *best_kind;
 
-				if (support_graphics)
-				{
-					graphic_queue.set_index(static_cast<uint32_t>(queue_family_index));
-				}
-				if (support_present)
-				{
-					vulkan_queue present_queue;
-					present_queue.set_index(static_cast<uint32_t>(queue_family_index));
-					swapchain.set_present_queue(std::move(present_queue));
-				}
-				if (support_compute)
-				{
-					compute_queue.set_index(static_cast<uint32_t>(queue_family_index));
-				}
+				graphic_index = static_cast<uint32_t>(g);
+				compute_index = static_cast<uint32_t>(c);
+				transfer_index = static_cast<uint32_t>(g); // todo 先用图形队列，用单独的传输队列需要做一些转换，还没做好
+				present_index = static_cast<uint32_t>(p);
 
-				if (swapchain.get_present_queue().get_index() != vk::QueueFamilyIgnored && ((_enable_graphics && graphic_queue.get_index() != vk::QueueFamilyIgnored) || (_enable_compute && compute_queue.get_index() != vk::QueueFamilyIgnored)))
-				{
-					return true;
-				}
+				return true;
 			}
 
 			return false;
@@ -442,8 +473,7 @@ void vulkan_application::create_device_and_queue()
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceRayTracingPipelineFeaturesKHR().setRayTracingPipeline(vk::True).setRayTracingPipelineTraceRaysIndirect(vk::True).setRayTraversalPrimitiveCulling(vk::True));
 
-	std::unordered_set<uint32_t> queue_indices = { swapchain.get_present_queue().get_index(), graphic_queue.get_index(), compute_queue.get_index() };
-	queue_indices.erase(vk::QueueFamilyIgnored);
+	std::unordered_set<uint32_t> queue_indices = { graphic_index, compute_index, transfer_index, present_index };
 
 	float queue_priority = 0.0f;
 	auto device_queue_create_info = queue_indices
@@ -458,20 +488,9 @@ void vulkan_application::create_device_and_queue()
 
 	device = vk::raii::Device(physical_device, device_creat_info);
 
-	if (graphic_queue.get_index() != vk::QueueFamilyIgnored)
-	{
-		graphic_queue.create(device, graphic_queue.get_index());
-	}
-	if (swapchain.get_present_queue().get_index() != vk::QueueFamilyIgnored)
-	{
-		vulkan_queue present_queue;
-		present_queue.create(device, swapchain.get_present_queue().get_index());
-		swapchain.set_present_queue(std::move(present_queue));
-	}
-	if (compute_queue.get_index() != vk::QueueFamilyIgnored)
-	{
-		compute_queue.create(device, compute_queue.get_index());
-	}
+	graphic_queue.create(device, graphic_index);
+	compute_queue.create(device, compute_index);
+	transfer_queue.create(device, transfer_index);
 }
 
 void vulkan_application::pick_msaa_sample_count() const noexcept
@@ -532,7 +551,7 @@ void vulkan_application::create_pipeline()
 
 		// todo 看能否封装到OCIO_HELPER的函数里面
 		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, transfer_queue.get_queue()).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		ocio_images.clear();

@@ -31,8 +31,8 @@ public:
 	static void copy_image_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Image& _image_src, const vk::Image& _image_dst, vk::ImageLayout _src_layout, vk::ImageLayout _dst_layout, const vk::ImageCopy2& _copy_info) noexcept;
 
 private:
-	static vk::AccessFlags2 get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept;
-	static vk::PipelineStageFlags2 get_pipeline_stage_for_layout(vk::ImageLayout _layout) noexcept;
+	static constexpr vk::AccessFlags2 get_access_flags_from_image_layout(vk::ImageLayout _layout) noexcept;
+	static constexpr vk::PipelineStageFlags2 get_pipeline_stage_for_layout(vk::ImageLayout _layout) noexcept;
 
 	vk::Format format = vk::Format::eUndefined;
 	vk::Extent2D extent = vk::Extent2D{ 0, 0 };

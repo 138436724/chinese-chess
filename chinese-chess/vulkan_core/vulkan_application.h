@@ -22,7 +22,7 @@ public:
 
 	// public to use
 	void init(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags = {});
-	void create(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute, uint32_t _width, uint32_t _height);
+	void create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void begin() noexcept;
 	void render(const std::span<const vk::CommandBuffer> _commandbuffers);
@@ -40,13 +40,13 @@ public:
 	const vk::raii::PhysicalDevice& get_physical_device() const noexcept;
 	const vk::raii::Device& get_device() const noexcept;
 	const vma::raii::Allocator& get_allocator() const noexcept;
-	std::optional<std::reference_wrapper<const vulkan_queue>> get_queue(vk::QueueFlagBits _queue_type) const noexcept;
+	uint32_t get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
 	const vulkan_swapchain& get_swapchain() const noexcept;
 
 private:
 	// use in `init` and `create`
 	void create_instance(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags = {});
-	void pick_physical_device_and_queue_family(vk::SurfaceKHR _surface, bool _enable_graphics, bool _enable_compute);
+	void pick_physical_device_and_queue_family(vk::SurfaceKHR _surface);
 	void create_device_and_queue();
 
 	void pick_msaa_sample_count() const noexcept;
@@ -82,8 +82,14 @@ private:
 		vk::KHRPushDescriptorExtensionName
 	};
 
+	uint32_t graphic_index = vk::QueueFamilyIgnored;
+	uint32_t compute_index = vk::QueueFamilyIgnored;
+	uint32_t transfer_index = vk::QueueFamilyIgnored;
+	uint32_t present_index = vk::QueueFamilyIgnored;
+
 	vulkan_queue graphic_queue;
 	vulkan_queue compute_queue;
+	vulkan_queue transfer_queue;
 
 	vulkan_swapchain swapchain;
 

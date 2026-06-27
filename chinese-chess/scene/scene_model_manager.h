@@ -12,7 +12,7 @@
 class scene_model_manager
 {
 public:
-	scene_model_manager(vulkan_application* _app, scene_material_manager* _manager);
+	scene_model_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue, const scene_material_manager* _manager);
 	~scene_model_manager() = default;
 
 	std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
@@ -28,8 +28,9 @@ private:
 	void update_meshs(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 
-	vulkan_application* app = nullptr;
-	scene_material_manager* manager = nullptr;
+	const vulkan_application* app = nullptr;
+	const vulkan_queue* transfer_queue = nullptr;
+	const scene_material_manager* manager = nullptr;
 
 	std::vector<std::weak_ptr<scene_model>> models;
 	std::vector<std::weak_ptr<model_infomation>> meshs; // submit to gpu in order

@@ -10,7 +10,7 @@
 class scene_material_manager
 {
 public:
-	scene_material_manager(vulkan_application* _app);
+	scene_material_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue);
 	~scene_material_manager() = default;
 
 	std::shared_ptr<scene_material> create();
@@ -28,7 +28,8 @@ public:
 private:
 	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 
-	vulkan_application* app = nullptr;
+	const vulkan_application* app = nullptr;
+	const vulkan_queue* transfer_queue = nullptr;
 
 	std::vector<std::weak_ptr<scene_material>> materials;
 	std::vector<std::weak_ptr<scene_image>> images; // need order

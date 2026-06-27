@@ -154,32 +154,35 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
 				| std::views::filter([&](const auto& _piece)
 					{
 						return _piece.piece_type == now_type;
-					});
+					})
+				| std::views::transform([](const auto& _piece)
+					{
+						return &_piece;
+					})
+				| std::ranges::to<std::vector>();
 
-			std::vector<std::reference_wrapper<piece_state>> now_piece_refs;
-			std::ranges::copy(the_pieces, std::back_inserter(now_piece_refs));
 
-			std::ranges::sort(now_piece_refs, [](const piece_state& _l, const piece_state& _r) {return _l.y > _r.y; });
+			std::ranges::sort(the_pieces, [](const auto& _l, const auto& _r) { return _l->y > _r->y; });
 
 			switch (result[0])
 			{
 			case u'前':
-				now_y = now_piece_refs.front().get().y;
+				now_y = the_pieces.front()->y;
 				break;
 			case u'中':
-				now_y = now_piece_refs.at(1).get().y;
+				now_y = the_pieces.at(1)->y;
 				break;
 			case u'后':
-				now_y = now_piece_refs.back().get().y;
+				now_y = the_pieces.back()->y;
 				break;
 			case u'二':
-				now_y = now_piece_refs.at(1).get().y;
+				now_y = the_pieces.at(1)->y;
 				break;
 			case u'三':
-				now_y = now_piece_refs.at(2).get().y;
+				now_y = the_pieces.at(2)->y;
 				break;
 			case u'四':
-				now_y = now_piece_refs.at(3).get().y;
+				now_y = the_pieces.at(3)->y;
 				break;
 			default:
 				break;

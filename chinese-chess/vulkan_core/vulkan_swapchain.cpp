@@ -41,7 +41,7 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 	return *this;
 }
 
-void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
+void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _present_index, uint32_t _width, uint32_t _height)
 {
 	surface = vk::raii::SurfaceKHR(_instance, _surface);
 
@@ -63,6 +63,8 @@ void vulkan_swapchain::create(const vk::raii::Instance& _instance, const vk::rai
 	auto available_present_modes = _physical_device.getSurfacePresentModesKHR(surface);
 	present_mode = std::ranges::any_of(available_present_modes, [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; })
 		? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
+
+	present_queue.create(_device, _present_index);
 
 	recreate(_physical_device, _device, _width, _height);
 }
@@ -131,11 +133,6 @@ void vulkan_swapchain::present_image(vulkan_commandbuffer& _commandbuffer, bool 
 	{
 		throw std::runtime_error("failed to present swap chain image!");
 	}
-}
-
-void vulkan_swapchain::set_present_queue(vulkan_queue&& _present_queue) noexcept
-{
-	present_queue = std::move(_present_queue);
 }
 
 const vulkan_queue& vulkan_swapchain::get_present_queue() const noexcept

@@ -14,13 +14,11 @@ public:
 	vulkan_swapchain& operator=(vulkan_swapchain&) = delete;
 	vulkan_swapchain& operator=(vulkan_swapchain&& _other) noexcept;
 
-	void create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
+	void create(const vk::raii::Instance& _instance, const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, vk::SurfaceKHR _surface, uint32_t _present_index, uint32_t _width, uint32_t _height);
 	void recreate(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, uint32_t _width, uint32_t _height);
 
 	vk::Result acquire_next_image();
 	void present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const;
-
-	void set_present_queue(vulkan_queue&& _present_queue) noexcept;
 
 	const vulkan_queue& get_present_queue() const noexcept;
 	const vk::raii::SwapchainKHR& get_swapchain() const noexcept;

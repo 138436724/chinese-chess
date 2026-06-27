@@ -13,8 +13,9 @@ struct material_data
 	alignas(16) float metallic = 0.0f;
 };
 
-scene_material_manager::scene_material_manager(vulkan_application* _app)
-	: app(_app)
+scene_material_manager::scene_material_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue)
+	: app(_app),
+	transfer_queue(_transfer_queue)
 {
 }
 
@@ -37,7 +38,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -125,7 +126,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -139,6 +140,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
 	vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), image->get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), image_extent));
 
+	// todo 如果transfer不支持graphic，则不支持布局转换，需要在graphic提前提交一个，并使用信号量等待
 	std::vector<vk::ImageMemoryBarrier2> end_barrier;
 	end_barrier.emplace_back(image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
@@ -176,7 +178,7 @@ void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexce
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_ssbo(commandbuffer);

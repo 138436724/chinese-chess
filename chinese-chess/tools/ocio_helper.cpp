@@ -79,48 +79,48 @@ void ocio_helper::copy_uniform_to_buffer(OCIO::GpuShaderDescRcPtr& _shader_desc,
 		return;
 	}
 
-	std::ranges::for_each(std::views::iota(0u, num_uniforms), [&](const uint32_t/* i*/) {
-		OCIO::GpuShaderDesc::UniformData uniform_data;
-		//const auto name = _shader_desc->getUniform(i, uniform_data);
+	std::ranges::for_each(std::views::iota(0u, num_uniforms), [&](const uint32_t i)
+		{
+			OCIO::GpuShaderDesc::UniformData uniform_data;
+			const auto name = _shader_desc->getUniform(i, uniform_data);
 
-		// todo slang 是尽量紧密排列的，可能需要实时计算一下是否是16的倍数来决定能否写入或者另起一行
-		char* dest = static_cast<char*>(_buffer_address) + uniform_data.m_bufferOffset;
-		if (uniform_data.m_getDouble)
-		{
-			const float val = static_cast<float>(uniform_data.m_getDouble());
-			memcpy(dest, &val, sizeof(float));
-		}
-		else if (uniform_data.m_getBool)
-		{
-			const int val = uniform_data.m_getBool() ? 1 : 0;
-			memcpy(dest, &val, sizeof(int));
-		}
-		else if (uniform_data.m_getFloat3)
-		{
-			// vec3 in std140: write 3 floats (12 bytes), padded to 16 bytes
-			const auto vals = uniform_data.m_getFloat3();
-			memcpy(dest, vals.data(), 3 * sizeof(float));
-		}
-		else if (uniform_data.m_vectorFloat.m_getSize && uniform_data.m_vectorFloat.m_getVector)
-		{
-			// In std140, each array element is padded to 16 bytes
-			const float* vals = uniform_data.m_vectorFloat.m_getVector();
-			const size_t count = uniform_data.m_vectorFloat.m_getSize();
-			for (size_t j = 0; j < count; ++j)
+			char* dest = static_cast<char*>(_buffer_address) + uniform_data.m_bufferOffset;
+			if (uniform_data.m_getDouble)
 			{
-				memcpy(dest + j * 16, &vals[j], sizeof(float));
+				const float val = static_cast<float>(uniform_data.m_getDouble());
+				memcpy(dest, &val, sizeof(float));
 			}
-		}
-		else if (uniform_data.m_vectorInt.m_getSize && uniform_data.m_vectorInt.m_getVector)
-		{
-			// In std140, each array element is padded to 16 bytes
-			const int* vals = uniform_data.m_vectorInt.m_getVector();
-			const size_t count = uniform_data.m_vectorInt.m_getSize();
-			for (size_t j = 0; j < count; ++j)
+			else if (uniform_data.m_getBool)
 			{
-				memcpy(dest + j * 16, &vals[j], sizeof(int));
+				const int val = uniform_data.m_getBool() ? 1 : 0;
+				memcpy(dest, &val, sizeof(int));
 			}
-		}
+			else if (uniform_data.m_getFloat3)
+			{
+				// vec3 in std140: write 3 floats (12 bytes), padded to 16 bytes
+				const auto vals = uniform_data.m_getFloat3();
+				memcpy(dest, vals.data(), 3 * sizeof(float));
+			}
+			else if (uniform_data.m_vectorFloat.m_getSize && uniform_data.m_vectorFloat.m_getVector)
+			{
+				// In std140, each array element is padded to 16 bytes
+				const float* vals = uniform_data.m_vectorFloat.m_getVector();
+				const size_t count = uniform_data.m_vectorFloat.m_getSize();
+				for (size_t j = 0; j < count; ++j)
+				{
+					memcpy(dest + j * 16, &vals[j], sizeof(float));
+				}
+			}
+			else if (uniform_data.m_vectorInt.m_getSize && uniform_data.m_vectorInt.m_getVector)
+			{
+				// In std140, each array element is padded to 16 bytes
+				const int* vals = uniform_data.m_vectorInt.m_getVector();
+				const size_t count = uniform_data.m_vectorInt.m_getSize();
+				for (size_t j = 0; j < count; ++j)
+				{
+					memcpy(dest + j * 16, &vals[j], sizeof(int));
+				}
+			}
 		});
 }
 

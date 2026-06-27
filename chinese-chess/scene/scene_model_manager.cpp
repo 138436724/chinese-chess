@@ -10,8 +10,9 @@ struct model_data
 	alignas(8) vk::DeviceAddress index_address = 0;
 };
 
-scene_model_manager::scene_model_manager(vulkan_application* _app, scene_material_manager* _manager)
+scene_model_manager::scene_model_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue, const scene_material_manager* _manager)
 	:app(_app),
+	transfer_queue(_transfer_queue),
 	manager(_manager)
 {
 }
@@ -71,7 +72,7 @@ void scene_model_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 
 
 	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), app->get_queue(vk::QueueFlagBits::eGraphics)->get().get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_meshs(commandbuffer);

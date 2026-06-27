@@ -16,7 +16,7 @@ public:
 	ui_manager() = default;
 	~ui_manager() = default;
 
-	void create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height);
+	void create(GLFWwindow* _window, const vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
 	const vulkan_commandbuffer& render();
@@ -34,11 +34,12 @@ private:
 private:
 	vk::Format color_format = vk::Format::eUndefined;
 
-	vulkan_application* app = nullptr;
+	const vulkan_application* app = nullptr;
+	vulkan_queue graphic_queue;
 	vk::raii::DescriptorPool descriptor_pool = nullptr;
 
 	ImDrawData* draw_data = nullptr;
-
+	
 	vulkan_image color_image;
 	vulkan_image render_output;
 

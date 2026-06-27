@@ -89,7 +89,7 @@ int main()
 
 	int width, height;
 	glfwGetFramebufferSize(window, &width, &height);
-	app->create(_surface, true, true, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	app->create(_surface, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 
 
 	// create scene manager
