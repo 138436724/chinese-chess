@@ -20,8 +20,9 @@ struct light_data
 	float outer_cone_angle = glm::radians(30.f);
 };
 
-scene_light_manager::scene_light_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue)
+scene_light_manager::scene_light_manager(vulkan_application* _app, vulkan_recycle_bin* _recycle_bin, vulkan_queue* _transfer_queue)
 	: app(_app),
+	recycle_bin(_recycle_bin),
 	transfer_queue(_transfer_queue)
 {
 }
@@ -34,18 +35,22 @@ void scene_light_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 		});
 
 
-	_commandbuffer.add_staging_buffer(std::move(ssbo));
+	recycle_bin->retire(std::move(ssbo));
 
 
 	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_ssbo(commandbuffer);
 
 	// submit commandbuffer
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(false);
+
+	_commandbuffer.add_waited_info({ commandbuffer.get_submit_info() });
+
+	recycle_bin->retire(std::move(commandbuffer));
 }
 
 void scene_light_manager::clear() noexcept
@@ -119,6 +124,6 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, lights_ssbo.data(), lights_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, lights_ssbo_size));
-		_commandbuffer.add_staging_buffer(std::move(staging_buffer));
+		recycle_bin->retire(std::move(staging_buffer));
 	}
 }

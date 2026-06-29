@@ -10,8 +10,9 @@ struct model_data
 	alignas(8) vk::DeviceAddress index_address = 0;
 };
 
-scene_model_manager::scene_model_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue, const scene_material_manager* _manager)
+scene_model_manager::scene_model_manager(vulkan_application* _app, vulkan_recycle_bin* _recycle_bin, vulkan_queue* _transfer_queue, scene_material_manager* _manager)
 	:app(_app),
+	recycle_bin(_recycle_bin),
 	transfer_queue(_transfer_queue),
 	manager(_manager)
 {
@@ -66,13 +67,13 @@ void scene_model_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 		});
 
 
-	_commandbuffer.add_staging_buffer(std::move(vertices_buffer));
-	_commandbuffer.add_staging_buffer(std::move(indices_buffer));
-	_commandbuffer.add_staging_buffer(std::move(ssbo));
+	recycle_bin->retire(std::move(vertices_buffer));
+	recycle_bin->retire(std::move(indices_buffer));
+	recycle_bin->retire(std::move(ssbo));
 
 
 	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_meshs(commandbuffer);
@@ -80,7 +81,11 @@ void scene_model_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 
 	// commandbuffer submit
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(false);
+
+	_commandbuffer.add_waited_info({ commandbuffer.get_submit_info() });
+
+	recycle_bin->retire(std::move(commandbuffer));
 }
 
 void scene_model_manager::clear() noexcept
@@ -136,7 +141,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 
 		vertices_buffer.create(app->get_allocator(), app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), vk::BufferCopy2(0, 0, vertices_size));
-		_commandbuffer.add_staging_buffer(std::move(vertices_staging_buffer));
+		recycle_bin->retire(std::move(vertices_staging_buffer));
 
 		// recreate index buffer
 		vk::DeviceSize indices_size = std::ranges::fold_left(meshs, static_cast<size_t>(0), [](size_t s, const auto& p)
@@ -157,16 +162,19 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 
 		indices_buffer.create(app->get_allocator(), app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, indices_staging_buffer.get_buffer(), indices_buffer.get_buffer(), vk::BufferCopy2(0, 0, indices_size));
-		_commandbuffer.add_staging_buffer(std::move(indices_staging_buffer));
+		recycle_bin->retire(std::move(indices_staging_buffer));
 
 
 		// update blas
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
 				auto sp = p.lock();
-				sp->blas_info.create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *_commandbuffer,
+				recycle_bin->retire(std::move(sp->blas_info));
+				sp->blas_info = vulkan_acceleration_structure();
+				auto scratch_buffer = sp->blas_info.create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *_commandbuffer,
 					static_cast<uint32_t>(sp->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + sp->vertex_offset,
 					static_cast<uint32_t>(sp->indices.size()), indices_buffer.get_buffer_address().deviceAddress + sp->index_offset);
+				recycle_bin->retire(std::move(scratch_buffer));
 			});
 	}
 }
@@ -197,6 +205,6 @@ void scene_model_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, models_ssbo.data(), models_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, models_ssbo_size));
-		_commandbuffer.add_staging_buffer(std::move(staging_buffer));
+		recycle_bin->retire(std::move(staging_buffer));
 	}
 }

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "vulkan_buffer.h"
-#include "vulkan_commandbuffer.h"
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_shader_binding_table
@@ -14,7 +13,7 @@ public:
 	vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&) = delete;
 	vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&& _other) noexcept;
 
-	void create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator, vulkan_commandbuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count);
+	[[nodiscard("Staging buffer must be kept!")]] vulkan_buffer create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator, const vk::raii::CommandBuffer& _commandbuffer, const vk::raii::Pipeline& _pipeline, uint32_t _group_count);
 
 	const vk::StridedDeviceAddressRegionKHR& get_raygen_region() const noexcept;
 	const vk::StridedDeviceAddressRegionKHR& get_miss_region() const noexcept;

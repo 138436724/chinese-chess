@@ -8,8 +8,7 @@ vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration
 	range_info(std::exchange(_other.range_info, {})),
 	acceleration_structure(std::exchange(_other.acceleration_structure, nullptr)),
 	address(std::exchange(_other.address, {})),
-	buffer(std::exchange(_other.buffer, {})),
-	scratch_buffer(std::exchange(_other.scratch_buffer, {}))
+	buffer(std::exchange(_other.buffer, {}))
 {
 }
 
@@ -23,12 +22,11 @@ vulkan_acceleration_structure& vulkan_acceleration_structure::operator=(vulkan_a
 		std::ranges::swap(acceleration_structure, _other.acceleration_structure);
 		std::ranges::swap(address, _other.address);
 		std::ranges::swap(buffer, _other.buffer);
-		std::ranges::swap(scratch_buffer, _other.scratch_buffer);
 	}
 	return *this;
 }
 
-void vulkan_acceleration_structure::create_bottom_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator,
+vulkan_buffer vulkan_acceleration_structure::create_bottom_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator,
 	const vk::raii::CommandBuffer& _commandbuffer, uint32_t _vertex_count, vk::DeviceOrHostAddressConstKHR _vertex_data, uint32_t _index_count, vk::DeviceOrHostAddressConstKHR _index_data)
 {
 	vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex), _vertex_count, vk::IndexType::eUint32, _index_data);
@@ -37,10 +35,10 @@ void vulkan_acceleration_structure::create_bottom_level_acceleration_structure(c
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(_index_count / 3u);
 
-	create_acceleration_structure(_physical_device, _device, _allocator, _commandbuffer, vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
+	return create_acceleration_structure(_physical_device, _device, _allocator, _commandbuffer, vk::AccelerationStructureTypeKHR::eBottomLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
-void vulkan_acceleration_structure::create_top_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator,
+vulkan_buffer vulkan_acceleration_structure::create_top_level_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator,
 	const vk::raii::CommandBuffer& _commandbuffer, uint32_t _instances_size, vk::DeviceOrHostAddressConstKHR _instances_data)
 {
 	vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
@@ -49,7 +47,7 @@ void vulkan_acceleration_structure::create_top_level_acceleration_structure(cons
 
 	range_info = vk::AccelerationStructureBuildRangeInfoKHR(_instances_size);
 
-	create_acceleration_structure(_physical_device, _device, _allocator, _commandbuffer, vk::AccelerationStructureTypeKHR::eTopLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
+	return create_acceleration_structure(_physical_device, _device, _allocator, _commandbuffer, vk::AccelerationStructureTypeKHR::eTopLevel, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
 const vk::raii::AccelerationStructureKHR& vulkan_acceleration_structure::get_acceleration_structure() const noexcept
@@ -67,15 +65,13 @@ const vk::raii::Buffer& vulkan_acceleration_structure::get_buffer() const noexce
 	return buffer.get_buffer();
 }
 
-void vulkan_acceleration_structure::create_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator, const vk::raii::CommandBuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
+vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, const vma::raii::Allocator& _allocator, const vk::raii::CommandBuffer& _commandbuffer, vk::AccelerationStructureTypeKHR _type, vk::BuildAccelerationStructureFlagsKHR _flags)
 {
 	if (scratch_alignment == 0)
 	{
 		auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR, vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 		scratch_alignment = props.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>().minAccelerationStructureScratchOffsetAlignment;
 	}
-
-	acceleration_structure.clear();
 
 	vk::AccelerationStructureBuildGeometryInfoKHR build_info(_type, _flags, vk::BuildAccelerationStructureModeKHR::eBuild, {}, {}, geometry);
 
@@ -85,6 +81,7 @@ void vulkan_acceleration_structure::create_acceleration_structure(const vk::raii
 	// Make sure the scratch buffer is properly aligned
 	VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
 
+	vulkan_buffer scratch_buffer;
 	scratch_buffer.create(_allocator, _device, scratch_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	buffer.create(_allocator, _device, build_size.accelerationStructureSize, vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -104,7 +101,5 @@ void vulkan_acceleration_structure::create_acceleration_structure(const vk::raii
 
 	_commandbuffer.buildAccelerationStructuresKHR(build_info, &range_info);
 
-	// guard our scratch buffer
-	//auto memory_barrier = vk::MemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
-	//(*_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, memory_barrier, {}, {}));
+	return scratch_buffer;
 }

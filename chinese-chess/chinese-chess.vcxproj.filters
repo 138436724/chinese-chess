@@ -117,6 +117,12 @@
     <ClCompile Include="ui\ui_base.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_semaphore.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_recycle_bin.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -216,6 +222,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="ui\ui_base.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_semaphore.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_recycle_bin.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

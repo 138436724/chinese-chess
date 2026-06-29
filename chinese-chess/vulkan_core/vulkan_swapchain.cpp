@@ -111,9 +111,9 @@ vk::Result vulkan_swapchain::acquire_next_image()
 
 void vulkan_swapchain::present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const
 {
-	_commandbuffer.submit({ vk::SemaphoreSubmitInfo(*(present_used.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },
-		{ vk::SemaphoreSubmitInfo(*(present_waited.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) },
-		_immediately);
+	_commandbuffer.add_waited_info({ vk::SemaphoreSubmitInfo(*(present_used.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) });
+	_commandbuffer.add_signal_info({ vk::SemaphoreSubmitInfo(*(present_waited.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput) });
+	_commandbuffer.submit(_immediately);
 
 	try
 	{

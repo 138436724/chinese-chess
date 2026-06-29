@@ -8,9 +8,11 @@ constexpr std::u8string_view SCENE_SETTING = u8"场景设置";
 constexpr std::u8string_view SCENE_MANAGER = u8"场景管理";
 constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
 
-void ui_manager::create(GLFWwindow* _window, const vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
+void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_manager* _manager, uint32_t _width, uint32_t _height)
 {
 	app = _app;
+	recycle_bin = app->get_recycle_bin_ptr();
+
 	manager = _manager;
 
 	ui_managers.emplace_back(pro::make_proxy<ui_base, ui_camera>());
@@ -71,7 +73,7 @@ void ui_manager::create(GLFWwindow* _window, const vulkan_application* _app, sce
 	};
 	ImGui_ImplVulkan_Init(&init_info);
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), _app->get_device(), graphic_queue.get_queue());
+	commandbuffers = vulkan_commandbuffer::create(_app->get_device(), vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, app->get_semaphore_ptr());
 
 	resize(_width, _height);
 }
@@ -81,11 +83,13 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 	//ImGui_ImplVulkanH_CreateOrResizeWindow(g_Instance, g_PhysicalDevice, g_Device, wd, g_QueueFamily, g_Allocator, fb_width, fb_height, g_MinImageCount, 0);
 
 	// render_output
+	recycle_bin->retire(std::move(render_output));
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	render_output.create(app->get_allocator(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	// msaa color
+	recycle_bin->retire(std::move(color_image));
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	color_image.create(app->get_allocator(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
@@ -114,7 +118,7 @@ void ui_manager::update()
 	draw_data = ImGui::GetDrawData();
 }
 
-const vulkan_commandbuffer& ui_manager::render()
+vk::SemaphoreSubmitInfo ui_manager::render()
 {
 	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	commandbuffer.begin_record({});
@@ -135,17 +139,18 @@ const vulkan_commandbuffer& ui_manager::render()
 
 	(*commandbuffer).endRendering();
 
+	commandbuffer.end_record();
+	commandbuffer.submit(false);
+
 	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 	{
 		ImGui::UpdatePlatformWindows();
 		ImGui::RenderPlatformWindowsDefault();
 	}
 
-	commandbuffer.end_record();
-
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
-	return commandbuffer;
+	return commandbuffer.get_submit_info();
 }
 
 void ui_manager::destroy()

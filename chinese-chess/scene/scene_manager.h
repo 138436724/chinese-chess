@@ -1,9 +1,10 @@
 #pragma once
 
 #include "scene_camera.h"
+#include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
-#include "scene_light_manager.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 #include "vulkan_core/vulkan_shader_binding_table.h"
 
 class scene_manager
@@ -13,10 +14,10 @@ public:
 	~scene_manager() = default;
 
 	// in the scene, all object's pipeline only need one color format and one depth format
-	void create(const vulkan_application* _app, uint32_t _width, uint32_t _height);
+	void create(vulkan_application* _app, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void update();
-	const vulkan_commandbuffer& render();
+	vk::SemaphoreSubmitInfo render();
 	void destroy();
 
 	void need_update() noexcept;
@@ -70,7 +71,8 @@ private:
 	uint32_t height = 0;
 
 	uint32_t current_frame = 0;
-	const vulkan_application* app = nullptr;
+	vulkan_application* app = nullptr;
+	vulkan_recycle_bin* recycle_bin = nullptr;
 
 	vulkan_queue graphic_queue;
 	vulkan_queue transfer_queue;

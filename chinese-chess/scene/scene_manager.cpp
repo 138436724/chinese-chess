@@ -16,18 +16,19 @@ enum class stage_indices :uint32_t
 	shader_group_max_count
 };
 
-void scene_manager::create(const vulkan_application* _app, uint32_t _width, uint32_t _height)
+void scene_manager::create(vulkan_application* _app, uint32_t _width, uint32_t _height)
 {
 	app = _app;
+	recycle_bin = app->get_recycle_bin_ptr();
 
 
 	graphic_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eGraphics));
 	transfer_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eTransfer));
 
 
-	material_manager = std::make_unique<scene_material_manager>(app, &transfer_queue);
-	model_manager = std::make_unique<scene_model_manager>(app, &transfer_queue, material_manager.get());
-	light_manager = std::make_unique<scene_light_manager>(app, &transfer_queue);
+	material_manager = std::make_unique<scene_material_manager>(app, recycle_bin, &transfer_queue);
+	model_manager = std::make_unique<scene_model_manager>(app, recycle_bin, &transfer_queue, material_manager.get());
+	light_manager = std::make_unique<scene_light_manager>(app, recycle_bin, &transfer_queue);
 
 
 	// create sampler
@@ -44,11 +45,11 @@ void scene_manager::create(const vulkan_application* _app, uint32_t _width, uint
 	active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
 
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::eSecondary, vulkan_common::MAX_FRAMES_IN_FLIGHT), app->get_device(), graphic_queue.get_queue());
+	commandbuffers = vulkan_commandbuffer::create(_app->get_device(), vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, app->get_semaphore_ptr());
 
 	color_format = vk::Format::eR16G16B16A16Sfloat;
 
-	skybox_image = material_manager->create(std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr", true);
+	//skybox_image = material_manager->create(std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr", true);
 
 	create_rasterization();
 	create_ray_tracing();
@@ -65,6 +66,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 	is_dirty = true;
 
 	// render_output
+	recycle_bin->retire(std::move(render_output));
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage/*for ray tracing*/, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	render_output.create(app->get_allocator(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
@@ -81,16 +83,18 @@ void scene_manager::update()
 	}
 
 	is_dirty = false;
+
 	material_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 	model_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
 	light_manager->update(commandbuffers.at(static_cast<size_t>(current_frame - 1 + vulkan_common::MAX_FRAMES_IN_FLIGHT) % vulkan_common::MAX_FRAMES_IN_FLIGHT));
+
 	skybox_index = material_manager->get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
 
 	update_rasterization();
 	update_ray_tracing();
 }
 
-const vulkan_commandbuffer& scene_manager::render()
+vk::SemaphoreSubmitInfo scene_manager::render()
 {
 	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
 	commandbuffer.begin_record({});
@@ -105,10 +109,11 @@ const vulkan_commandbuffer& scene_manager::render()
 	}
 
 	commandbuffer.end_record();
+	commandbuffer.submit(false);
 
 	current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
-	return commandbuffer;
+	return commandbuffer.get_submit_info();
 }
 
 void scene_manager::destroy()
@@ -193,11 +198,13 @@ void scene_manager::create_rasterization()
 void scene_manager::resize_rasterization()
 {
 	// msaa color
+	recycle_bin->retire(std::move(raster_color_image));
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 	raster_color_image.create(app->get_allocator(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	// depth
+	recycle_bin->retire(std::move(raster_depth_image));
 	vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT, vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
 	raster_depth_image.create(app->get_allocator(), app->get_device(), depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearDepthStencilValue(1.f, 0));
@@ -218,9 +225,10 @@ void scene_manager::update_rasterization()
 
 
 		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, app->get_semaphore_ptr()).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
+		recycle_bin->retire(std::move(raster_draw_commands));
 		vk::DeviceSize draw_commands_size = sizeof(draw_commands.front()) * draw_commands.size();
 		raster_draw_commands.create(app->get_allocator(), app->get_device(), draw_commands_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
@@ -232,11 +240,12 @@ void scene_manager::update_rasterization()
 
 		// commandbuffer submit
 		commandbuffer.end_record();
-		commandbuffer.submit({}, {}, true);
+		commandbuffer.submit(true);
 	}
 
 	// update descriptor pool
-	raster_descriptor_sets.clear();
+	recycle_bin->retire(std::move(raster_descriptor_sets));
+	recycle_bin->retire(std::move(raster_descriptor_pool));
 
 	std::array pool_size = {
 		vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 2),
@@ -366,14 +375,15 @@ void scene_manager::create_ray_tracing()
 	rt_pipeline.create(app->get_device(), bindings, std::span(&push_constant, 1), shader_stages, shader_groups, std::min(9u, properties.maxRayRecursionDepth));
 
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	// create shader binding table (now needs 5 groups)
-	rt_sbt.create(app->get_physical_device(), app->get_device(), app->get_allocator(), commandbuffer, rt_pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()));
+	auto staging_buffer = rt_sbt.create(app->get_physical_device(), app->get_device(), app->get_allocator(), *commandbuffer, rt_pipeline.get_pipeline(), static_cast<uint32_t>(shader_stages.size()));
+	recycle_bin->retire(std::move(staging_buffer));
 
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(true);
 }
 
 void scene_manager::resize_ray_tracing()
@@ -384,12 +394,19 @@ void scene_manager::update_ray_tracing()
 {
 	// reset path tracing accumulation
 	rt_frame_index = 0;
+
+	// retire old TLAS
+	for (auto& _tlas : rt_tlas)
+	{
+		recycle_bin->retire(std::move(_tlas));
+	}
+	rt_tlas.clear();
 	rt_tlas.resize(vulkan_common::MAX_FRAMES_IN_FLIGHT);
 
 	if (!model_manager->get_models().empty())
 	{
 		// generate tlas
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue.get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, app->get_semaphore_ptr()).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		// create top level acceleration structure
@@ -412,19 +429,21 @@ void scene_manager::update_ray_tracing()
 				memcpy(staging_buffer.get_buffer_address().hostAddress, rt_instances.data(), instance_buffer_size);
 				vulkan_buffer::copy_buffer_to_buffer(*commandbuffer, staging_buffer.get_buffer(), instance_staging_buffer.get_buffer(), vk::BufferCopy2(0, 0, instance_buffer_size));
 
-				_tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
+				auto scratch_buffer = _tlas.create_top_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *commandbuffer, static_cast<uint32_t>(rt_instances.size()), instance_staging_buffer.get_buffer_address().deviceAddress);
 
-				commandbuffer.add_staging_buffer(std::move(instance_staging_buffer));
-				commandbuffer.add_staging_buffer(std::move(staging_buffer));
+				recycle_bin->retire(std::move(instance_staging_buffer));
+				recycle_bin->retire(std::move(staging_buffer));
+				recycle_bin->retire(std::move(scratch_buffer));
 			});
 
 
 		commandbuffer.end_record();
-		commandbuffer.submit({}, {}, true);
+		commandbuffer.submit(true);
 	}
 
 	// update descriptor pool
-	rt_descriptor_sets.clear();
+	recycle_bin->retire(std::move(rt_descriptor_sets));
+	recycle_bin->retire(std::move(rt_descriptor_pool));
 
 	std::array pool_size = {
 		vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, 2),

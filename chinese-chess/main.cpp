@@ -151,11 +151,7 @@ int main()
 		UI->update();
 		scene->update();
 
-		const auto& cb1 = UI->render();
-		const auto& cb2 = scene->render();
-
-		std::vector<vk::CommandBuffer> cbs = { *cb1,*cb2 };
-		app->render(cbs);
+		app->render({ UI->render(), scene->render() });
 
 		app->end(info.need_save);
 

@@ -41,7 +41,7 @@ void shader_compiler::print_entrypoint_hashes(int _entrypoint_count, int _target
 #else
 void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
 void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) noexcept {}
-#endif
+#endif // !NDEBUG
 
 shader_compiler::shader_compiler()
 {

@@ -4,6 +4,7 @@
 #include "scene_model.h"
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 #include <filesystem>
 #include <memory>
 #include <unordered_map>
@@ -12,7 +13,7 @@
 class scene_model_manager
 {
 public:
-	scene_model_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue, const scene_material_manager* _manager);
+	scene_model_manager(vulkan_application* _app, vulkan_recycle_bin* _recycle_bin, vulkan_queue* _transfer_queue, scene_material_manager* _manager);
 	~scene_model_manager() = default;
 
 	std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
@@ -28,9 +29,11 @@ private:
 	void update_meshs(vulkan_commandbuffer& _commandbuffer) noexcept;
 	void update_ssbo(vulkan_commandbuffer& _commandbuffer) noexcept;
 
-	const vulkan_application* app = nullptr;
-	const vulkan_queue* transfer_queue = nullptr;
-	const scene_material_manager* manager = nullptr;
+	vulkan_application* app = nullptr;
+	vulkan_recycle_bin* recycle_bin = nullptr;
+
+	vulkan_queue* transfer_queue = nullptr;
+	scene_material_manager* manager = nullptr;
 
 	std::vector<std::weak_ptr<scene_model>> models;
 	std::vector<std::weak_ptr<model_infomation>> meshs; // submit to gpu in order

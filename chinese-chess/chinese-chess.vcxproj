@@ -172,6 +172,8 @@
     <ClCompile Include="vulkan_core\vulkan_image.cpp" />
     <ClCompile Include="vulkan_core\vulkan_pipeline.cpp" />
     <ClCompile Include="vulkan_core\vulkan_queue.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_recycle_bin.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_semaphore.cpp" />
     <ClCompile Include="vulkan_core\vulkan_shader_binding_table.cpp" />
     <ClCompile Include="vulkan_core\vulkan_swapchain.cpp" />
   </ItemGroup>
@@ -207,6 +209,8 @@
     <ClInclude Include="vulkan_core\vulkan_image.h" />
     <ClInclude Include="vulkan_core\vulkan_pipeline.h" />
     <ClInclude Include="vulkan_core\vulkan_queue.h" />
+    <ClInclude Include="vulkan_core\vulkan_recycle_bin.h" />
+    <ClInclude Include="vulkan_core\vulkan_semaphore.h" />
     <ClInclude Include="vulkan_core\vulkan_shader_binding_table.h" />
     <ClInclude Include="vulkan_core\vulkan_swapchain.h" />
   </ItemGroup>

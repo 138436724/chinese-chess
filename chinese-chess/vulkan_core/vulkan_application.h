@@ -2,10 +2,12 @@
 
 #include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
+#include "vulkan_recycle_bin.h"
 #include "vulkan_descriptor.h"
 #include "vulkan_image.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_queue.h"
+#include "vulkan_semaphore.h"
 #include "vulkan_swapchain.h"
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
@@ -25,7 +27,7 @@ public:
 	void create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
 	void resize(uint32_t _width, uint32_t _height);
 	void begin() noexcept;
-	void render(const std::span<const vk::CommandBuffer> _commandbuffers);
+	void render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_info);
 	void end(bool _immediately);
 	void wait() const;
 
@@ -33,7 +35,7 @@ public:
 	void bind_image(vulkan_image* _scene_image, vulkan_image* _ui_image);
 
 	// other function
-	void save_image(vulkan_image& _image) const;
+	void save_image(vulkan_image& _image);
 
 	// getters
 	const vk::raii::Instance& get_instance() const noexcept;
@@ -42,6 +44,8 @@ public:
 	const vma::raii::Allocator& get_allocator() const noexcept;
 	uint32_t get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
 	const vulkan_swapchain& get_swapchain() const noexcept;
+	vulkan_semaphore* get_semaphore_ptr() noexcept;
+	vulkan_recycle_bin* get_recycle_bin_ptr() noexcept;
 
 private:
 	// use in `init` and `create`
@@ -87,8 +91,9 @@ private:
 	uint32_t transfer_index = vk::QueueFamilyIgnored;
 	uint32_t present_index = vk::QueueFamilyIgnored;
 
+	uint32_t current_frame = 0;
+
 	vulkan_queue graphic_queue;
-	vulkan_queue compute_queue;
 	vulkan_queue transfer_queue;
 
 	vulkan_swapchain swapchain;
@@ -104,6 +109,7 @@ private:
 	vulkan_image* bind_ui_image = nullptr;
 	vk::raii::Sampler image_sampler = nullptr;
 
+	vulkan_semaphore semaphore;
+	vulkan_recycle_bin recycle_bin;
 	std::vector<vulkan_commandbuffer> commandbuffers;
-	uint32_t current_frame = 0;
 };

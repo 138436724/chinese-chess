@@ -2,6 +2,7 @@
 
 #include "string_helper.h"
 #include <array>
+#include <memory>
 #include <unicode/errorcode.h>
 #include <unicode/parseerr.h>
 #include <unicode/regex.h>
@@ -147,15 +148,15 @@ std::vector<string_class> record_loader::read_record(const std::filesystem::path
 	icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
 
 	icu::UnicodeString pattern = u"([前后中])?[ ]*([车車俥马馬傌炮砲相象士仕帅帥将將兵卒])[ ]*([一二三四五六七八九]|\\d)?[ ]*([进退平])[ ]*([一二三四五六七八九]|\\d)";
-	UParseError pe;
+	UParseError pe{};
 	icu::ErrorCode status;
-	icu::RegexPattern* compiled_pattern = icu::RegexPattern::compile(pattern, pe, status);
+	auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, status));
 	if (status.isFailure())
 	{
 		throw std::runtime_error("compile regex pattern fail!");
 	}
 
-	icu::RegexMatcher* matcher = compiled_pattern->matcher(records_text, status);
+	auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, status));
 	while (matcher->find(status))
 	{
 		icu::UnicodeString match = matcher->group(0, status);

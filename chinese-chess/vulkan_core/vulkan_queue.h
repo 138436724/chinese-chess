@@ -13,8 +13,8 @@ public:
 	vulkan_queue& operator=(vulkan_queue&& _other) noexcept;
 
 	void create(const vk::raii::Device& _device, uint32_t _index);
+	void submit(const std::span<const vk::SubmitInfo2> _submit_infos) const;
 
-	void set_index(uint32_t _index) noexcept;
 	uint32_t get_index() const noexcept;
 	const vk::raii::Queue& get_queue() const noexcept;
 	const vk::raii::CommandPool& get_command_pool() const noexcept;

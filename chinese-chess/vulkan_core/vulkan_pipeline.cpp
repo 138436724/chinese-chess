@@ -49,7 +49,7 @@ void vulkan_pipeline::create(const vk::raii::Device& _device,
 	std::vector<vk::PipelineColorBlendAttachmentState> color_blend_attachments(_color_formats.size(), color_blend_attachment);
 	vk::PipelineColorBlendStateCreateInfo color_blending({}, vk::False, vk::LogicOp::eCopy, color_blend_attachments);
 
-	std::array dynamic_states = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+	constexpr std::array dynamic_states = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
 	vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, dynamic_states, nullptr);
 
 	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipeline_info(

@@ -27,6 +27,8 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
 
 	allocator = vma::raii::Allocator(instance, device, vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
 	swapchain.create(instance, physical_device, device, _surface, present_index, _width, _height);
+	semaphore.create(device);
+	recycle_bin.create(&semaphore);
 
 	create_pipeline();
 
@@ -38,7 +40,7 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
 		vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
 	image_sampler = vk::raii::Sampler(device, sampler_info);
 
-	commandbuffers = vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), device, graphic_queue.get_queue());
+	commandbuffers = vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, &semaphore);
 }
 
 void vulkan_application::resize(uint32_t _width, uint32_t _height)
@@ -48,10 +50,11 @@ void vulkan_application::resize(uint32_t _width, uint32_t _height)
 
 void vulkan_application::begin() noexcept
 {
+	recycle_bin.release();
 	commandbuffers.at(current_frame).begin_record({});
 }
 
-void vulkan_application::render(const std::span<const vk::CommandBuffer> _commandbuffers)
+void vulkan_application::render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_info)
 {
 	try
 	{
@@ -71,8 +74,7 @@ void vulkan_application::render(const std::span<const vk::CommandBuffer> _comman
 
 
 	vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
-	(*commandbuffer).executeCommands(_commandbuffers);
-
+	commandbuffer.add_waited_info(std::move(_waited_info));
 
 	std::vector<vk::ImageMemoryBarrier2> barriers;
 	barriers.emplace_back(bind_scene_image->set_layout(vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
@@ -178,14 +180,14 @@ void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _u
 	descriptor.update_descriptor_sets(device, pipeline.get_descriptor_set_layout());
 }
 
-void vulkan_application::save_image(vulkan_image& _image) const
+void vulkan_application::save_image(vulkan_image& _image)
 {
 	VkFormat image_format = static_cast<VkFormat>(_image.get_format());
 
 	vulkan_buffer save_buffer;
 	save_buffer.create(allocator, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, transfer_queue.get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	auto old_layout = _image.get_layout();
@@ -199,7 +201,7 @@ void vulkan_application::save_image(vulkan_image& _image) const
 	(*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, blit_end_barrier));
 
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(true);
 
 	auto now = std::chrono::system_clock::now();
 	auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
@@ -272,6 +274,16 @@ uint32_t vulkan_application::get_queue_index(vk::QueueFlagBits _queue_type) cons
 const vulkan_swapchain& vulkan_application::get_swapchain() const noexcept
 {
 	return swapchain;
+}
+
+vulkan_semaphore* vulkan_application::get_semaphore_ptr() noexcept
+{
+	return &semaphore;
+}
+
+vulkan_recycle_bin* vulkan_application::get_recycle_bin_ptr() noexcept
+{
+	return &recycle_bin;
 }
 
 void vulkan_application::create_instance(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags)
@@ -353,7 +365,7 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 							{ return strcmp(available_device_extension.extensionName, required_device_extension) == 0; });
 					});
 
-				auto features = _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
+				auto features = _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, /*vk::PhysicalDeviceRobustness2FeaturesEXT,*/
 					vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
 					vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
 					vk::PhysicalDeviceAccelerationStructureFeaturesKHR, /*vk::PhysicalDeviceRayQueryFeaturesKHR,*/
@@ -363,13 +375,14 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
 					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64
-					&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
+					//&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
 					&& features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
+					&& features.get<vk::PhysicalDeviceVulkan12Features>().timelineSemaphore
 					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
 					&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
 					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
@@ -457,16 +470,16 @@ void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _s
 
 void vulkan_application::create_device_and_queue()
 {
-	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceRobustness2FeaturesEXT,
+	vk::StructureChain<vk::PhysicalDeviceFeatures2, /*vk::PhysicalDeviceRobustness2FeaturesEXT,*/
 		vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
 		/*vk::PhysicalDeviceRayQueryFeaturesKHR,*/ vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> feature_pnext_chain(
 			vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setFillModeNonSolid(vk::True).setMultiDrawIndirect(vk::True).setShaderInt64(vk::True)),
-			vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
+			//vk::PhysicalDeviceRobustness2FeaturesEXT().setNullDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
 			vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True),
-			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True).setRuntimeDescriptorArray(vk::True).setScalarBlockLayout(vk::True),
+			vk::PhysicalDeviceVulkan12Features().setBufferDeviceAddress(vk::True).setRuntimeDescriptorArray(vk::True).setScalarBlockLayout(vk::True).setTimelineSemaphore(vk::True),
 			vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
 			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),
 			vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True).setAccelerationStructureCaptureReplay(vk::True).setDescriptorBindingAccelerationStructureUpdateAfterBind(vk::True),
@@ -489,7 +502,6 @@ void vulkan_application::create_device_and_queue()
 	device = vk::raii::Device(physical_device, device_creat_info);
 
 	graphic_queue.create(device, graphic_index);
-	compute_queue.create(device, compute_index);
 	transfer_queue.create(device, transfer_index);
 }
 
@@ -551,7 +563,7 @@ void vulkan_application::create_pipeline()
 
 		// todo 看能否封装到OCIO_HELPER的函数里面
 		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), device, transfer_queue.get_queue()).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		ocio_images.clear();
@@ -732,7 +744,7 @@ void vulkan_application::create_pipeline()
 
 		// commandbuffer submit
 		commandbuffer.end_record();
-		commandbuffer.submit({}, {}, true);
+		commandbuffer.submit(true);
 
 		if (ocio_images.size() != ocio_samplers.size())
 		{
@@ -763,7 +775,7 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL vulkan_application::debug_callback(vk::DebugUti
 {
 	if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
 	{
-		std::println("validation layer: type {} msg: {}", to_string(_type), _pCallbackData->pMessage);
+		std::println("validation layer: type {} msg: {}", vk::to_string(_type), _pCallbackData->pMessage);
 	}
 	return vk::False;
 }

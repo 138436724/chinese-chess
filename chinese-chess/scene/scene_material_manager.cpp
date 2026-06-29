@@ -13,8 +13,9 @@ struct material_data
 	alignas(16) float metallic = 0.0f;
 };
 
-scene_material_manager::scene_material_manager(const vulkan_application* _app, const vulkan_queue* _transfer_queue)
+scene_material_manager::scene_material_manager(vulkan_application* _app, vulkan_recycle_bin* _recycle_bin, vulkan_queue* _transfer_queue)
 	: app(_app),
+	recycle_bin(_recycle_bin),
 	transfer_queue(_transfer_queue)
 {
 }
@@ -38,7 +39,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -73,7 +74,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 		vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), font_image->get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), copy_offset, vk::Extent3D(_font_info.width, _font_info.height, 1)));
 		width_offset += _font_info.advance;
 
-		commandbuffer.add_staging_buffer(std::move(stage_buffer));
+		recycle_bin->retire(std::move(stage_buffer));
 	}
 
 	std::vector<vk::ImageMemoryBarrier2> end_barrier;
@@ -83,7 +84,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
 	// commandbuffer submit
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(true);
 
 	images.emplace_back(font_image);
 	images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(font_image));
@@ -126,7 +127,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -148,7 +149,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
 	// commandbuffer submit
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(true);
 
 
 	images.emplace_back(image);
@@ -174,18 +175,22 @@ void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexce
 		});
 
 
-	_commandbuffer.add_staging_buffer(std::move(ssbo));
+	recycle_bin->retire(std::move(ssbo));
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), app->get_device(), transfer_queue->get_queue()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_ssbo(commandbuffer);
 
 	// commandbuffer submit
 	commandbuffer.end_record();
-	commandbuffer.submit({}, {}, true);
+	commandbuffer.submit(false);
+
+	_commandbuffer.add_waited_info({ commandbuffer.get_submit_info() });
+
+	recycle_bin->retire(std::move(commandbuffer));
 }
 
 void scene_material_manager::clear() noexcept
@@ -293,6 +298,6 @@ void scene_material_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) n
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, materials_ssbo.data(), materials_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, materials_ssbo_size));
-		_commandbuffer.add_staging_buffer(std::move(staging_buffer));
+		recycle_bin->retire(std::move(staging_buffer));
 	}
 }

@@ -59,10 +59,10 @@ std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, ui
 	case PIECE_TYPE::HORSE:
 		switch (_move_direction)
 		{
-		case L'进':
+		case u'进':
 			new_position = std::make_pair(_number, _now_y + 3 - std::abs(_now_x - _number));
 			break;
-		case L'退':
+		case u'退':
 			new_position = std::make_pair(_number, _now_y - 3 + std::abs(_now_x - _number));
 			break;
 		default:
@@ -93,7 +93,7 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
 
 	UParseError pe;
 	icu::ErrorCode error;
-	icu::RegexPattern* compiled_pattern = icu::RegexPattern::compile(pattern, pe, error);
+	auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, error));
 	if (error.isFailure())
 	{
 		throw std::runtime_error("compile regex pattern fail!");
@@ -104,7 +104,7 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
 	std::vector<all_board_state> the_board_state;
 	bool is_player_red = true;
 
-	icu::RegexMatcher* matcher = compiled_pattern->matcher(records_text, error);
+	auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, error));
 	while (matcher->find(error))
 	{
 		icu::UnicodeString match = matcher->group(0, error);

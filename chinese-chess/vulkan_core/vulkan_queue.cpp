@@ -26,9 +26,9 @@ void vulkan_queue::create(const vk::raii::Device& _device, uint32_t _index)
 	command_pool = vk::raii::CommandPool(_device, pool_info);
 }
 
-void vulkan_queue::set_index(uint32_t _index) noexcept
+void vulkan_queue::submit(const std::span<const vk::SubmitInfo2> _submit_infos) const
 {
-	index = _index;
+	queue.submit2(_submit_infos, nullptr);
 }
 
 uint32_t vulkan_queue::get_index() const noexcept
