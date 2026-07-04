@@ -123,6 +123,12 @@
     <ClCompile Include="vulkan_core\vulkan_recycle_bin.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_device.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan_core\vulkan_physical_device.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools\file_watcher.h">
@@ -228,6 +234,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="vulkan_core\vulkan_recycle_bin.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_device.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan_core\vulkan_physical_device.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

@@ -169,7 +169,9 @@
     <ClCompile Include="vulkan_core\vulkan_commandbuffer.cpp" />
     <ClCompile Include="vulkan_core\vulkan_common.cpp" />
     <ClCompile Include="vulkan_core\vulkan_descriptor.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_device.cpp" />
     <ClCompile Include="vulkan_core\vulkan_image.cpp" />
+    <ClCompile Include="vulkan_core\vulkan_physical_device.cpp" />
     <ClCompile Include="vulkan_core\vulkan_pipeline.cpp" />
     <ClCompile Include="vulkan_core\vulkan_queue.cpp" />
     <ClCompile Include="vulkan_core\vulkan_recycle_bin.cpp" />
@@ -206,7 +208,9 @@
     <ClInclude Include="vulkan_core\vulkan_commandbuffer.h" />
     <ClInclude Include="vulkan_core\vulkan_common.h" />
     <ClInclude Include="vulkan_core\vulkan_descriptor.h" />
+    <ClInclude Include="vulkan_core\vulkan_device.h" />
     <ClInclude Include="vulkan_core\vulkan_image.h" />
+    <ClInclude Include="vulkan_core\vulkan_physical_device.h" />
     <ClInclude Include="vulkan_core\vulkan_pipeline.h" />
     <ClInclude Include="vulkan_core\vulkan_queue.h" />
     <ClInclude Include="vulkan_core\vulkan_recycle_bin.h" />

@@ -19,33 +19,35 @@ void vulkan_application::init(const std::vector<const char*>& _instance_layers, 
 
 void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
-	pick_physical_device_and_queue_family(_surface);
-	create_device_and_queue();
-
+	auto present_index = create_physical_device_and_device(_surface);
 	pick_msaa_sample_count();
 	pick_depth_format();
 
-	allocator = vma::raii::Allocator(instance, device, vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
-	swapchain.create(instance, physical_device, device, _surface, present_index, _width, _height);
-	semaphore.create(device);
+	allocator = vma::raii::Allocator(instance, *device, vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, *physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
+
+	graphic_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eGraphics));
+	transfer_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eTransfer));
+
+	semaphore.create(*device);
 	recycle_bin.create(&semaphore);
 
+	swapchain.create(instance, *physical_device, *device, _surface, present_index, _width, _height);
 	create_pipeline();
 
 	// create sampler
-	vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+	vk::PhysicalDeviceProperties properties = (*physical_device).getProperties();
 	vk::SamplerCreateInfo sampler_info({}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
 		vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
 		0.f, vk::True, properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.f, 1.f,
 		vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-	image_sampler = vk::raii::Sampler(device, sampler_info);
+	image_sampler = vk::raii::Sampler(*device, sampler_info);
 
-	commandbuffers = vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, &semaphore);
+	commandbuffers = vulkan_commandbuffer::create(*device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, &semaphore);
 }
 
 void vulkan_application::resize(uint32_t _width, uint32_t _height)
 {
-	swapchain.recreate(physical_device, device, _width, _height);
+	swapchain.recreate(*physical_device, *device, _width, _height);
 }
 
 void vulkan_application::begin() noexcept
@@ -119,7 +121,7 @@ void vulkan_application::end(bool _immediately)
 
 void vulkan_application::wait() const
 {
-	device.waitIdle();
+	(*device).waitIdle();
 }
 
 void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _ui_image)
@@ -177,7 +179,7 @@ void vulkan_application::bind_image(vulkan_image* _scene_image, vulkan_image* _u
 			descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(ocio_sampler_pool_info));
 		});
 
-	descriptor.update_descriptor_sets(device, pipeline.get_descriptor_set_layout());
+	descriptor.update_descriptor_sets(*device, pipeline.get_descriptor_set_layout());
 }
 
 void vulkan_application::save_image(vulkan_image& _image)
@@ -185,9 +187,9 @@ void vulkan_application::save_image(vulkan_image& _image)
 	VkFormat image_format = static_cast<VkFormat>(_image.get_format());
 
 	vulkan_buffer save_buffer;
-	save_buffer.create(allocator, device, _image.get_extent().width * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	save_buffer.create(allocator, *device, static_cast<size_t>(_image.get_extent().width) * _image.get_extent().height * vkuFormatTexelBlockSize(image_format), vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	auto old_layout = _image.get_layout();
@@ -230,12 +232,12 @@ const vk::raii::Instance& vulkan_application::get_instance() const noexcept
 	return instance;
 }
 
-const vk::raii::PhysicalDevice& vulkan_application::get_physical_device() const noexcept
+const vulkan_physical_device& vulkan_application::get_physical_device() const noexcept
 {
 	return physical_device;
 }
 
-const vk::raii::Device& vulkan_application::get_device() const noexcept
+const vulkan_device& vulkan_application::get_device() const noexcept
 {
 	return device;
 }
@@ -243,32 +245,6 @@ const vk::raii::Device& vulkan_application::get_device() const noexcept
 const vma::raii::Allocator& vulkan_application::get_allocator() const noexcept
 {
 	return allocator;
-}
-
-uint32_t vulkan_application::get_queue_index(vk::QueueFlagBits _queue_type) const noexcept
-{
-	switch (_queue_type)
-	{
-	case vk::QueueFlagBits::eOpticalFlowNV:
-		break;
-	case vk::QueueFlagBits::eVideoEncodeKHR:
-		break;
-	case vk::QueueFlagBits::eVideoDecodeKHR:
-		break;
-	case vk::QueueFlagBits::eProtected:
-		break;
-	case vk::QueueFlagBits::eSparseBinding:
-		break;
-	case vk::QueueFlagBits::eTransfer:
-		return transfer_index;
-	case vk::QueueFlagBits::eCompute:
-		return compute_index;
-	case vk::QueueFlagBits::eGraphics:
-		return graphic_index;
-	default:
-		break;
-	}
-	return vk::QueueFamilyIgnored;
 }
 
 const vulkan_swapchain& vulkan_application::get_swapchain() const noexcept
@@ -344,132 +320,55 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 #endif // NDEBUG
 }
 
-void vulkan_application::pick_physical_device_and_queue_family(vk::SurfaceKHR _surface)
+uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _surface)
 {
-	auto all_physical_devices = instance.enumeratePhysicalDevices();
-	auto filtered_physical_devices = all_physical_devices
-		| std::views::filter([this](const auto& _physical_device)
-			{
-				bool support_vulkan_1_4 = _physical_device.getProperties().apiVersion >= vk::ApiVersion14;
+	constexpr std::array required_device_extensions = {
+		vk::KHRSwapchainExtensionName,
+		vk::KHRSpirv14ExtensionName,
+		vk::KHRSynchronization2ExtensionName,
+		vk::KHRCreateRenderpass2ExtensionName,
+		vk::KHRAccelerationStructureExtensionName,
+		vk::KHRRayTracingPipelineExtensionName,
+		//vk::KHRRayQueryExtensionName,
+		vk::KHRDeferredHostOperationsExtensionName,
+		vk::KHRBufferDeviceAddressExtensionName,
+		vk::KHRPushDescriptorExtensionName
+	};
 
-				auto queue_families = _physical_device.getQueueFamilyProperties();
-				bool support_graphics = std::ranges::any_of(queue_families, [](const auto& qfp)
-					{ return static_cast<bool>(qfp.queueFlags & vk::QueueFlagBits::eGraphics); });
-
-				auto available_device_extensions = _physical_device.enumerateDeviceExtensionProperties();
-				bool has_all_required_extensions = std::ranges::all_of(required_device_extensions,
-					[&available_device_extensions](const auto& required_device_extension)
-					{
-						return std::ranges::any_of(available_device_extensions,
-							[required_device_extension](const auto& available_device_extension)
-							{ return strcmp(available_device_extension.extensionName, required_device_extension) == 0; });
-					});
-
-				auto features = _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, /*vk::PhysicalDeviceRobustness2FeaturesEXT,*/
-					vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
-					vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-					vk::PhysicalDeviceAccelerationStructureFeaturesKHR, /*vk::PhysicalDeviceRayQueryFeaturesKHR,*/
-					vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>();
-
-				bool has_all_required_features = features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
-					&& features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
-					&& features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
-					&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64
-					//&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
-					&& features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
-					&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
-					&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
-					&& features.get<vk::PhysicalDeviceVulkan12Features>().timelineSemaphore
-					&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
-					&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
-					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
-					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructureCaptureReplay
-					&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().descriptorBindingAccelerationStructureUpdateAfterBind
-					//&& features.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery
-					&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline
-					&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipelineTraceRaysIndirect
-					&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTraversalPrimitiveCulling;
-
-				return support_vulkan_1_4 && support_graphics && has_all_required_extensions && has_all_required_features;
-			})
-		| std::ranges::to<std::vector>();
-
-	auto find_physical_device = std::ranges::find_if(filtered_physical_devices, [&](const auto& _physical_device)
+	auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device)
 		{
-			auto queue_family_properties = _physical_device.getQueueFamilyProperties();
+			auto features = _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, /*vk::PhysicalDeviceRobustness2FeaturesEXT,*/
+				vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
+				vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+				vk::PhysicalDeviceAccelerationStructureFeaturesKHR, /*vk::PhysicalDeviceRayQueryFeaturesKHR,*/
+				vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>();
 
-			auto all_queue_supports = queue_family_properties
-				| std::views::enumerate
-				| std::views::transform([&](const auto& _pair)
-					{
-						const auto& [queue_family_index, queue_family_property] = _pair;
-						bool support_graphics = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eGraphics);
-						bool support_compute = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eCompute);
-						bool support_transfer = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eTransfer);
-						bool support_present = _physical_device.getSurfaceSupportKHR(static_cast<uint32_t>(queue_family_index), _surface) == vk::True;
-						return std::array{ support_graphics, support_compute, support_transfer, support_present };
-					});
+			return features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
+				&& features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
+				&& features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
+				&& features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64
+				//&& features.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor
+				&& features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
+				&& features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
+				&& features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
+				&& features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
+				&& features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
+				&& features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
+				&& features.get<vk::PhysicalDeviceVulkan12Features>().timelineSemaphore
+				&& features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
+				&& features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
+				&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
+				&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructureCaptureReplay
+				&& features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().descriptorBindingAccelerationStructureUpdateAfterBind
+				//&& features.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery
+				&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline
+				&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipelineTraceRaysIndirect
+				&& features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTraversalPrimitiveCulling;
+		};
 
-			// get all nums, like 0,1,2,3,4
-			auto the_digit = std::views::iota(0u, all_queue_supports.size());
-			// filter the num's position, for example 1 not on persent location
-			auto digits_at = [&](size_t pos)
-				{
-					return the_digit
-						| std::views::filter([&all_queue_supports, pos](size_t d)
-							{
-								return all_queue_supports[d][pos];
-							});
-				};
-			// list all support
-			auto all_kinds = std::views::cartesian_product(digits_at(0), digits_at(1), digits_at(2), digits_at(3));
-			// count the different num, for example 1234->4 0000->1
-			auto unique_count = [](const auto& k)
-				{
-					const auto [g, c, t, p] = k;
-					std::bitset<10> bits;
-					bits.set(g).set(c).set(t).set(p);
-					return bits.count();
-				};
-			// find the most different queue
-			auto best_kind = std::ranges::max_element(all_kinds,
-				[&](const auto& a, const auto& b)
-				{
-					// prefer only support transfer queue
-					const auto [g_a, c_a, t_a, p_a] = a;
-					const auto [g_b, c_b, t_b, p_b] = b;
-					auto a_score = static_cast<size_t>(all_queue_supports[t_a][0] == false && all_queue_supports[t_a][1] == false && all_queue_supports[t_a][2] == true && all_queue_supports[t_a][3] == false) * 10;
-					auto b_score = static_cast<size_t>(all_queue_supports[t_b][0] == false && all_queue_supports[t_b][1] == false && all_queue_supports[t_b][2] == true && all_queue_supports[t_b][3] == false) * 10;
-					return a_score + unique_count(a) < b_score + unique_count(b);
-				});
 
-			if (best_kind != all_kinds.end())
-			{
-				auto [g, c, t, p] = *best_kind;
+	auto present_index = physical_device.create(instance, required_device_extensions, has_all_required_features, _surface);
 
-				graphic_index = static_cast<uint32_t>(g);
-				compute_index = static_cast<uint32_t>(c);
-				transfer_index = static_cast<uint32_t>(g); // todo 先用图形队列，用单独的传输队列需要做一些转换，还没做好
-				present_index = static_cast<uint32_t>(p);
-
-				return true;
-			}
-
-			return false;
-		});
-
-	if (find_physical_device == filtered_physical_devices.end())
-	{
-		throw std::runtime_error("failed to find a suitable GPU!");
-	}
-	physical_device = *find_physical_device;
-}
-
-void vulkan_application::create_device_and_queue()
-{
 	vk::StructureChain<vk::PhysicalDeviceFeatures2, /*vk::PhysicalDeviceRobustness2FeaturesEXT,*/
 		vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
@@ -486,44 +385,10 @@ void vulkan_application::create_device_and_queue()
 			//vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
 			vk::PhysicalDeviceRayTracingPipelineFeaturesKHR().setRayTracingPipeline(vk::True).setRayTracingPipelineTraceRaysIndirect(vk::True).setRayTraversalPrimitiveCulling(vk::True));
 
-	std::unordered_set<uint32_t> queue_indices = { graphic_index, compute_index, transfer_index, present_index };
+	const std::array queues = { physical_device.get_queue_index(vk::QueueFlagBits::eGraphics), physical_device.get_queue_index(vk::QueueFlagBits::eTransfer), physical_device.get_queue_index(vk::QueueFlagBits::eCompute), present_index };
+	device.create(*physical_device, queues, required_device_extensions, feature_pnext_chain.get<vk::PhysicalDeviceFeatures2>());
 
-	float queue_priority = 0.0f;
-	auto device_queue_create_info = queue_indices
-		| std::views::transform(
-			[&queue_priority](const auto& index) -> vk::DeviceQueueCreateInfo
-			{
-				return vk::DeviceQueueCreateInfo({}, index, 1, &queue_priority);
-			})
-		| std::ranges::to<std::vector>();
-
-	vk::DeviceCreateInfo device_creat_info({}, device_queue_create_info, {}, required_device_extensions, {}, &feature_pnext_chain.get<vk::PhysicalDeviceFeatures2>());
-
-	device = vk::raii::Device(physical_device, device_creat_info);
-
-	graphic_queue.create(device, graphic_index);
-	transfer_queue.create(device, transfer_index);
-}
-
-void vulkan_application::pick_msaa_sample_count() const noexcept
-{
-	auto physical_device_properties = physical_device.getProperties();
-	vk::SampleCountFlags counts = physical_device_properties.limits.framebufferColorSampleCounts & physical_device_properties.limits.framebufferDepthSampleCounts;
-
-	constexpr std::array sample_count_flags = {
-		vk::SampleCountFlagBits::e64, vk::SampleCountFlagBits::e32, vk::SampleCountFlagBits::e16,
-		vk::SampleCountFlagBits::e8, vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2 };
-
-	auto support_sample_count = std::ranges::find_if(sample_count_flags, [&counts](vk::SampleCountFlagBits sample) { return static_cast<bool>(counts & sample); });
-
-	vulkan_common::MSAA_SAMPLE_COUNT = (support_sample_count != sample_count_flags.end()) ? *support_sample_count : vk::SampleCountFlagBits::e1;
-}
-
-void vulkan_application::pick_depth_format() const noexcept
-{
-	vulkan_common::DEPTH_FORMAT = vulkan_common::find_supported_format(physical_device,
-		{ vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
-		vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment).value();
+	return present_index;
 }
 
 void vulkan_application::create_pipeline()
@@ -557,13 +422,13 @@ void vulkan_application::create_pipeline()
 	{
 		if (shader_desc->getNumUniforms() > 0 && shader_desc->getUniformBufferSize() > 0)
 		{
-			ocio_ubo.create(allocator, device, shader_desc->getUniformBufferSize(), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			ocio_ubo.create(allocator, *device, shader_desc->getUniformBufferSize(), vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			OCIO_HELPER.copy_uniform_to_buffer(shader_desc, ocio_ubo.get_buffer_address().hostAddress);
 		}
 
 		// todo 看能否封装到OCIO_HELPER的函数里面
 		// begin a commandbuffer
-		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
+		vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*device, vk::CommandBufferAllocateInfo(transfer_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), &transfer_queue, &semaphore).front());
 		commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 		ocio_images.clear();
@@ -606,7 +471,7 @@ void vulkan_application::create_pipeline()
 			vulkan_image ocio_image;
 			vk::ImageCreateInfo ocio_image_info({}, vk::ImageType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 			vk::ImageViewCreateInfo ocio_view_info({}, {}, vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-			ocio_image.create(allocator, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+			ocio_image.create(allocator, *device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 
 			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
@@ -616,7 +481,7 @@ void vulkan_application::create_pipeline()
 
 			vulkan_buffer stage_buffer;
 			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
-			stage_buffer.create(allocator, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			stage_buffer.create(allocator, *device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
 
 			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(edge_len, edge_len, edge_len)));
@@ -632,13 +497,13 @@ void vulkan_application::create_pipeline()
 
 
 			// create sampler
-			vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+			vk::PhysicalDeviceProperties properties = (*physical_device).getProperties();
 			vk::SamplerCreateInfo sampler_info({}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
 				(interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear), vk::SamplerMipmapMode::eNearest,
 				vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
 				0.f, vk::False, 1.f, vk::False, vk::CompareOp::eAlways, 0.f, 0.f,
 				vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-			ocio_samplers.push_back(std::move(vk::raii::Sampler(device, sampler_info)));
+			ocio_samplers.push_back(std::move(vk::raii::Sampler(*device, sampler_info)));
 		}
 
 
@@ -706,7 +571,7 @@ void vulkan_application::create_pipeline()
 			vulkan_image ocio_image;
 			vk::ImageCreateInfo ocio_image_info({}, image_type, format, vk::Extent3D(width, height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 			vk::ImageViewCreateInfo ocio_view_info({}, {}, image_view_type, format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-			ocio_image.create(allocator, device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+			ocio_image.create(allocator, *device, ocio_image_info, ocio_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 
 			std::vector<vk::ImageMemoryBarrier2> begin_barrier;
@@ -716,7 +581,7 @@ void vulkan_application::create_pipeline()
 
 			vulkan_buffer stage_buffer;
 			vk::DeviceSize buffer_size = sizeof(rgba_values.front()) * rgba_values.size();
-			stage_buffer.create(allocator, device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			stage_buffer.create(allocator, *device, buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 			memcpy(stage_buffer.get_buffer_address().hostAddress, rgba_values.data(), buffer_size);
 
 			vulkan_buffer::copy_buffer_to_image(*commandbuffer, stage_buffer.get_buffer(), ocio_image.get_image(), vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), vk::Offset3D(0, 0, 0), vk::Extent3D(width, height, 1)));
@@ -732,13 +597,13 @@ void vulkan_application::create_pipeline()
 
 
 			// create sampler
-			vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+			vk::PhysicalDeviceProperties properties = (*physical_device).getProperties();
 			vk::SamplerCreateInfo sampler_info({}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
 				(interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear), vk::SamplerMipmapMode::eNearest,
 				vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
 				0.f, vk::False, 1.f, vk::False, vk::CompareOp::eAlways, 0.f, 0.f,
 				vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-			ocio_samplers.push_back(std::move(vk::raii::Sampler(device, sampler_info)));
+			ocio_samplers.push_back(std::move(vk::raii::Sampler(*device, sampler_info)));
 		}
 
 
@@ -758,16 +623,37 @@ void vulkan_application::create_pipeline()
 			});
 	}
 
-	vk::raii::ShaderModule shaderModule(device, vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
+	vk::raii::ShaderModule shaderModule(*device, vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char), reinterpret_cast<const uint32_t*>(spirv_code.data())));
 	std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTYR_NAME.data()),
 		vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTYR_NAME.data()),
 	};
 
 	std::array color_format_array = { swapchain.get_format() };
-	pipeline.create(device, bindings, {}, {}, {}, shader_stages,
+	pipeline.create(*device, bindings, {}, {}, {}, shader_stages,
 		vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
 		vk::SampleCountFlagBits::e1, vk::False, color_format_array, vk::Format::eUndefined);
+}
+
+void vulkan_application::pick_msaa_sample_count() const noexcept
+{
+	auto physical_device_properties = (*physical_device).getProperties();
+	vk::SampleCountFlags counts = physical_device_properties.limits.framebufferColorSampleCounts & physical_device_properties.limits.framebufferDepthSampleCounts;
+
+	constexpr std::array sample_count_flags = {
+		vk::SampleCountFlagBits::e64, vk::SampleCountFlagBits::e32, vk::SampleCountFlagBits::e16,
+		vk::SampleCountFlagBits::e8, vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2 };
+
+	auto support_sample_count = std::ranges::find_if(sample_count_flags, [&counts](vk::SampleCountFlagBits sample) { return static_cast<bool>(counts & sample); });
+
+	vulkan_common::MSAA_SAMPLE_COUNT = (support_sample_count != sample_count_flags.end()) ? *support_sample_count : vk::SampleCountFlagBits::e1;
+}
+
+void vulkan_application::pick_depth_format() const noexcept
+{
+	vulkan_common::DEPTH_FORMAT = vulkan_common::find_supported_format(*physical_device,
+		{ vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
+		vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment).value();
 }
 
 #ifndef NDEBUG

@@ -1,7 +1,7 @@
 #include "vulkan_queue.h"
 
 vulkan_queue::vulkan_queue(vulkan_queue&& _other) noexcept
-	: index(std::exchange(_other.index, {})),
+	:index(std::exchange(_other.index, {})),
 	queue(std::exchange(_other.queue, nullptr)),
 	command_pool(std::exchange(_other.command_pool, nullptr))
 {

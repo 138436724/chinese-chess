@@ -73,7 +73,7 @@ void scene_model_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 
 
 	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_meshs(commandbuffer);
@@ -131,7 +131,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 			});
 
 		vulkan_buffer vertices_staging_buffer;
-		vertices_staging_buffer.create(app->get_allocator(), app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		vertices_staging_buffer.create(app->get_allocator(), *app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
@@ -139,7 +139,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 				memcpy(static_cast<uint8_t*>(vertices_staging_buffer.get_buffer_address().hostAddress) + sp->vertex_offset, sp->vertices.data(), sp->vertices.size() * sizeof(sp->vertices.front()));
 			});
 
-		vertices_buffer.create(app->get_allocator(), app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		vertices_buffer.create(app->get_allocator(), *app->get_device(), vertices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, vertices_staging_buffer.get_buffer(), vertices_buffer.get_buffer(), vk::BufferCopy2(0, 0, vertices_size));
 		recycle_bin->retire(std::move(vertices_staging_buffer));
 
@@ -152,7 +152,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 			});
 
 		vulkan_buffer indices_staging_buffer;
-		indices_staging_buffer.create(app->get_allocator(), app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		indices_staging_buffer.create(app->get_allocator(), *app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		std::ranges::for_each(meshs, [&](const auto& p)
 			{
@@ -160,7 +160,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 				memcpy(static_cast<uint8_t*>(indices_staging_buffer.get_buffer_address().hostAddress) + sp->index_offset, sp->indices.data(), sp->indices.size() * sizeof(sp->indices.front()));
 			});
 
-		indices_buffer.create(app->get_allocator(), app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		indices_buffer.create(app->get_allocator(), *app->get_device(), indices_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, indices_staging_buffer.get_buffer(), indices_buffer.get_buffer(), vk::BufferCopy2(0, 0, indices_size));
 		recycle_bin->retire(std::move(indices_staging_buffer));
 
@@ -171,7 +171,7 @@ void scene_model_manager::update_meshs(vulkan_commandbuffer& _commandbuffer) noe
 				auto sp = p.lock();
 				recycle_bin->retire(std::move(sp->blas_info));
 				sp->blas_info = vulkan_acceleration_structure();
-				auto scratch_buffer = sp->blas_info.create_bottom_level_acceleration_structure(app->get_physical_device(), app->get_device(), app->get_allocator(), *_commandbuffer,
+				auto scratch_buffer = sp->blas_info.create_bottom_level_acceleration_structure(*app->get_physical_device(), *app->get_device(), app->get_allocator(), *_commandbuffer,
 					static_cast<uint32_t>(sp->vertices.size()), vertices_buffer.get_buffer_address().deviceAddress + sp->vertex_offset,
 					static_cast<uint32_t>(sp->indices.size()), indices_buffer.get_buffer_address().deviceAddress + sp->index_offset);
 				recycle_bin->retire(std::move(scratch_buffer));
@@ -198,10 +198,10 @@ void scene_model_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 			| std::ranges::to<std::vector>();
 
 		vk::DeviceSize models_ssbo_size = sizeof(models_ssbo.front()) * models_ssbo.size();
-		ssbo.create(app->get_allocator(), app->get_device(), models_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		ssbo.create(app->get_allocator(), *app->get_device(), models_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vulkan_buffer staging_buffer;
-		staging_buffer.create(app->get_allocator(), app->get_device(), models_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		staging_buffer.create(app->get_allocator(), *app->get_device(), models_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, models_ssbo.data(), models_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, models_ssbo_size));

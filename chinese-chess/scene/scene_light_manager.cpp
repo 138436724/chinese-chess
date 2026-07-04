@@ -39,7 +39,7 @@ void scene_light_manager::update(vulkan_commandbuffer& _commandbuffer) noexcept
 
 
 	// begin commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_ssbo(commandbuffer);
@@ -117,10 +117,10 @@ void scene_light_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) noex
 			| std::ranges::to<std::vector>();
 
 		vk::DeviceSize lights_ssbo_size = sizeof(lights_ssbo.front()) * lights_ssbo.size();
-		ssbo.create(app->get_allocator(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		ssbo.create(app->get_allocator(), *app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vulkan_buffer staging_buffer;
-		staging_buffer.create(app->get_allocator(), app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		staging_buffer.create(app->get_allocator(), *app->get_device(), lights_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, lights_ssbo.data(), lights_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, lights_ssbo_size));

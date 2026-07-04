@@ -39,7 +39,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
@@ -57,7 +57,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	auto font_image = std::make_shared<scene_image>();
 	vk::ImageCreateInfo font_image_info({}, vk::ImageType::e2D, vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo font_view_info({}, {}, vk::ImageViewType::e2D, vk::Format::eR8Unorm, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	font_image->create(app->get_allocator(), app->get_device(), font_image_info, font_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	font_image->create(app->get_allocator(), *app->get_device(), font_image_info, font_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(font_image->set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
@@ -67,7 +67,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 	for (const auto& _font_info : fonts_info)
 	{
 		vulkan_buffer stage_buffer;
-		stage_buffer.create(app->get_allocator(), app->get_device(), static_cast<size_t>(_font_info.width) * _font_info.height, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		stage_buffer.create(app->get_allocator(), *app->get_device(), static_cast<size_t>(_font_info.width) * _font_info.height, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 		memcpy(stage_buffer.get_buffer_address().hostAddress, _font_info.buffer.data(), _font_info.buffer.size());
 
 		vk::Offset3D copy_offset(width_offset + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height, 0);
@@ -113,7 +113,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 		auto image_data = IMAGE_HELPER.read_image<half>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
 		image_extent = vk::Extent3D(image_data.width, image_data.height, 1);
 
-		stage_buffer.create(app->get_allocator(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		stage_buffer.create(app->get_allocator(), *app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 		memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
 	}
 	else
@@ -122,18 +122,18 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 		auto image_data = IMAGE_HELPER.read_image<uint8_t>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
 		image_extent = vk::Extent3D(image_data.width, image_data.height, 1);
 
-		stage_buffer.create(app->get_allocator(), app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		stage_buffer.create(app->get_allocator(), *app->get_device(), image_data.buffer.size() * sizeof(image_data.buffer.front()), vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 		memcpy(stage_buffer.get_buffer_address().hostAddress, image_data.buffer.data(), image_data.buffer.size() * sizeof(image_data.buffer.front()));
 	}
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
 	vk::ImageCreateInfo image_info({}, vk::ImageType::e2D, image_format, image_extent, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo view_info({}, {}, vk::ImageViewType::e2D, image_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	image->create(app->get_allocator(), app->get_device(), image_info, view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+	image->create(app->get_allocator(), *app->get_device(), image_info, view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
 
 	std::vector<vk::ImageMemoryBarrier2> begin_barrier;
 	begin_barrier.emplace_back(image->set_layout(vk::ImageLayout::eTransferDstOptimal, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)));
@@ -179,7 +179,7 @@ void scene_material_manager::update(vulkan_commandbuffer& _commandbuffer) noexce
 
 
 	// begin a commandbuffer
-	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
+	vulkan_commandbuffer commandbuffer = std::move(vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(transfer_queue->get_command_pool(), vk::CommandBufferLevel::ePrimary, 1), transfer_queue, app->get_semaphore_ptr()).front());
 	commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	update_ssbo(commandbuffer);
@@ -291,10 +291,10 @@ void scene_material_manager::update_ssbo(vulkan_commandbuffer& _commandbuffer) n
 			| std::ranges::to<std::vector>();
 
 		vk::DeviceSize materials_ssbo_size = sizeof(materials_ssbo.front()) * materials_ssbo.size();
-		ssbo.create(app->get_allocator(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		ssbo.create(app->get_allocator(), *app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vulkan_buffer staging_buffer;
-		staging_buffer.create(app->get_allocator(), app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+		staging_buffer.create(app->get_allocator(), *app->get_device(), materials_ssbo_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
 		memcpy(staging_buffer.get_buffer_address().hostAddress, materials_ssbo.data(), materials_ssbo_size);
 		vulkan_buffer::copy_buffer_to_buffer(*_commandbuffer, staging_buffer.get_buffer(), ssbo.get_buffer(), vk::BufferCopy2(0, 0, materials_ssbo_size));

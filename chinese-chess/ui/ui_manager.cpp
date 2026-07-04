@@ -46,11 +46,11 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 
 	ImGui_ImplGlfw_InitForVulkan(_window, true);
 
-	graphic_queue.create(app->get_device(), app->get_queue_index(vk::QueueFlagBits::eGraphics));
+	graphic_queue.create(*app->get_device(), app->get_physical_device().get_queue_index(vk::QueueFlagBits::eGraphics));
 
 	std::array pool_size{ vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1), vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1) };
 	vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
-	descriptor_pool = vk::raii::DescriptorPool(app->get_device(), pool_info);
+	descriptor_pool = vk::raii::DescriptorPool(*app->get_device(), pool_info);
 
 	color_format = app->get_swapchain().get_format();
 	ImGui_ImplVulkan_PipelineInfo create_info = {
@@ -61,8 +61,8 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 	ImGui_ImplVulkan_InitInfo init_info = {
 		.ApiVersion = vk::ApiVersion14,
 		.Instance = *(app->get_instance()),
-		.PhysicalDevice = *(app->get_physical_device()),
-		.Device = *(app->get_device()),
+		.PhysicalDevice = *(*app->get_physical_device()),
+		.Device = *(*app->get_device()),
 		.QueueFamily = graphic_queue.get_index(),
 		.Queue = *(graphic_queue.get_queue()),
 		.DescriptorPool = *descriptor_pool,
@@ -73,7 +73,7 @@ void ui_manager::create(GLFWwindow* _window, vulkan_application* _app, scene_man
 	};
 	ImGui_ImplVulkan_Init(&init_info);
 
-	commandbuffers = vulkan_commandbuffer::create(_app->get_device(), vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, app->get_semaphore_ptr());
+	commandbuffers = vulkan_commandbuffer::create(*app->get_device(), vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, vulkan_common::MAX_FRAMES_IN_FLIGHT), &graphic_queue, app->get_semaphore_ptr());
 
 	resize(_width, _height);
 }
@@ -86,13 +86,13 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 	recycle_bin->retire(std::move(render_output));
 	vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	render_output.create(app->get_allocator(), app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+	render_output.create(app->get_allocator(), *app->get_device(), render_image_info, render_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	// msaa color
 	recycle_bin->retire(std::move(color_image));
 	vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0);
 	vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {}, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-	color_image.create(app->get_allocator(), app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+	color_image.create(app->get_allocator(), *app->get_device(), color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 	std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });
 }

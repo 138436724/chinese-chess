@@ -1,7 +1,7 @@
 #include "vulkan_image.h"
 
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
-	: format(std::exchange(_other.format, {})),
+	:format(std::exchange(_other.format, {})),
 	extent(std::exchange(_other.extent, {})),
 	layout(std::exchange(_other.layout, {})),
 	clear_value(std::exchange(_other.clear_value, {})),

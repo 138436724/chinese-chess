@@ -2,11 +2,13 @@
 
 #include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
-#include "vulkan_recycle_bin.h"
 #include "vulkan_descriptor.h"
+#include "vulkan_device.h"
 #include "vulkan_image.h"
+#include "vulkan_physical_device.h"
 #include "vulkan_pipeline.h"
 #include "vulkan_queue.h"
+#include "vulkan_recycle_bin.h"
 #include "vulkan_semaphore.h"
 #include "vulkan_swapchain.h"
 #include <vector>
@@ -39,10 +41,9 @@ public:
 
 	// getters
 	const vk::raii::Instance& get_instance() const noexcept;
-	const vk::raii::PhysicalDevice& get_physical_device() const noexcept;
-	const vk::raii::Device& get_device() const noexcept;
+	const vulkan_physical_device& get_physical_device() const noexcept;
+	const vulkan_device& get_device() const noexcept;
 	const vma::raii::Allocator& get_allocator() const noexcept;
-	uint32_t get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
 	const vulkan_swapchain& get_swapchain() const noexcept;
 	vulkan_semaphore* get_semaphore_ptr() noexcept;
 	vulkan_recycle_bin* get_recycle_bin_ptr() noexcept;
@@ -50,13 +51,11 @@ public:
 private:
 	// use in `init` and `create`
 	void create_instance(const std::vector<const char*>& _instance_layers, const std::vector<const char*>& _instance_extensions, vk::InstanceCreateFlags _flags = {});
-	void pick_physical_device_and_queue_family(vk::SurfaceKHR _surface);
-	void create_device_and_queue();
+	uint32_t create_physical_device_and_device(vk::SurfaceKHR _surface);
+	void create_pipeline();
 
 	void pick_msaa_sample_count() const noexcept;
 	void pick_depth_format() const noexcept;
-
-	void create_pipeline();
 
 #ifndef NDEBUG
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT _severity, vk::DebugUtilsMessageTypeFlagsEXT _type, const vk::DebugUtilsMessengerCallbackDataEXT* _pCallbackData, void*);
@@ -69,27 +68,9 @@ private:
 	vk::raii::Instance instance = nullptr;
 	vk::raii::DebugUtilsMessengerEXT debug_messenger = nullptr;
 
-	vk::raii::PhysicalDevice physical_device = nullptr;
-	vk::raii::Device device = nullptr;
+	vulkan_physical_device physical_device;
+	vulkan_device device;
 	vma::raii::Allocator allocator = nullptr;
-
-	std::vector<const char*> required_device_extensions = {
-		vk::KHRSwapchainExtensionName,
-		vk::KHRSpirv14ExtensionName,
-		vk::KHRSynchronization2ExtensionName,
-		vk::KHRCreateRenderpass2ExtensionName,
-		vk::KHRAccelerationStructureExtensionName,
-		vk::KHRRayTracingPipelineExtensionName,
-		//vk::KHRRayQueryExtensionName,
-		vk::KHRDeferredHostOperationsExtensionName,
-		vk::KHRBufferDeviceAddressExtensionName,
-		vk::KHRPushDescriptorExtensionName
-	};
-
-	uint32_t graphic_index = vk::QueueFamilyIgnored;
-	uint32_t compute_index = vk::QueueFamilyIgnored;
-	uint32_t transfer_index = vk::QueueFamilyIgnored;
-	uint32_t present_index = vk::QueueFamilyIgnored;
 
 	uint32_t current_frame = 0;
 

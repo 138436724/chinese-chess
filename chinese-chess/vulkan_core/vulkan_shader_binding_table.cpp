@@ -3,7 +3,7 @@
 #include "vulkan_shader_binding_table.h"
 
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
-	: handle_size(std::exchange(_other.handle_size, {})),
+	:handle_size(std::exchange(_other.handle_size, {})),
 	handle_alignment(std::exchange(_other.handle_alignment, {})),
 	base_alignment(std::exchange(_other.base_alignment, {})),
 	raygen_region(std::exchange(_other.raygen_region, {})),
