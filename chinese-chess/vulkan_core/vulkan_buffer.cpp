@@ -3,75 +3,132 @@
 #include "vulkan_buffer.h"
 
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
-	:buffer(std::exchange(_other.buffer, nullptr)),
-	buffer_address(std::exchange(_other.buffer_address, {}))
+    : stage(std::exchange(_other.stage, {}))
+    , access(std::exchange(_other.access, {}))
+    , queue(std::exchange(_other.queue, vk::QueueFamilyIgnored))
+    , buffer(std::exchange(_other.buffer, nullptr))
+    , buffer_address(std::exchange(_other.buffer_address, {}))
 {
 }
 
 vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
 {
-	if (this != &_other)
-	{
-		std::ranges::swap(buffer, _other.buffer);
-		std::ranges::swap(buffer_address, _other.buffer_address);
-	}
-	return *this;
+    if (this != &_other)
+    {
+        std::ranges::swap(stage, _other.stage);
+        std::ranges::swap(access, _other.access);
+        std::ranges::swap(queue, _other.queue);
+        std::ranges::swap(buffer, _other.buffer);
+        std::ranges::swap(buffer_address, _other.buffer_address);
+    }
+    return *this;
 }
 
-void vulkan_buffer::create(const vma::raii::Allocator& _allocator, const vk::raii::Device& _device, vk::DeviceSize _buffer_size, vk::BufferUsageFlags _buffer_usage, vk::MemoryPropertyFlags _properties)
+void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
+                           const vk::raii::Device&     _device,
+                           const vk::BufferCreateInfo& _buffer_info,
+                           vk::MemoryPropertyFlags     _properties)
 {
-	vk::BufferCreateInfo buffer_info({}, _buffer_size, _buffer_usage, vk::SharingMode::eExclusive);
+    if (_buffer_info.queueFamilyIndexCount != 1 || _buffer_info.sharingMode != vk::SharingMode::eExclusive)
+    {
+        throw std::runtime_error("Only support Exclusive mode!");
+    }
 
-	vma::AllocationCreateInfo create_info{};
-	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
-	{
-		create_info.setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
-			.setUsage(vma::MemoryUsage::eAutoPreferHost);
-	}
-	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
-	{
-		create_info.setFlags(vma::AllocationCreateFlagBits::eDedicatedMemory /*| vma::AllocationCreateFlagBits::eMapped*/)
-			.setUsage(vma::MemoryUsage::eGpuOnly);
-	}
-	else
-	{
-		create_info.setUsage(vma::MemoryUsage::eAuto);
-	}
+    queue = *_buffer_info.pQueueFamilyIndices;
 
-	buffer = _allocator.createBuffer(buffer_info, create_info);
+    vma::AllocationCreateInfo create_info{};
+    if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+    {
+        create_info
+            .setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
+            .setUsage(vma::MemoryUsage::eAutoPreferHost);
+    }
+    else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+    {
+        create_info
+            .setFlags(vma::AllocationCreateFlagBits::eDedicatedMemory /*| vma::AllocationCreateFlagBits::eMapped*/)
+            .setUsage(vma::MemoryUsage::eGpuOnly);
+    }
+    else
+    {
+        create_info.setUsage(vma::MemoryUsage::eAuto);
+    }
 
-	if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
-	{
-		buffer_address = buffer.getAllocation().getInfo().pMappedData;
-	}
-	else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
-	{
-		buffer_address = _device.getBufferAddress(vk::BufferDeviceAddressInfo(buffer));
-	}
+    buffer = _allocator.createBuffer(_buffer_info, create_info);
+
+    if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+    {
+        buffer_address = buffer.getAllocation().getInfo().pMappedData;
+    }
+    else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+    {
+        buffer_address = _device.getBufferAddress(vk::BufferDeviceAddressInfo(buffer));
+    }
+
+    //#ifndef NDEBUG
+    //	_device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(buffer.objectType, reinterpret_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), ""));
+    //#endif // !NDEBUG
 }
 
 void vulkan_buffer::clear() noexcept
 {
-	buffer_address = nullptr;
-	buffer.clear();
+    buffer_address = nullptr;
+    buffer.clear();
+}
+
+void vulkan_buffer::set_info(const vk::BufferMemoryBarrier2& _barrier)
+{
+    if (_barrier.buffer != *buffer)
+    {
+        throw std::runtime_error("The barrier not used by this buffer!");
+    }
+    if ((_barrier.srcQueueFamilyIndex == vk::QueueFamilyIgnored) != (_barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored))
+    {
+        throw std::runtime_error("Queue must all ignore or all set new value!");
+    }
+
+    stage  = _barrier.dstStageMask;
+    access = _barrier.dstAccessMask;
+    queue  = _barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored ? queue : _barrier.dstQueueFamilyIndex;
+}
+
+vk::PipelineStageFlags2 vulkan_buffer::get_stage() const noexcept
+{
+    return stage;
+}
+
+vk::AccessFlags2 vulkan_buffer::get_access() const noexcept
+{
+    return access;
+}
+
+uint32_t vulkan_buffer::get_queue() const noexcept
+{
+    return queue;
 }
 
 const vk::raii::Buffer& vulkan_buffer::get_buffer() const noexcept
 {
-	return buffer;
+    return buffer;
 }
 
 vk::DeviceOrHostAddressKHR vulkan_buffer::get_buffer_address() const noexcept
 {
-	return buffer_address;
+    return buffer_address;
 }
 
-void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _src_buffer, const vk::Buffer& _dst_buffer, const vk::BufferCopy2& _copy_info) noexcept
+void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
+                                          const vk::Buffer&              _src_buffer,
+                                          const vk::Buffer&              _dst_buffer,
+                                          const vk::BufferCopy2&         _copy_info) noexcept
 {
-	_commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, _copy_info));
+    _commandbuffer.copyBuffer2(vk::CopyBufferInfo2(_src_buffer, _dst_buffer, _copy_info));
 }
 
-void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer, const vk::Buffer& _buffer, const vk::Image& _image, const vk::BufferImageCopy2& _copy_info) noexcept
+void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer,
+                                         const vk::Buffer&              _buffer,
+                                         const vk::Image&               _image,
+                                         const vk::BufferImageCopy2&    _copy_info) noexcept
 {
-	_commandbuffer.copyBufferToImage2(vk::CopyBufferToImageInfo2(_buffer, _image, vk::ImageLayout::eTransferDstOptimal, _copy_info));
+    _commandbuffer.copyBufferToImage2(vk::CopyBufferToImageInfo2(_buffer, _image, vk::ImageLayout::eTransferDstOptimal, _copy_info));
 }

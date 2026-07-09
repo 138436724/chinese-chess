@@ -2,6 +2,9 @@
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
 * text=auto
+*.h text=auto eol=lf
+*.cpp text=auto eol=lf
+*.slang text=auto eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.

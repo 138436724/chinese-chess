@@ -1,15 +1,16 @@
 #pragma once
 
 #include "vulkan_core/vulkan_image.h"
+
 #include <glm/glm.hpp>
 
 using scene_image = vulkan_image;
 
 struct scene_material
 {
-	glm::vec3 background_color = glm::vec3(0.0f, 0.0f, 0.0f);
-	glm::vec3 foreground_color = glm::vec3(0.0f, 0.0f, 0.0f);
-	std::shared_ptr<scene_image> alpha_map = nullptr;
-	float roughness = 0.5f;
-	float metallic = 0.0f;
+    glm::vec3                    background_color = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3                    foreground_color = glm::vec3(0.0f, 0.0f, 0.0f);
+    std::shared_ptr<scene_image> alpha_map        = nullptr;
+    float                        roughness        = 0.5f;
+    float                        metallic         = 0.0f;
 };

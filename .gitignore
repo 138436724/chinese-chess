@@ -383,3 +383,6 @@ imgui.ini
 # font files
 *.ttf
 *.otf
+
+# bat file
+*.bat
