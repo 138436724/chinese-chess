@@ -3,8 +3,6 @@
 #include <freetype/freetype.h>
 #include <ranges>
 
-font_loader font_loader::loader;
-
 std::vector<character_info> font_loader::load_font(const std::filesystem::path& _font_path, uint32_t _font_size, const std::wstring& _characters)
 {
     FT_Library ft;
@@ -44,9 +42,4 @@ std::vector<character_info> font_loader::load_font(const std::filesystem::path& 
     FT_Done_FreeType(ft);
 
     return character_infos;
-}
-
-font_loader& font_loader::get_font_loader() noexcept
-{
-    return loader;
 }

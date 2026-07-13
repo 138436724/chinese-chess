@@ -39,28 +39,29 @@ void vulkan_pipeline::create(const vk::raii::Device&                            
     vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
     pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
 
-    vk::PipelineVertexInputStateCreateInfo vertex_input_info({}, _binding_description, _attribute_descriptions, nullptr);
-    vk::PipelineInputAssemblyStateCreateInfo input_assembly({}, _topology_type, vk::False, nullptr);
-    vk::PipelineViewportStateCreateInfo      viewport_state({}, 1, nullptr, 1, nullptr, nullptr);
+    const vk::PipelineVertexInputStateCreateInfo vertex_input_info({}, _binding_description, _attribute_descriptions, nullptr);
+    const vk::PipelineInputAssemblyStateCreateInfo input_assembly({}, _topology_type, vk::False, nullptr);
+    const vk::PipelineViewportStateCreateInfo      viewport_state({}, 1, nullptr, 1, nullptr, nullptr);
 
-    vk::PipelineRasterizationStateCreateInfo rasterizer({}, vk::False, vk::False, _polygon_mode, _cull_mode,
-                                                        _front_face, vk::False, 0.f, 0.f, 1.f, 1.f, nullptr);
-    vk::PipelineMultisampleStateCreateInfo   multisampling({}, _multisample_count, vk::False);
-    vk::PipelineDepthStencilStateCreateInfo depth_stencil({}, _use_depth, _use_depth, vk::CompareOp::eLess, vk::False, vk::False);
+    const vk::PipelineRasterizationStateCreateInfo rasterizer({}, vk::False, vk::False, _polygon_mode, _cull_mode,
+                                                              _front_face, vk::False, 0.f, 0.f, 1.f, 1.f, nullptr);
+    const vk::PipelineMultisampleStateCreateInfo   multisampling({}, _multisample_count, vk::False);
+    const vk::PipelineDepthStencilStateCreateInfo  depth_stencil({}, _use_depth, _use_depth, vk::CompareOp::eLess,
+                                                                 vk::False, vk::False);
 
-    vk::PipelineColorBlendAttachmentState color_blend_attachment(
+    const vk::PipelineColorBlendAttachmentState color_blend_attachment(
         vk::False, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eZero,
         vk::BlendFactor::eZero, vk::BlendOp::eAdd,
         vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB
             | vk::ColorComponentFlagBits::eA);
 
-    std::vector<vk::PipelineColorBlendAttachmentState> color_blend_attachments(_color_formats.size(), color_blend_attachment);
-    vk::PipelineColorBlendStateCreateInfo color_blending({}, vk::False, vk::LogicOp::eCopy, color_blend_attachments);
+    const std::vector<vk::PipelineColorBlendAttachmentState> color_blend_attachments(_color_formats.size(), color_blend_attachment);
+    const vk::PipelineColorBlendStateCreateInfo color_blending({}, vk::False, vk::LogicOp::eCopy, color_blend_attachments);
 
-    constexpr std::array               dynamic_states = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-    vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, dynamic_states, nullptr);
+    constexpr std::array                     dynamic_states = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+    const vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, dynamic_states, nullptr);
 
-    vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipeline_info(
+    const vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipeline_info(
         vk::GraphicsPipelineCreateInfo({}, _shader_stages, &vertex_input_info, &input_assembly, nullptr,
                                        &viewport_state, &rasterizer, &multisampling, &depth_stencil, &color_blending,
                                        &dynamic_state_info, pipeline_layout, nullptr, 0, nullptr, 0),
@@ -79,10 +80,10 @@ void vulkan_pipeline::create(const vk::raii::Device&                            
     descriptor_set_layout =
         vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings));
 
-    vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
+    const vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
     pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
 
-    vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, _shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
+    const vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, _shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
     pipeline = vk::raii::Pipeline(_device, nullptr, nullptr, pipeline_info);
 }
 

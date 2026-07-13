@@ -7,7 +7,7 @@
 class ui_light
 {
 public:
-    ui_light(scene_manager& _manager);
+    explicit ui_light(scene_manager& _manager);
     ~ui_light() = default;
 
     void resize(uint32_t _width, uint32_t _height) noexcept;

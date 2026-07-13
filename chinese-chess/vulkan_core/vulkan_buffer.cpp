@@ -45,9 +45,7 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
     }
     else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
     {
-        create_info
-            .setFlags(vma::AllocationCreateFlagBits::eDedicatedMemory /*| vma::AllocationCreateFlagBits::eMapped*/)
-            .setUsage(vma::MemoryUsage::eGpuOnly);
+        create_info.setUsage(vma::MemoryUsage::eGpuOnly);
     }
     else
     {

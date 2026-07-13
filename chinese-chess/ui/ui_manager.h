@@ -1,5 +1,4 @@
 #pragma once
-#define GLFW_INCLUDE_VULKAN
 
 #include "ui_base.h"
 #include "ui_camera.h"
@@ -18,13 +17,13 @@ public:
     ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height);
     ~ui_manager() = default;
 
-    void                    resize(uint32_t _width, uint32_t _height);
-    void                    update();
-    vk::SemaphoreSubmitInfo render();
-    void                    destroy();
-    void                    handle(int _glfw_key);
+    void                                  resize(uint32_t _width, uint32_t _height);
+    void                                  update();
+    [[nodiscard]] vk::SemaphoreSubmitInfo render();
+    void                                  destroy() noexcept;
+    void                                  handle(int _glfw_key) noexcept;
 
-    vulkan_image& get_render_image() noexcept;
+    [[nodiscard]] vulkan_image& get_render_image() noexcept;
 
 private:
     void ray_tracing_ui() noexcept;
@@ -34,7 +33,8 @@ private:
     vk::Format color_format = vk::Format::eUndefined;
 
     vulkan_application&      app;
-    vulkan_recycle_bin&      recycle_bin;
+    vulkan_recycle_bin       recycle_bin;
+    vulkan_semaphore         semaphore;
     vulkan_queue             graphic_queue;
     vk::raii::DescriptorPool descriptor_pool = nullptr;
 

@@ -8,10 +8,10 @@
 class vulkan_acceleration_structure
 {
 public:
-    vulkan_acceleration_structure()                                          = default;
-    ~vulkan_acceleration_structure()                                         = default;
-    vulkan_acceleration_structure(vulkan_acceleration_structure&)            = delete;
-    vulkan_acceleration_structure& operator=(vulkan_acceleration_structure&) = delete;
+    vulkan_acceleration_structure()                                                = default;
+    ~vulkan_acceleration_structure()                                               = default;
+    vulkan_acceleration_structure(const vulkan_acceleration_structure&)            = delete;
+    vulkan_acceleration_structure& operator=(const vulkan_acceleration_structure&) = delete;
     vulkan_acceleration_structure(vulkan_acceleration_structure&& _other) noexcept;
     vulkan_acceleration_structure& operator=(vulkan_acceleration_structure&& _other) noexcept;
 
@@ -35,9 +35,9 @@ public:
         vk::DeviceOrHostAddressConstKHR _instances_data,
         uint32_t                        _queue);
 
-    const vk::raii::AccelerationStructureKHR& get_acceleration_structure() const noexcept;
-    vk::DeviceAddress                         get_address() const noexcept;
-    const vk::raii::Buffer&                   get_buffer() const noexcept;
+    [[nodiscard]] const vk::raii::AccelerationStructureKHR& get_acceleration_structure() const noexcept;
+    [[nodiscard]] vk::DeviceAddress                         get_address() const noexcept;
+    [[nodiscard]] const vk::raii::Buffer&                   get_buffer() const noexcept;
 
 private:
     [[nodiscard("Staging buffer must be kept!")]] vulkan_buffer create_acceleration_structure(

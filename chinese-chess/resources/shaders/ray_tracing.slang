@@ -82,8 +82,8 @@ void rayGenMain()
     float2 launchID = (float2)DispatchRaysIndex().xy;        // Current pixel (x,y)
     float2 launchSize = (float2)DispatchRaysDimensions().xy; // Image size (width,height)
 
-    // Set ray tracing flags (0 = no special flags)
-    const uint rayFlags = 0;
+    // Set ray tracing flags: cull back faces for closed geometry (doubles BVH traversal speed)
+    const uint rayFlags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
     // 初始化 RNG 种子——必须在子像素抖动之前，因为 random_float2 需要种子
     uint2 pixelIndex = DispatchRaysIndex().xy;
@@ -253,7 +253,7 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
 
     // Prepare ray for next bounce
     const float bounce_epsilon = 0.001f;
-    const uint primary_ray_flags = 0;
+    const uint primary_ray_flags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
     RayDesc bounce_ray;
     bounce_ray.Origin = world_position + world_normal * bounce_epsilon;

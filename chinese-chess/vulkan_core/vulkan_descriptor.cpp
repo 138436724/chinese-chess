@@ -52,20 +52,20 @@ void vulkan_descriptor::clear_descriptor_info() noexcept
 void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, const vk::raii::DescriptorSetLayout& _descriptor_set_layout)
 {
     // descriptor pool
-    vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, max_size, pool_size);
+    const vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, max_size, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(_device, pool_create_info);
 
 
     // descriptor set
-    std::vector<vk::DescriptorSetLayout> layouts(max_size, *(_descriptor_set_layout));
-    vk::DescriptorSetAllocateInfo        alloc_info(descriptor_pool, layouts);
+    const std::vector<vk::DescriptorSetLayout> layouts(max_size, *(_descriptor_set_layout));
+    const vk::DescriptorSetAllocateInfo        alloc_info(descriptor_pool, layouts);
 
     descriptor_sets.clear();
     descriptor_sets = _device.allocateDescriptorSets(alloc_info);
 
 
     std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _descriptor_pair) {
-        auto descriptor_write =
+        const auto descriptor_write =
             std::views::zip(pool_size, pool_infos) | std::views::enumerate | std::views::transform([&](const auto& _pair) {
                 const auto& [i, _descriptor_set]     = _descriptor_pair;
                 const auto& [j, pool_zip]            = _pair;

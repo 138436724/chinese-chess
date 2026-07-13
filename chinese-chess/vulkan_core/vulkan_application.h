@@ -18,12 +18,12 @@
 class vulkan_application
 {
 public:
-    vulkan_application()                                      = default;
-    ~vulkan_application()                                     = default;
-    vulkan_application(const vulkan_application&)             = delete;
-    vulkan_application& operator=(const vulkan_application&)  = delete;
-    vulkan_application(const vulkan_application&&)            = delete;
-    vulkan_application& operator=(const vulkan_application&&) = delete;
+    vulkan_application()                                     = default;
+    ~vulkan_application()                                    = default;
+    vulkan_application(const vulkan_application&)            = delete;
+    vulkan_application& operator=(const vulkan_application&) = delete;
+    vulkan_application(vulkan_application&&)                 = delete;
+    vulkan_application& operator=(vulkan_application&&)      = delete;
 
     // public to use
     void init(const std::vector<const char*>& _instance_layers,
@@ -31,25 +31,18 @@ public:
               vk::InstanceCreateFlags         _flags = {});
     void create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
     void resize(uint32_t _width, uint32_t _height);
-    void begin() noexcept;
-    void render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_info);
-    void end(bool _immediately);
+    void render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_infos);
     void wait() const;
 
     // frame
-    void bind_image(vulkan_image* _scene_image, vulkan_image* _ui_image);
-
-    // other function
-    void save_image(vulkan_image& _image);
+    void bind_image(vulkan_image& _scene_image, vulkan_image& _ui_image);
 
     // getters
-    const vk::raii::Instance&     get_instance() const noexcept;
-    const vulkan_physical_device& get_physical_device() const noexcept;
-    const vulkan_device&          get_device() const noexcept;
-    const vma::raii::Allocator&   get_allocator() const noexcept;
-    const vulkan_swapchain&       get_swapchain() const noexcept;
-    vulkan_semaphore*             get_semaphore_ptr() noexcept;
-    vulkan_recycle_bin&           get_recycle_bin() noexcept;
+    [[nodiscard]] const vk::raii::Instance&     get_instance() const noexcept;
+    [[nodiscard]] const vulkan_physical_device& get_physical_device() const noexcept;
+    [[nodiscard]] const vulkan_device&          get_device() const noexcept;
+    [[nodiscard]] const vma::raii::Allocator&   get_allocator() const noexcept;
+    [[nodiscard]] const vulkan_swapchain&       get_swapchain() const noexcept;
 
 private:
     // use in `init` and `create`

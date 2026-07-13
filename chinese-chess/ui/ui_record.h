@@ -8,7 +8,7 @@
 class ui_record
 {
 public:
-    ui_record(scene_manager& _manager);
+    explicit ui_record(scene_manager& _manager);
     ~ui_record() = default;
 
     void resize(uint32_t _width, uint32_t _height) noexcept;
@@ -23,7 +23,7 @@ private:
     void prev_step() noexcept;
     void next_step() noexcept;
 
-    static glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept;
+    [[nodiscard]] static glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept;
 
 private:
     uint32_t width  = 0;
@@ -39,7 +39,7 @@ private:
     std::shared_ptr<scene_model>                 chess_board_line;
     std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;
 
-    std::vector<all_board_state>                                    board_state = {RECORD_LOADER.get_init_all_borad()};
+    std::vector<all_board_state>                                    board_state = {record_loader::get_init_all_board()};
     std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> red_chess_piece_materials;
     std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> black_chess_piece_materials;
 };

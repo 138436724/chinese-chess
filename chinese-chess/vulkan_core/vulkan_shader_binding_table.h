@@ -7,10 +7,10 @@
 class vulkan_shader_binding_table
 {
 public:
-    vulkan_shader_binding_table()                                        = default;
-    ~vulkan_shader_binding_table()                                       = default;
-    vulkan_shader_binding_table(vulkan_shader_binding_table&)            = delete;
-    vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&) = delete;
+    vulkan_shader_binding_table()                                              = default;
+    ~vulkan_shader_binding_table()                                             = default;
+    vulkan_shader_binding_table(const vulkan_shader_binding_table&)            = delete;
+    vulkan_shader_binding_table& operator=(const vulkan_shader_binding_table&) = delete;
     vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept;
     vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&& _other) noexcept;
 
@@ -23,11 +23,11 @@ public:
                          uint32_t                        _group_count,
                          uint32_t                        _queue);
 
-    const vk::StridedDeviceAddressRegionKHR& get_raygen_region() const noexcept;
-    const vk::StridedDeviceAddressRegionKHR& get_miss_region() const noexcept;
-    const vk::StridedDeviceAddressRegionKHR& get_hit_region() const noexcept;
-    const vk::StridedDeviceAddressRegionKHR& get_callable_region() const noexcept;
-    const vulkan_buffer&                     get_shader_binding_table_buffer() const noexcept;
+    [[nodiscard]] const vk::StridedDeviceAddressRegionKHR& get_raygen_region() const noexcept;
+    [[nodiscard]] const vk::StridedDeviceAddressRegionKHR& get_miss_region() const noexcept;
+    [[nodiscard]] const vk::StridedDeviceAddressRegionKHR& get_hit_region() const noexcept;
+    [[nodiscard]] const vk::StridedDeviceAddressRegionKHR& get_callable_region() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                     get_shader_binding_table_buffer() const noexcept;
 
 private:
     uint32_t handle_size      = 0;

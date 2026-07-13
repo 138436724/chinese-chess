@@ -5,8 +5,6 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
-model_loader model_loader::loader;
-
 bool model_loader::load_model(const std::filesystem::path& _file_path,
                               std::vector<model_vertex>&   _vertices,
                               std::vector<uint32_t>&       _indices) noexcept
@@ -28,7 +26,7 @@ bool model_loader::load_model(const std::filesystem::path& _file_path,
         return false;
     }
 
-    fastgltf::Asset gltf = std::move(asset.get());
+    const fastgltf::Asset gltf = std::move(asset.get());
 
     _vertices.clear();
     _indices.clear();
@@ -37,7 +35,7 @@ bool model_loader::load_model(const std::filesystem::path& _file_path,
     {
         for (const auto& _primitives : _mesh.primitives)
         {
-            auto initial_vtx = static_cast<uint32_t>(_vertices.size());
+            const auto initial_vtx = static_cast<uint32_t>(_vertices.size());
 
             const fastgltf::Accessor& index_accessor = gltf.accessors.at(_primitives.indicesAccessor.value());
             _indices.reserve(_indices.size() + index_accessor.count);
@@ -76,9 +74,4 @@ bool model_loader::load_model(const std::filesystem::path& _file_path,
     }
 
     return true;
-}
-
-model_loader& model_loader::get_model_loader() noexcept
-{
-    return loader;
 }

@@ -24,18 +24,18 @@ void vulkan_device::create(const vk::raii::PhysicalDevice&    _physical_device,
 {
     std::vector<uint32_t> all_queues(_queues.begin(), _queues.end());
     std::ranges::sort(all_queues);
-    auto result = std::ranges::unique(all_queues);
+    const auto result = std::ranges::unique(all_queues);
     all_queues.erase(result.begin(), result.end());
 
     constexpr float queue_priority           = 0.0f;
-    auto            device_queue_create_info = all_queues | std::views::transform([&queue_priority](const auto& index) {
-                                        return vk::DeviceQueueCreateInfo({}, index, 1, &queue_priority);
+    const auto      device_queue_create_info = all_queues | std::views::transform([&queue_priority](const auto& index) {
+                                              return vk::DeviceQueueCreateInfo({}, index, 1, &queue_priority);
                                                })
                                                | std::ranges::to<std::vector>();
 
-    vk::DeviceCreateInfo device_creat_info({}, device_queue_create_info, {}, _extensions, {}, &_features);
+    const vk::DeviceCreateInfo device_create_info({}, device_queue_create_info, {}, _extensions, {}, &_features);
 
-    device = vk::raii::Device(_physical_device, device_creat_info);
+    device = vk::raii::Device(_physical_device, device_create_info);
 }
 
 const vk::raii::Device& vulkan_device::operator*() const noexcept

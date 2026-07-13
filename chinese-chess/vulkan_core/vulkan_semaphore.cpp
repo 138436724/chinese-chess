@@ -15,7 +15,7 @@ vk::SemaphoreSubmitInfo vulkan_semaphore::next(vk::PipelineStageFlagBits2 _stage
 
 void vulkan_semaphore::wait(uint64_t _value) const
 {
-    vk::SemaphoreWaitInfo wait_info(vk::SemaphoreWaitFlagBits::eAny, *semaphore, _value);
+    const vk::SemaphoreWaitInfo wait_info(vk::SemaphoreWaitFlagBits::eAny, *semaphore, _value);
     while (vk::Result::eTimeout == semaphore.getDevice().waitSemaphores(wait_info, std::numeric_limits<uint64_t>::max()))
     {
     }

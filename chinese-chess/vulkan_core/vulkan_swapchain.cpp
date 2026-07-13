@@ -15,10 +15,10 @@ vulkan_swapchain::vulkan_swapchain(vulkan_swapchain&& _other) noexcept
     , images(std::exchange(_other.images, {}))
     , imageviews(std::exchange(_other.imageviews, {}))
     , current_index(std::exchange(_other.current_index, {}))
-    , max_index(std::exchange(_other.max_index, {}))
+    , current_frame(std::exchange(_other.current_frame, {}))
     , present_queue(std::exchange(_other.present_queue, {}))
-    , present_used(std::exchange(_other.present_used, {}))
-    , present_waited(std::exchange(_other.present_waited, {}))
+    , before_rendering(std::exchange(_other.before_rendering, {}))
+    , after_rendering(std::exchange(_other.after_rendering, {}))
 {
 }
 
@@ -35,10 +35,10 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
         std::ranges::swap(images, _other.images);
         std::ranges::swap(imageviews, _other.imageviews);
         std::ranges::swap(current_index, _other.current_index);
-        std::ranges::swap(max_index, _other.max_index);
+        std::ranges::swap(current_frame, _other.current_frame);
         std::ranges::swap(present_queue, _other.present_queue);
-        std::ranges::swap(present_used, _other.present_used);
-        std::ranges::swap(present_waited, _other.present_waited);
+        std::ranges::swap(before_rendering, _other.before_rendering);
+        std::ranges::swap(after_rendering, _other.after_rendering);
     }
     return *this;
 }
@@ -53,7 +53,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
 {
     surface = vk::raii::SurfaceKHR(_instance, _surface);
 
-    auto       available_formats = _physical_device.getSurfaceFormatsKHR(surface);
+    const auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
     const auto format_iter       = std::ranges::find_if(available_formats, [](const auto& format) {
         if constexpr (vulkan_common::USE_OCIO)
         {
@@ -66,7 +66,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
     });
     format = format_iter != available_formats.end() ? format_iter->format : available_formats.front().format;
 
-    auto available_present_modes = _physical_device.getSurfacePresentModesKHR(surface);
+    const auto available_present_modes = _physical_device.getSurfacePresentModesKHR(surface);
     present_mode =
         std::ranges::any_of(available_present_modes,
                             [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
@@ -86,67 +86,72 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
         std::clamp<uint32_t>(_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width),
         std::clamp<uint32_t>(_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height));
 
-    max_index = std::max(3u, surface_capabilities.minImageCount);
-    vk::SwapchainCreateInfoKHR swapchain_create_info({}, surface, max_index, format, vk::ColorSpaceKHR::eSrgbNonlinear,
-                                                     extent, 1, vk::ImageUsageFlagBits::eColorAttachment,
-                                                     vk::SharingMode::eExclusive, 0, nullptr, surface_capabilities.currentTransform,
-                                                     vk::CompositeAlphaFlagBitsKHR::eOpaque, present_mode, vk::True,
-                                                     swapchain, nullptr);
-
-    current_index = max_index - 1;
+    const auto max_count = std::min(std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount),
+                                    surface_capabilities.maxImageCount);
+    const vk::SwapchainCreateInfoKHR swapchain_create_info(
+        {}, surface, max_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1, vk::ImageUsageFlagBits::eColorAttachment,
+        vk::SharingMode::eExclusive, 0, nullptr, surface_capabilities.currentTransform,
+        vk::CompositeAlphaFlagBitsKHR::eOpaque, present_mode, vk::True, swapchain, nullptr);
 
     swapchain = vk::raii::SwapchainKHR(_device, swapchain_create_info);
     images    = swapchain.getImages();
 
     imageviews.clear();
-    present_used.clear();
-    present_waited.clear();
+    before_rendering.clear();
+    after_rendering.clear();
 
     for (const auto& image : images)
     {
-        vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {},
-                                         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+        const vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {},
+                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 
         imageviews.emplace_back(std::move(vk::raii::ImageView(_device, viewInfo)));
 
-        present_used.emplace_back(std::move(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo())));
+        before_rendering.emplace_back(std::move(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo())));
 
-        present_waited.emplace_back(std::move(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo())));
+        after_rendering.emplace_back(std::move(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo())));
     }
 }
 
-vk::Result vulkan_swapchain::acquire_next_image()
+bool vulkan_swapchain::acquire_image()
 {
-    current_index = (current_index + 1) % max_index;
-    auto [result, image] =
-        swapchain.acquireNextImage(std::numeric_limits<uint64_t>::max(), present_used.at(current_index), nullptr);
-    (void)image;
-    return result;
-}
-
-void vulkan_swapchain::present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const
-{
-    _commandbuffer.add_waited_info(
-        {vk::SemaphoreSubmitInfo(*(present_used.at(current_index)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput)});
-    _commandbuffer.add_signal_info({vk::SemaphoreSubmitInfo(*(present_waited.at(current_index)), {},
-                                                            vk::PipelineStageFlagBits2::eColorAttachmentOutput)});
-
-    _commandbuffer.submit(_immediately);
-
     try
     {
-        vk::Result res = present_queue.get_queue().presentKHR(
-            vk::PresentInfoKHR(*(present_waited.at(current_index)), (*swapchain), current_index, {}));
-        if (res != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to present swap chain image!");
-        }
+        current_frame = (current_frame + 1) % static_cast<uint32_t>(images.size());
+        const auto [result, index] =
+            swapchain.acquireNextImage(std::numeric_limits<uint64_t>::max(), before_rendering.at(current_frame), nullptr);
+        current_index = index;
+        (void)result;  // vulkan will check result and throw exception
+        return true;
     }
     catch (vk::OutOfDateKHRError e)
     {
 #ifndef NDEBUG
-        std::println("{}", e.what());
+        std::println("acquire image: {}", e.what());
 #endif  // !NDEBUG
+        return false;
+    }
+    catch (std::system_error)
+    {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+}
+
+void vulkan_swapchain::present_image()
+{
+    try
+    {
+        vk::Result result = present_queue.get_queue().presentKHR(
+            vk::PresentInfoKHR(*(after_rendering.at(current_frame)), (*swapchain), current_index, {}));
+        (void)result;  // vulkan will check result and throw exception
+        return;
+    }
+    catch (vk::OutOfDateKHRError e)
+    {
+#ifndef NDEBUG
+        std::println("present image: {}", e.what());
+#endif  // !NDEBUG
+        return;
     }
     catch (std::system_error)
     {
@@ -169,7 +174,7 @@ const vk::raii::SwapchainKHR& vulkan_swapchain::get_swapchain() const noexcept
     return swapchain;
 }
 
-const vk::Image vulkan_swapchain::get_current_image() const noexcept
+vk::Image vulkan_swapchain::get_current_image() const noexcept
 {
     return images.at(current_index);
 }
@@ -182,4 +187,14 @@ const vk::raii::ImageView& vulkan_swapchain::get_current_imageview() const noexc
 const vulkan_queue& vulkan_swapchain::get_present_queue() const noexcept
 {
     return present_queue;
+}
+
+vk::SemaphoreSubmitInfo vulkan_swapchain::get_waited_info() const noexcept
+{
+    return vk::SemaphoreSubmitInfo(*(before_rendering.at(current_frame)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+}
+
+vk::SemaphoreSubmitInfo vulkan_swapchain::get_signal_info() const noexcept
+{
+    return vk::SemaphoreSubmitInfo(*(after_rendering.at(current_frame)), {}, vk::PipelineStageFlagBits2::eColorAttachmentOutput);
 }

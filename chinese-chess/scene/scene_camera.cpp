@@ -61,14 +61,24 @@ glm::vec3 scene_camera::get_direction() const noexcept
     return direction;
 }
 
-glm::mat4 scene_camera::get_projection_matrix() const noexcept
+const glm::mat4& scene_camera::get_projection_matrix() const noexcept
 {
     return projection_matrix;
 }
 
-glm::mat4 scene_camera::get_view_matrix() const noexcept
+const glm::mat4& scene_camera::get_view_matrix() const noexcept
 {
     return view_matrix;
+}
+
+const glm::mat4& scene_camera::get_inv_projection_matrix() const noexcept
+{
+    return inv_projection_matrix;
+}
+
+const glm::mat4& scene_camera::get_inv_view_matrix() const noexcept
+{
+    return inv_view_matrix;
 }
 
 void scene_camera::update_camera_axis() noexcept
@@ -90,4 +100,7 @@ void scene_camera::update_camera_matrix() noexcept
     }
 
     view_matrix = glm::lookAt(position, position + direction, up_axis);
+
+    inv_projection_matrix = glm::inverse(projection_matrix);
+    inv_view_matrix       = glm::inverse(view_matrix);
 }

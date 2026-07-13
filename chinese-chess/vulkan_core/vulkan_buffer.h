@@ -6,10 +6,10 @@
 class vulkan_buffer
 {
 public:
-    vulkan_buffer()                          = default;
-    ~vulkan_buffer()                         = default;
-    vulkan_buffer(vulkan_buffer&)            = delete;
-    vulkan_buffer& operator=(vulkan_buffer&) = delete;
+    vulkan_buffer()                                = default;
+    ~vulkan_buffer()                               = default;
+    vulkan_buffer(const vulkan_buffer&)            = delete;
+    vulkan_buffer& operator=(const vulkan_buffer&) = delete;
     vulkan_buffer(vulkan_buffer&& _other) noexcept;
     vulkan_buffer& operator=(vulkan_buffer&& _other) noexcept;
 
@@ -21,11 +21,11 @@ public:
 
     void set_info(const vk::BufferMemoryBarrier2& _barrier);
 
-    vk::PipelineStageFlags2    get_stage() const noexcept;
-    vk::AccessFlags2           get_access() const noexcept;
-    uint32_t                   get_queue() const noexcept;
-    const vk::raii::Buffer&    get_buffer() const noexcept;
-    vk::DeviceOrHostAddressKHR get_buffer_address() const noexcept;
+    [[nodiscard]] vk::PipelineStageFlags2    get_stage() const noexcept;
+    [[nodiscard]] vk::AccessFlags2           get_access() const noexcept;
+    [[nodiscard]] uint32_t                   get_queue() const noexcept;
+    [[nodiscard]] const vk::raii::Buffer&    get_buffer() const noexcept;
+    [[nodiscard]] vk::DeviceOrHostAddressKHR get_buffer_address() const noexcept;
 
     static void copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
                                       const vk::Buffer&              _src_buffer,

@@ -22,7 +22,7 @@ void vulkan_queue::create(const vk::raii::Device& _device, uint32_t _index)
 {
     index = _index;
     queue = vk::raii::Queue(_device, index, 0);
-    vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, index, nullptr);
+    const vk::CommandPoolCreateInfo pool_info(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, index, nullptr);
     command_pool = vk::raii::CommandPool(_device, pool_info);
 }
 

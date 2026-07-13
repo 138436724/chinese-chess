@@ -95,21 +95,21 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
 {
     if (scratch_alignment == 0)
     {
-        auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-                                                     vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+        const auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+                                                           vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
         scratch_alignment = props.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>().minAccelerationStructureScratchOffsetAlignment;
     }
 
     vk::AccelerationStructureBuildGeometryInfoKHR build_info(_type, _flags, vk::BuildAccelerationStructureModeKHR::eBuild,
                                                              {}, {}, geometry);
 
-    vk::AccelerationStructureBuildSizesInfoKHR build_size =
+    const vk::AccelerationStructureBuildSizesInfoKHR build_size =
         _device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, build_info,
                                                       range_info.primitiveCount);
 
 
     // Make sure the scratch buffer is properly aligned
-    VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
+    const VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
 
     vulkan_buffer scratch_buffer;
     scratch_buffer.create(_allocator, _device,
@@ -131,7 +131,7 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
     acceleration_structure = _device.createAccelerationStructureKHR(create_info);
 
 
-    vk::AccelerationStructureDeviceAddressInfoKHR address_info(acceleration_structure);
+    const vk::AccelerationStructureDeviceAddressInfoKHR address_info(acceleration_structure);
 
     address = _device.getAccelerationStructureAddressKHR(address_info);
 

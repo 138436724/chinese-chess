@@ -31,7 +31,7 @@ constexpr std::u8string_view DELETE_MODEL      = u8"删除物体";
 constexpr std::u8string_view NO_MODEL          = u8"无物体";
 
 
-ui_node::ui_node(scene_manager& _manager)
+ui_node::ui_node(scene_manager& _manager) noexcept
     : manager(_manager)
 {
 }
@@ -209,12 +209,12 @@ void ui_node::update_model() noexcept
 
                 if (modified)
                 {
-                    glm::vec3 new_euler_radians = glm::radians(euler_degrees);
-                    glm::quat new_rotate        = glm::quat(new_euler_radians);
+                    const glm::vec3 new_euler_radians = glm::radians(euler_degrees);
+                    const glm::quat new_rotate        = glm::quat(new_euler_radians);
 
-                    glm::mat4 T = glm::translate(glm::mat4(1.0f), translate);
-                    glm::mat4 R = glm::mat4_cast(new_rotate);
-                    glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+                    const glm::mat4 T = glm::translate(glm::mat4(1.0f), translate);
+                    const glm::mat4 R = glm::mat4_cast(new_rotate);
+                    const glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
 
                     model_ptr->model_matrix = T * R * S;
                     ;
@@ -266,10 +266,10 @@ void ui_node::update_model() noexcept
 
 std::optional<int> ui_node::get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept
 {
-    auto materials_with_index = materials | std::views::enumerate;
+    const auto materials_with_index = materials | std::views::enumerate;
 
-    std::owner_less<void> cmp;
-    auto                  iter = std::ranges::find_if(materials_with_index, [&](const auto& p) {
+    const std::owner_less<void> cmp;
+    const auto                  iter = std::ranges::find_if(materials_with_index, [&](const auto& p) {
         return !cmp(std::get<1>(p), _material) && !cmp(_material, std::get<1>(p));
     });
 

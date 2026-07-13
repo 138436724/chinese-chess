@@ -8,10 +8,10 @@ using DescriptorBufferOrImageInfo = std::variant<vk::DescriptorBufferInfo, vk::D
 class vulkan_descriptor
 {
 public:
-    vulkan_descriptor()                              = default;
-    ~vulkan_descriptor()                             = default;
-    vulkan_descriptor(vulkan_descriptor&)            = delete;
-    vulkan_descriptor& operator=(vulkan_descriptor&) = delete;
+    vulkan_descriptor()                                    = default;
+    ~vulkan_descriptor()                                   = default;
+    vulkan_descriptor(const vulkan_descriptor&)            = delete;
+    vulkan_descriptor& operator=(const vulkan_descriptor&) = delete;
     vulkan_descriptor(vulkan_descriptor&& _other) noexcept;
     vulkan_descriptor& operator=(vulkan_descriptor&& _other) noexcept;
 
@@ -19,8 +19,8 @@ public:
     void clear_descriptor_info() noexcept;
     void update_descriptor_sets(const vk::raii::Device& _device, const vk::raii::DescriptorSetLayout& _descriptor_set_layout);
 
-    const vk::raii::DescriptorPool&             get_descriptor_pool() const noexcept;
-    const std::vector<vk::raii::DescriptorSet>& get_descriptor_sets() const noexcept;
+    [[nodiscard]] const vk::raii::DescriptorPool&             get_descriptor_pool() const noexcept;
+    [[nodiscard]] const std::vector<vk::raii::DescriptorSet>& get_descriptor_sets() const noexcept;
 
 private:
     uint32_t                                              max_size = 0;

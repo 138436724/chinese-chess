@@ -1,25 +1,23 @@
 #include "vulkan_recycle_bin.h"
 
-void vulkan_recycle_bin::create(vulkan_semaphore* _semaphore)
+void vulkan_recycle_bin::create(const vulkan_semaphore* _semaphore)
 {
-    if (_semaphore)
+    if (!_semaphore)
     {
-        semaphore = _semaphore;
+        throw std::runtime_error("Recycle cannot use nullptr as semaphore!");
     }
-    else
-    {
-        throw std::runtime_error("Recycle can not use nullpter as semaphore!");
-    }
+    semaphore = _semaphore;
 }
 
 void vulkan_recycle_bin::release() noexcept
 {
-    uint64_t gpu_val = semaphore->get_gpu_value();
+    const uint64_t gpu_val = semaphore->get_gpu_value();
     while (!resources.empty() && resources.front().first < gpu_val)
     {
 #ifndef NDEBUG
-        auto& [_value, _func] = resources.front();
-        _func(_value);
+        auto& [_value, _print_message] = resources.front();
+        std::print("Semaphore value {}. Retire resource value {}. ", gpu_val, _value);
+        _print_message();
 #endif  // !NDEBUG
         resources.pop_front();
     }

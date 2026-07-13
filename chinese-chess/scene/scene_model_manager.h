@@ -12,38 +12,43 @@
 class scene_model_manager
 {
 public:
-    scene_model_manager(vulkan_application&     _app,
-                        vulkan_recycle_bin&     _recycle_bin,
-                        scene_material_manager& _manager,
-                        vulkan_queue&           _graphic_queue,
-                        vulkan_queue&           _computr_queue,
-                        vulkan_queue&           _transfer_queue);
+    scene_model_manager(const vma::raii::Allocator&     _allocator,
+                        const vk::raii::PhysicalDevice& _physical_device,
+                        const vk::raii::Device&         _device,
+                        vulkan_recycle_bin&             _recycle_bin,
+                        vulkan_semaphore&               _semaphore,
+                        const vulkan_queue&             _graphic_queue,
+                        const vulkan_queue&             _compute_queue,
+                        const vulkan_queue&             _transfer_queue,
+                        scene_material_manager&         _material_manager) noexcept;
     ~scene_model_manager() = default;
 
-    std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
-    void                         update(std::vector<vk::SemaphoreSubmitInfo>& _wait_info) noexcept;
-    void                         clear() noexcept;
+    [[nodiscard]] std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
+    void                                       update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void                                       clear() noexcept;
 
-    const std::vector<std::weak_ptr<scene_model>>& get_models() const noexcept;
-    const vulkan_buffer&                           get_vertices_buffer() const noexcept;
-    const vulkan_buffer&                           get_indices_buffer() const noexcept;
-    const vulkan_buffer&                           get_ssbo_buffer() const noexcept;
+    [[nodiscard]] const std::vector<std::weak_ptr<scene_model>>& get_models() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                           get_vertices_buffer() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                           get_indices_buffer() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                           get_ssbo_buffer() const noexcept;
 
 private:
-    void update_meshs(std::vector<vk::SemaphoreSubmitInfo>& _wait_info) noexcept;
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wait_info) noexcept;
+    void update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
 
-    vulkan_application& app;
-    vulkan_recycle_bin& recycle_bin;
+    const vma::raii::Allocator&     allocator;
+    const vk::raii::PhysicalDevice& physical_device;
+    const vk::raii::Device&         device;
+    vulkan_recycle_bin&             recycle_bin;
+    vulkan_semaphore&               semaphore;
+    const vulkan_queue&             graphic_queue;
+    const vulkan_queue&             compute_queue;
+    const vulkan_queue&             transfer_queue;
+    scene_material_manager&         material_manager;
 
-    scene_material_manager& manager;
-    vulkan_queue&           graphic_queue;
-    vulkan_queue&           computr_queue;
-    vulkan_queue&           transfer_queue;
-
-    std::vector<std::weak_ptr<scene_model>>                                    models;
-    std::vector<std::weak_ptr<model_infomation>>                               meshs;         // submit to gpu in order
-    std::unordered_map<std::filesystem::path, std::weak_ptr<model_infomation>> models_cache;  // no need order
+    std::vector<std::weak_ptr<scene_model>>                                     models;
+    std::vector<std::weak_ptr<model_information>>                               meshes;        // submit to gpu in order
+    std::unordered_map<std::filesystem::path, std::weak_ptr<model_information>> models_cache;  // no need order
 
     vulkan_buffer vertices_buffer;
     vulkan_buffer indices_buffer;

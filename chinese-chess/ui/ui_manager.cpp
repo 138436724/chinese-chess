@@ -14,9 +14,11 @@ constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
 
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)
     : app(_app)
-    , recycle_bin(_app.get_recycle_bin())
     , manager(_manager)
 {
+    semaphore.create(*app.get_device());
+    recycle_bin.create(&semaphore);
+
     ui_managers.emplace_back(pro::make_proxy<ui_base, ui_camera>(manager));
     ui_managers.emplace_back(pro::make_proxy<ui_base, ui_light>(manager));
     ui_managers.emplace_back(pro::make_proxy<ui_base, ui_node>(manager));
@@ -41,7 +43,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
     }
 
     io.Fonts->AddFontFromFileTTF(
-        STRING_HELPER::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf").c_str(),
+        string_helper::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf").c_str(),
         13.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
 
     ImGui_ImplGlfw_InitForVulkan(_window, true);
@@ -79,7 +81,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
-                                                  &graphic_queue, app.get_semaphore_ptr());
+                                                  &graphic_queue, &semaphore);
 
     resize(_width, _height);
 }
@@ -89,7 +91,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     //ImGui_ImplVulkanH_CreateOrResizeWindow(g_Instance, g_PhysicalDevice, g_Device, wd, g_QueueFamily, g_Allocator, fb_width, fb_height, g_MinImageCount, 0);
     const std::array queue_array = {graphic_queue.get_index()};
     // render_output
-    recycle_bin.retire(std::move(render_output));
+    recycle_bin.retire(std::move(render_output), "ui old render output.");
     vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1,
                                           vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                                           vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
@@ -100,7 +102,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
                          vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
     // msaa color
-    recycle_bin.retire(std::move(color_image));
+    recycle_bin.retire(std::move(color_image), "ui old color image.");
     vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1,
                                          vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal,
                                          vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, queue_array);
@@ -136,11 +138,13 @@ void ui_manager::update()
 
 vk::SemaphoreSubmitInfo ui_manager::render()
 {
+    recycle_bin.release();
+
     vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
     commandbuffer.begin_record({});
 
 
-    auto color_image_barrier =
+    const auto color_image_barrier =
         vk::ImageMemoryBarrier2(color_image.get_stage(), color_image.get_access(),
                                 vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
                                 color_image.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
@@ -148,7 +152,7 @@ vk::SemaphoreSubmitInfo ui_manager::render()
                                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     color_image.set_info(color_image_barrier);
 
-    auto render_output_barrier =
+    const auto render_output_barrier =
         vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
                                 vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
                                 render_output.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
@@ -188,14 +192,14 @@ vk::SemaphoreSubmitInfo ui_manager::render()
     return commandbuffer.get_submit_info();
 }
 
-void ui_manager::destroy()
+void ui_manager::destroy() noexcept
 {
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
-void ui_manager::handle(int _glfw_key)
+void ui_manager::handle(int _glfw_key) noexcept
 {
     std::ranges::for_each(ui_managers, [&](auto& m) { m->handle(_glfw_key); });
 }

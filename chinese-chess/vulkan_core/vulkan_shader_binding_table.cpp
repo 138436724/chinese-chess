@@ -41,8 +41,8 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
 {
     if (handle_size == 0 && handle_alignment == 0 && base_alignment == 0)
     {
-        auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-                                                     vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+        const auto props = _physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+                                                           vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
         const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
         handle_size      = properties.shaderGroupHandleSize;
@@ -58,32 +58,32 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     // - miss_region:   points to Group 1 (2 entries: miss_primary + miss_shadow, stride = miss_entry_size)
     // - hit_region:    points to Group 3 (2 entries: hit_primary + hit_shadow, stride = hit_entry_size)
 
-    uint32_t raygen_entry_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
-    uint32_t miss_entry_count  = _group_count >= 5 ? 2 : 1;  // 2 miss shaders (primary + shadow) if 5 groups present
-    uint32_t hit_entry_count   = _group_count >= 5 ? 2 : 1;  // 2 hit shaders (primary + shadow) if 5 groups present
+    const uint32_t raygen_entry_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
+    const uint32_t miss_entry_count = _group_count >= 5 ? 2 : 1;  // 2 miss shaders (primary + shadow) if 5 groups present
+    const uint32_t hit_entry_count = _group_count >= 5 ? 2 : 1;  // 2 hit shaders (primary + shadow) if 5 groups present
 
     // Calculate offsets for each group in the SBT buffer
     // Group 0: raygen
-    uint32_t raygen_offset = 0;
+    const uint32_t raygen_offset = 0;
     // Group 1: miss_primary
-    uint32_t miss_primary_offset =
+    const uint32_t miss_primary_offset =
         static_cast<uint32_t>(vulkan_common::align_up(raygen_offset + raygen_entry_size, base_alignment));
     // Group 2: miss_shadow
-    uint32_t miss_shadow_offset =
+    const uint32_t miss_shadow_offset =
         static_cast<uint32_t>(vulkan_common::align_up(miss_primary_offset + raygen_entry_size, base_alignment));
     // Group 3: hit_primary
-    uint32_t hit_primary_offset =
+    const uint32_t hit_primary_offset =
         static_cast<uint32_t>(vulkan_common::align_up(miss_shadow_offset + raygen_entry_size, base_alignment));
     // Group 4: hit_shadow
-    uint32_t hit_shadow_offset =
+    const uint32_t hit_shadow_offset =
         static_cast<uint32_t>(vulkan_common::align_up(hit_primary_offset + raygen_entry_size, base_alignment));
     // Total size
-    vk::DeviceSize buffer_size =
+    const vk::DeviceSize buffer_size =
         static_cast<uint64_t>(vulkan_common::align_up(hit_shadow_offset + raygen_entry_size, base_alignment));
 
     // Stride must match actual spacing between groups (base_alignment-aligned), not handle_alignment-aligned
-    uint32_t miss_stride = miss_shadow_offset - miss_primary_offset;
-    uint32_t hit_stride  = hit_shadow_offset - hit_primary_offset;
+    const uint32_t miss_stride = miss_shadow_offset - miss_primary_offset;
+    const uint32_t hit_stride  = hit_shadow_offset - hit_primary_offset;
 
     sbt_buffer.create(_allocator, _device,
                       vk::BufferCreateInfo({}, buffer_size,
@@ -98,7 +98,7 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
                                                vk::SharingMode::eExclusive, 1, &_queue),
                           vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    std::vector<uint8_t> shader_handles =
+    const std::vector<uint8_t> shader_handles =
         _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
 
     uint8_t* buffer_address = static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress);

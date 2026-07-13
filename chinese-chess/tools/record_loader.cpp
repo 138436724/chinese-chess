@@ -4,9 +4,7 @@
 #include <fstream>
 #include <ranges>
 
-record_loader record_loader::loader;
-
-std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number)
+std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number) noexcept
 {
     std::pair<uint8_t, uint8_t> new_position = std::make_pair(_now_x, _now_y);
 
@@ -80,10 +78,10 @@ std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, ui
 std::vector<all_board_state> record_loader::load_records(const std::filesystem::path& _record_path)
 {
     // get file encoding and read file
-    auto encoding = STRING_HELPER::get_file_encoding<std::string>(_record_path);
+    const auto encoding = string_helper::get_file_encoding<std::string>(_record_path);
 
-    std::ifstream in_file(_record_path, std::ios::binary);
-    std::string   content((std::istreambuf_iterator<char>(in_file)), std::istreambuf_iterator<char>());
+    std::ifstream     in_file(_record_path, std::ios::binary);
+    const std::string content((std::istreambuf_iterator<char>(in_file)), std::istreambuf_iterator<char>());
     in_file.close();
 
     icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
@@ -93,12 +91,12 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     const icu::UnicodeString pattern =
         u"([前后中])?[ ]*([车車俥马馬傌炮砲相象士仕帅帥将將兵卒])[ ]*([一二三四五六七八九]|\\d)?[ ]*([进退平])[ ]*([一二三四五六七八九]|\\d)";
 
-    UParseError    pe;
+    UParseError    pe{};
     icu::ErrorCode error;
-    auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, error));
+    const auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, error));
     if (error.isFailure())
     {
-        throw std::runtime_error("compile regex pattern fail!");
+        throw std::runtime_error("Failed to compile regex pattern!");
     }
 
 
@@ -106,7 +104,7 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     std::vector<all_board_state> the_board_state;
     bool                         is_player_red = true;
 
-    auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, error));
+    const auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, error));
     while (matcher->find(error))
     {
         icu::UnicodeString match = matcher->group(0, error);
@@ -135,15 +133,16 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
             throw std::runtime_error("Not a valid chess record file.");
         }
 
-        all_board_state now_board = get_init_all_borad();
+        all_board_state now_board = get_init_all_board();
         if (!the_board_state.empty())
         {
             now_board = the_board_state.back();
         }
 
-        PIECE_COLOR now_color       = static_cast<PIECE_COLOR>(is_player_red);
-        PIECE_COLOR now_other_color = static_cast<PIECE_COLOR>(!is_player_red);
-        PIECE_TYPE  now_type        = is_piece_type(result[0]) ? get_piece_type(result[0]) : get_piece_type(result[1]);
+        const PIECE_COLOR now_color       = static_cast<PIECE_COLOR>(is_player_red);
+        const PIECE_COLOR now_other_color = static_cast<PIECE_COLOR>(!is_player_red);
+
+        const PIECE_TYPE now_type = is_piece_type(result[0]) ? get_piece_type(result[0]) : get_piece_type(result[1]);
 
         uint8_t now_x = std::numeric_limits<uint8_t>::max();
         uint8_t now_y = std::numeric_limits<uint8_t>::max();
@@ -201,10 +200,10 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
             throw std::runtime_error("Not a valid chess record file.");
         }
 
-        auto& now_piece     = now_pieces.front();
-        auto [new_x, new_y] = move_piece(now_type, now_piece.x, now_piece.y, result[2], get_digit(result[3]));
-        now_piece.x         = new_x;
-        now_piece.y         = new_y;
+        auto& now_piece           = now_pieces.front();
+        const auto [new_x, new_y] = move_piece(now_type, now_piece.x, now_piece.y, result[2], get_digit(result[3]));
+        now_piece.x               = new_x;
+        now_piece.y               = new_y;
 
         std::erase_if(now_board.at(static_cast<size_t>(now_other_color)), [&](const auto& _piece) {
             return _piece.x == (10 - new_x) && _piece.y == (9 - new_y);  // 红方和黑方的Y是相反的
@@ -216,9 +215,4 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     }
 
     return the_board_state;
-}
-
-record_loader& record_loader::get_record_loader() noexcept
-{
-    return loader;
 }

@@ -23,11 +23,13 @@ public:
     void set_direction(const glm::vec3& _direction) noexcept;
     void set_world_up(const glm::vec3& _world_up) noexcept;
 
-    projection_type get_projection_type() const noexcept;
-    glm::vec3       get_position() const noexcept;
-    glm::vec3       get_direction() const noexcept;
-    glm::mat4       get_projection_matrix() const noexcept;
-    glm::mat4       get_view_matrix() const noexcept;
+    [[nodiscard]] projection_type  get_projection_type() const noexcept;
+    [[nodiscard]] glm::vec3        get_position() const noexcept;
+    [[nodiscard]] glm::vec3        get_direction() const noexcept;
+    [[nodiscard]] const glm::mat4& get_projection_matrix() const noexcept;
+    [[nodiscard]] const glm::mat4& get_view_matrix() const noexcept;
+    [[nodiscard]] const glm::mat4& get_inv_projection_matrix() const noexcept;
+    [[nodiscard]] const glm::mat4& get_inv_view_matrix() const noexcept;
 
 private:
     void update_camera_axis() noexcept;
@@ -55,6 +57,8 @@ private:
     glm::vec3 right_axis = glm::normalize(glm::cross(direction, world_up));
     glm::vec3 up_axis    = glm::normalize(glm::cross(right_axis, direction));
 
-    glm::mat4 projection_matrix = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);
-    glm::mat4 view_matrix       = glm::lookAt(position, position + direction, up_axis);
+    glm::mat4 projection_matrix     = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);
+    glm::mat4 view_matrix           = glm::lookAt(position, position + direction, up_axis);
+    glm::mat4 inv_projection_matrix = glm::inverse(projection_matrix);
+    glm::mat4 inv_view_matrix       = glm::inverse(view_matrix);
 };

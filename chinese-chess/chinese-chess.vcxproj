@@ -111,7 +111,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>VK_USE_PLATFORM_WIN32_KHR;GLM_FORCE_RADIANS;GLM_ENABLE_EXPERIMENTAL;GLM_FORCE_DEPTH_ZERO_TO_ONE;NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GLFW_INCLUDE_VULKAN;VK_USE_PLATFORM_WIN32_KHR;GLM_FORCE_RADIANS;GLM_ENABLE_EXPERIMENTAL;GLM_FORCE_DEPTH_ZERO_TO_ONE;NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -128,7 +128,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>VK_USE_PLATFORM_WIN32_KHR;GLM_FORCE_RADIANS;GLM_ENABLE_EXPERIMENTAL;GLM_FORCE_DEPTH_ZERO_TO_ONE;NOMINMAX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GLFW_INCLUDE_VULKAN;VK_USE_PLATFORM_WIN32_KHR;GLM_FORCE_RADIANS;GLM_ENABLE_EXPERIMENTAL;GLM_FORCE_DEPTH_ZERO_TO_ONE;NOMINMAX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -140,7 +140,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="scene\scene_rasterization_render.cpp" />
+    <ClCompile Include="scene\scene_raytracing_render.cpp" />
+    <ClCompile Include="window\main.cpp" />
+    <ClCompile Include="window\window.cpp" />
     <ClCompile Include="scene\scene_camera.cpp" />
     <ClCompile Include="scene\scene_light.cpp" />
     <ClCompile Include="scene\scene_light_manager.cpp" />
@@ -188,6 +191,8 @@
     <ClInclude Include="scene\scene_material_manager.h" />
     <ClInclude Include="scene\scene_model.h" />
     <ClInclude Include="scene\scene_model_manager.h" />
+    <ClInclude Include="scene\scene_rasterization_render.h" />
+    <ClInclude Include="scene\scene_raytracing_render.h" />
     <ClInclude Include="tools\file_watcher.h" />
     <ClInclude Include="tools\font_loader.h" />
     <ClInclude Include="tools\image_helper.h" />
@@ -217,6 +222,7 @@
     <ClInclude Include="vulkan_core\vulkan_semaphore.h" />
     <ClInclude Include="vulkan_core\vulkan_shader_binding_table.h" />
     <ClInclude Include="vulkan_core\vulkan_swapchain.h" />
+    <ClInclude Include="window\window.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\blend_image.slang" />

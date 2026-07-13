@@ -19,9 +19,9 @@ void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _dia
     }
 }
 
-void shader_compiler::print_entrypoint_hashes(int                                         _entrypoint_count,
-                                              int                                         _target_count,
-                                              const Slang::ComPtr<slang::IComponentType>& _composed_program) noexcept
+void shader_compiler::print_entrypoint_hashes(int _entrypoint_count,
+                                              int _target_count,
+                                              const Slang::ComPtr<slang::IComponentType>& _composed_program) const noexcept
 {
     std::ranges::for_each(std::views::iota(0, _target_count), [&](int target_index) {
         std::ranges::for_each(std::views::iota(0, _entrypoint_count), [&](int entrypoint_index) {
@@ -41,7 +41,7 @@ void shader_compiler::print_entrypoint_hashes(int                               
 }
 #else
 void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
-void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) noexcept {}
+void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) const noexcept {}
 #endif  // !NDEBUG
 
 shader_compiler::shader_compiler()
@@ -69,10 +69,10 @@ shader_compiler::shader_compiler()
         },
     };
 
-    auto result = slang::createGlobalSession(global_session.writeRef());
+    const auto result = slang::createGlobalSession(global_session.writeRef());
     if (!SLANG_SUCCEEDED(result))
     {
-        throw std::runtime_error("Can not create global session.");
+        throw std::runtime_error("Cannot create global session.");
     }
 
     target_desc.format  = SLANG_SPIRV;
@@ -85,8 +85,8 @@ shader_compiler::shader_compiler()
     session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path&         _shader_path,
-                                                         const std::vector<std::string_view>& _entry_name) noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path,
+                                                         const std::vector<std::string_view>& _entry_name) const noexcept
 {
     std::filesystem::path spirv_path = _shader_path;
     spirv_path.replace_extension(".spv");
@@ -115,7 +115,7 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::
 
         Slang::ComPtr<slang::IBlob> spirv_code;
 
-        bool result =
+        const bool result =
             slang_to_slang_module(desc, _shader_path.stem().generic_string(), true, _entry_name, spirv_code.writeRef());
 
         if (result)
@@ -133,11 +133,11 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::
     return std::vector<char>();
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::string&                   _shader_string,
-                                                         const std::vector<std::string_view>& _entry_name) noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::string& _shader_string,
+                                                         const std::vector<std::string_view>& _entry_name) const noexcept
 {
     Slang::ComPtr<slang::IBlob> spirv_code;
-    bool result = slang_to_slang_module(session_desc, _shader_string, false, _entry_name, spirv_code.writeRef());
+    const bool result = slang_to_slang_module(session_desc, _shader_string, false, _entry_name, spirv_code.writeRef());
 
     if (result)
     {
@@ -153,10 +153,10 @@ bool shader_compiler::slang_to_slang_module(const slang::SessionDesc&           
                                             const std::string&                   _shader_string,
                                             bool                                 _as_shader_name,
                                             const std::vector<std::string_view>& _entry_name,
-                                            slang::IBlob**                       _spirv_code) noexcept
+                                            slang::IBlob**                       _spirv_code) const noexcept
 {
     Slang::ComPtr<slang::ISession> session;
-    auto                           result = global_session->createSession(_session_desc, session.writeRef());
+    const auto                     result = global_session->createSession(_session_desc, session.writeRef());
     SLANG_RETURN_FALSE_ON_FAIL(result);
 
     Slang::ComPtr<slang::IBlob>   diagnostics_blob;
@@ -186,7 +186,7 @@ bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>&      _
                                           Slang::ComPtr<slang::IBlob>&         _diagnostics_blob,
                                           Slang::ComPtr<slang::IModule>&       _slang_module,
                                           const std::vector<std::string_view>& _entry_name,
-                                          slang::IBlob**                       _spirv_code) noexcept
+                                          slang::IBlob**                       _spirv_code) const noexcept
 {
     std::vector<slang::IComponentType*> component_types;
     for (const auto& entry_name : _entry_name)

@@ -9,9 +9,8 @@
 #include <unicode/unistr.h>
 #include <unicode/ustring.h>
 
-#define STRING_HELPER string_helper
-
 namespace string_helper {
+
 template <typename string_class>
     requires(std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>)
 constexpr void trim(string_class& s) noexcept
@@ -28,7 +27,7 @@ template <typename new_string_class, typename old_string_class>
             && (std::same_as<new_string_class, std::string> || std::same_as<new_string_class, std::u8string>
                 || std::same_as<new_string_class, std::wstring>)
             && (!std::same_as<old_string_class, new_string_class>)
-constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
+[[nodiscard]] constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
 {
     icu::UnicodeString icu_string;
 
@@ -68,7 +67,7 @@ constexpr new_string_class convert_to(const old_string_class& _string, const cha
     else if constexpr (std::same_as<new_string_class, std::wstring>)
     {
         std::wstring ws;
-        ws.resize(icu_string.length() * 2);
+        ws.resize(static_cast<size_t>(icu_string.length()) * 2);
 
         int32_t        ws_len;
         icu::ErrorCode error;
@@ -83,12 +82,12 @@ constexpr new_string_class convert_to(const old_string_class& _string, const cha
 template <typename string_class>
     requires(std::same_as<string_class, std::string> || std::same_as<string_class, std::u8string>
              || std::same_as<string_class, std::wstring>)
-constexpr string_class get_file_encoding(const std::filesystem::path& _file_path)
+[[nodiscard]] constexpr string_class get_file_encoding(const std::filesystem::path& _file_path)
 {
     std::ifstream in_file(_file_path.generic_string(), std::ios::ate | std::ios::binary);
     if (!in_file.is_open())
     {
-        throw std::runtime_error("Can not open file!");
+        throw std::runtime_error("Cannot open file!");
     }
 
     std::vector<char> buffer(in_file.tellg());
@@ -104,7 +103,7 @@ constexpr string_class get_file_encoding(const std::filesystem::path& _file_path
     const UCharsetMatch* match = ucsdet_detect(detector_guard.get(), error);
     if (match == nullptr || error.isFailure())
     {
-        throw std::runtime_error("Detector Failed!");
+        throw std::runtime_error("Encoding detection failed!");
     }
 
     const std::string encoding = std::string(ucsdet_getName(match, error));
@@ -118,4 +117,5 @@ constexpr string_class get_file_encoding(const std::filesystem::path& _file_path
         return convert_to<string_class, std::string>(encoding);
     }
 }
-};  // namespace string_helper
+
+}  // namespace string_helper

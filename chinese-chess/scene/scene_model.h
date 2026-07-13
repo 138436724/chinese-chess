@@ -5,7 +5,7 @@
 
 #include <memory>
 
-struct model_infomation
+struct model_information
 {
     size_t                        vertex_offset = 0;
     size_t                        index_offset  = 0;
@@ -16,10 +16,10 @@ struct model_infomation
 
 struct scene_model
 {
-    vk::AccelerationStructureInstanceKHR get_blas_instance() const noexcept;
+    [[nodiscard]] vk::AccelerationStructureInstanceKHR get_blas_instance() const noexcept;
 
-    std::shared_ptr<model_infomation> model_info = nullptr;
-    std::shared_ptr<scene_material>   material   = nullptr;
+    std::shared_ptr<model_information> model_info = nullptr;
+    std::shared_ptr<scene_material>    material   = nullptr;
 
     bool     is_show      = true;
     uint32_t custom_index = 0;

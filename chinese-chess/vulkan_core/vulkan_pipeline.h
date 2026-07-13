@@ -5,10 +5,10 @@
 class vulkan_pipeline
 {
 public:
-    vulkan_pipeline()                            = default;
-    ~vulkan_pipeline()                           = default;
-    vulkan_pipeline(vulkan_pipeline&)            = delete;
-    vulkan_pipeline& operator=(vulkan_pipeline&) = delete;
+    vulkan_pipeline()                                  = default;
+    ~vulkan_pipeline()                                 = default;
+    vulkan_pipeline(const vulkan_pipeline&)            = delete;
+    vulkan_pipeline& operator=(const vulkan_pipeline&) = delete;
     vulkan_pipeline(vulkan_pipeline&& _other) noexcept;
     vulkan_pipeline& operator=(vulkan_pipeline&& _other) noexcept;
 
@@ -34,9 +34,9 @@ public:
                 const std::span<const vk::RayTracingShaderGroupCreateInfoKHR> _shader_groups,
                 uint32_t                                                      _max_depth);
 
-    const vk::raii::DescriptorSetLayout& get_descriptor_set_layout() const noexcept;
-    const vk::raii::PipelineLayout&      get_pipeline_layout() const noexcept;
-    const vk::raii::Pipeline&            get_pipeline() const noexcept;
+    [[nodiscard]] const vk::raii::DescriptorSetLayout& get_descriptor_set_layout() const noexcept;
+    [[nodiscard]] const vk::raii::PipelineLayout&      get_pipeline_layout() const noexcept;
+    [[nodiscard]] const vk::raii::Pipeline&            get_pipeline() const noexcept;
 
 private:
     vk::raii::DescriptorSetLayout descriptor_set_layout = nullptr;

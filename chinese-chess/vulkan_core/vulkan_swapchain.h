@@ -1,16 +1,17 @@
 #pragma once
 
+#include "vulkan_commandbuffer.h"
+#include "vulkan_queue.h"
+
 #include <vulkan/vulkan_raii.hpp>
-#include <vulkan_core/vulkan_commandbuffer.h>
-#include <vulkan_core/vulkan_queue.h>
 
 class vulkan_swapchain
 {
 public:
-    vulkan_swapchain()                             = default;
-    ~vulkan_swapchain()                            = default;
-    vulkan_swapchain(vulkan_swapchain&)            = delete;
-    vulkan_swapchain& operator=(vulkan_swapchain&) = delete;
+    vulkan_swapchain()                                   = default;
+    ~vulkan_swapchain()                                  = default;
+    vulkan_swapchain(const vulkan_swapchain&)            = delete;
+    vulkan_swapchain& operator=(const vulkan_swapchain&) = delete;
     vulkan_swapchain(vulkan_swapchain&& _other) noexcept;
     vulkan_swapchain& operator=(vulkan_swapchain&& _other) noexcept;
 
@@ -23,15 +24,17 @@ public:
                 uint32_t                        _height);
     void recreate(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, uint32_t _width, uint32_t _height);
 
-    vk::Result acquire_next_image();
-    void       present_image(vulkan_commandbuffer& _commandbuffer, bool _immediately) const;
+    [[nodiscard]] bool acquire_image();
+    void               present_image();
 
-    vk::Format                    get_format() const noexcept;
-    vk::Extent2D                  get_extent() const noexcept;
-    const vk::raii::SwapchainKHR& get_swapchain() const noexcept;
-    const vk::Image               get_current_image() const noexcept;
-    const vk::raii::ImageView&    get_current_imageview() const noexcept;
-    const vulkan_queue&           get_present_queue() const noexcept;
+    [[nodiscard]] vk::Format                    get_format() const noexcept;
+    [[nodiscard]] vk::Extent2D                  get_extent() const noexcept;
+    [[nodiscard]] const vk::raii::SwapchainKHR& get_swapchain() const noexcept;
+    [[nodiscard]] vk::Image                     get_current_image() const noexcept;
+    [[nodiscard]] const vk::raii::ImageView&    get_current_imageview() const noexcept;
+    [[nodiscard]] const vulkan_queue&           get_present_queue() const noexcept;
+    [[nodiscard]] vk::SemaphoreSubmitInfo       get_waited_info() const noexcept;
+    [[nodiscard]] vk::SemaphoreSubmitInfo       get_signal_info() const noexcept;
 
 private:
     vk::SurfaceCapabilitiesKHR       surface_capabilities = {};
@@ -44,8 +47,8 @@ private:
     std::vector<vk::raii::ImageView> imageviews;
 
     uint32_t                         current_index = 0;
-    uint32_t                         max_index     = 0;
+    uint32_t                         current_frame = 0;
     vulkan_queue                     present_queue;
-    std::vector<vk::raii::Semaphore> present_used;
-    std::vector<vk::raii::Semaphore> present_waited;
+    std::vector<vk::raii::Semaphore> before_rendering;
+    std::vector<vk::raii::Semaphore> after_rendering;
 };

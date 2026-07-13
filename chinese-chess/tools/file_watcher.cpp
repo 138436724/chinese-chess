@@ -54,23 +54,23 @@ file_watcher::~file_watcher()
 
     file_cache.write(file_cache_header.data(), file_cache_header.length());
 
-    auto cache_count = file_watch_cache.size();
-    file_cache.write(reinterpret_cast<char*>(&cache_count), sizeof(cache_count));
+    const auto cache_count = file_watch_cache.size();
+    file_cache.write(reinterpret_cast<const char*>(&cache_count), sizeof(cache_count));
 
     for (const auto& [path, hash] : file_watch_cache)
     {
-        size_t path_len = path.size();
-        file_cache.write(reinterpret_cast<char*>(&path_len), sizeof(path_len));
+        const size_t path_len = path.size();
+        file_cache.write(reinterpret_cast<const char*>(&path_len), sizeof(path_len));
         file_cache.write(path.data(), path_len);
-        size_t hash_len = hash.size();
-        file_cache.write(reinterpret_cast<char*>(&hash_len), sizeof(hash_len));
+        const size_t hash_len = hash.size();
+        file_cache.write(reinterpret_cast<const char*>(&hash_len), sizeof(hash_len));
         file_cache.write(hash.data(), hash_len);
     }
 
     file_cache.close();
 }
 
-std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_path) noexcept
+std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_path) const noexcept
 {
     std::ifstream file(_file_path, std::ios::binary);
 

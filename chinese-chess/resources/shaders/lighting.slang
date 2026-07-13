@@ -379,7 +379,8 @@ float pdf_brdf(uint type, float3 N, float3 V, float3 L, float roughness)
 bool trace_shadow_ray(RaytracingAccelerationStructure tlas, float3 origin, float3 direction, float tmax,
                       inout uint seed)
 {
-    const uint shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
+    const uint shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER
+                                  | RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
     RayDesc ray;
     ray.Origin = origin;

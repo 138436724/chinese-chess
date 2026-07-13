@@ -6,7 +6,6 @@
 #include <string_view>
 #include <vulkan/vulkan.hpp>
 
-#define MODEL_LOADER model_loader::get_model_loader()
 constexpr std::u8string_view MODELS_PATH = u8"resources\\models\\";
 
 enum class model_vertex_type : uint32_t
@@ -22,14 +21,14 @@ struct model_vertex
     glm::vec3 normal   = {0.f, 0.f, 0.f};
     glm::vec2 uv       = {0.f, 0.f};
 
-    auto operator<=>(const model_vertex& _other) const = default;
+    auto operator<=>(const model_vertex& _other) const noexcept = default;
 
-    static consteval auto get_binding_description() noexcept
+    [[nodiscard]] static consteval auto get_binding_description() noexcept
     {
         return vk::VertexInputBindingDescription{0, sizeof(model_vertex), vk::VertexInputRate::eVertex};
     }
 
-    static consteval auto get_attribute_description(model_vertex_type _type, uint32_t _location) noexcept
+    [[nodiscard]] static consteval auto get_attribute_description(model_vertex_type _type, uint32_t _location) noexcept
     {
         vk::VertexInputAttributeDescription description{};
 
@@ -56,7 +55,7 @@ struct model_vertex
     }
 
     template <model_vertex_type... attributes>
-    static consteval auto get_attribute_descriptions() noexcept
+    [[nodiscard]] static consteval auto get_attribute_descriptions() noexcept
     {
         auto create = []<std::size_t... indices>(std::index_sequence<indices...>) {
             return std::array{get_attribute_description(attributes, indices)...};
@@ -76,19 +75,10 @@ struct model_vertex
     }
 };
 
-class model_loader
-{
-public:
-    bool load_model(const std::filesystem::path& _file_path, std::vector<model_vertex>& _vertices, std::vector<uint32_t>& _indices) noexcept;
-    static model_loader& get_model_loader() noexcept;
+namespace model_loader {
 
-private:
-    model_loader()                                = default;
-    ~model_loader()                               = default;
-    model_loader(const model_loader&)             = delete;
-    model_loader& operator=(const model_loader&)  = delete;
-    model_loader(const model_loader&&)            = delete;
-    model_loader& operator=(const model_loader&&) = delete;
+[[nodiscard]] bool load_model(const std::filesystem::path& _file_path,
+                              std::vector<model_vertex>&   _vertices,
+                              std::vector<uint32_t>&       _indices) noexcept;
 
-    static model_loader loader;
-};
+}  // namespace model_loader

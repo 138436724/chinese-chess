@@ -8,19 +8,22 @@
 class vulkan_physical_device
 {
 public:
-    vulkan_physical_device()                                   = default;
-    ~vulkan_physical_device()                                  = default;
-    vulkan_physical_device(vulkan_physical_device&)            = delete;
-    vulkan_physical_device& operator=(vulkan_physical_device&) = delete;
+    vulkan_physical_device()                                         = default;
+    ~vulkan_physical_device()                                        = default;
+    vulkan_physical_device(const vulkan_physical_device&)            = delete;
+    vulkan_physical_device& operator=(const vulkan_physical_device&) = delete;
     vulkan_physical_device(vulkan_physical_device&& _other) noexcept;
     vulkan_physical_device& operator=(vulkan_physical_device&& _other) noexcept;
 
     template <typename Func>
         requires std::predicate<Func, const vk::raii::PhysicalDevice&>
-    uint32_t create(const vk::raii::Instance& _instance, const std::span<const char* const> _extensions, Func&& _features, vk::SurfaceKHR _surface);
+    [[nodiscard]] uint32_t create(const vk::raii::Instance&          _instance,
+                                  const std::span<const char* const> _extensions,
+                                  Func&&                             _features,
+                                  vk::SurfaceKHR                     _surface);
 
-    uint32_t                        get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
-    const vk::raii::PhysicalDevice& operator*() const noexcept;
+    [[nodiscard]] uint32_t                        get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
+    [[nodiscard]] const vk::raii::PhysicalDevice& operator*() const noexcept;
 
 private:
     vk::raii::PhysicalDevice physical_device = nullptr;
@@ -71,7 +74,7 @@ inline uint32_t vulkan_physical_device::create(const vk::raii::Instance&        
 
         // get all nums, like 0,1,2,3,4
         auto the_digit = std::views::iota(0u, all_queue_supports.size());
-        // filter the num's position, for example 1 not on persent location
+        // filter the num's position, for example 1 not on present location
         auto digits_at = [&](size_t pos) {
             return the_digit
                    | std::views::filter([&all_queue_supports, pos](size_t d) { return all_queue_supports[d][pos]; });

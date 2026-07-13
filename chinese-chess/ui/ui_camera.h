@@ -8,7 +8,7 @@
 class ui_camera
 {
 public:
-    ui_camera(scene_manager& _manager);
+    explicit ui_camera(scene_manager& _manager) noexcept;
     ~ui_camera() = default;
 
     void resize(uint32_t _width, uint32_t _height) noexcept;

@@ -5,8 +5,8 @@
 
 constexpr std::u8string_view CAMERA_SETTING        = u8"摄像机设置";
 constexpr std::u8string_view CAMERA_TYPE           = u8"摄像机类型";
-constexpr std::u8string_view ORTHOGRAPHIC_CAMREA   = u8"正交投影";
-constexpr std::u8string_view PRESPECTIVE_CAMREA    = u8"透视投影";
+constexpr std::u8string_view ORTHOGRAPHIC_CAMERA   = u8"正交投影";
+constexpr std::u8string_view PERSPECTIVE_CAMERA    = u8"透视投影";
 constexpr std::u8string_view CAMERA_POSITION       = u8"摄像机位置";
 constexpr std::u8string_view CAMERA_DIRECTION      = u8"摄像机前方向";
 constexpr std::u8string_view CAMERA_WORLD_UP       = u8"摄像机上方向";
@@ -16,7 +16,7 @@ constexpr std::u8string_view ASPECT                = u8"宽高比";
 constexpr std::u8string_view NEAR_FAR              = u8"近平面和远平面";
 
 
-ui_camera::ui_camera(scene_manager& _manager)
+ui_camera::ui_camera(scene_manager& _manager) noexcept
     : manager(_manager)
 {
 }
@@ -48,8 +48,8 @@ void ui_camera::update() noexcept
     ImGui::SeparatorText(reinterpret_cast<const char*>(CAMERA_SETTING.data()));
 
     const std::array all_camera_types = {
-        reinterpret_cast<const char*>(ORTHOGRAPHIC_CAMREA.data()),
-        reinterpret_cast<const char*>(PRESPECTIVE_CAMREA.data()),
+        reinterpret_cast<const char*>(ORTHOGRAPHIC_CAMERA.data()),
+        reinterpret_cast<const char*>(PERSPECTIVE_CAMERA.data()),
     };
     if (ImGui::Combo(reinterpret_cast<const char*>(CAMERA_TYPE.data()), &active_type, all_camera_types.data(),
                      static_cast<int>(all_camera_types.size())))

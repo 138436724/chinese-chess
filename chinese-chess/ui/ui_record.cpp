@@ -64,7 +64,7 @@ void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
             piece_material->alpha_map = piece_image;
 
-            red_chess_piece_materials.emplace(RECORD_LOADER.get_piece_type(chu), std::move(piece_material));
+            red_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
         });
 
     std::ranges::for_each(
@@ -78,7 +78,7 @@ void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
             piece_material->alpha_map = piece_image;
 
-            black_chess_piece_materials.emplace(RECORD_LOADER.get_piece_type(chu), std::move(piece_material));
+            black_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
         });
 
     // init
@@ -156,7 +156,7 @@ void ui_record::handle(int _glfw_key) noexcept
 
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
-    all_records = RECORD_LOADER.read_record<std::u8string>(_record_path);
+    all_records = record_loader::read_record<std::u8string>(_record_path);
 
     all_records_c_str =
         all_records
@@ -165,7 +165,7 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
 
     now_record_index = 0;
 
-    board_state = RECORD_LOADER.load_records(_record_path);
+    board_state = record_loader::load_records(_record_path);
 }
 
 //all_board_state ui_record::capture_board_state()

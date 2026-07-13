@@ -5,10 +5,10 @@
 class vulkan_image
 {
 public:
-    vulkan_image()                         = default;
-    ~vulkan_image()                        = default;
-    vulkan_image(vulkan_image&)            = delete;
-    vulkan_image& operator=(vulkan_image&) = delete;
+    vulkan_image()                               = default;
+    ~vulkan_image()                              = default;
+    vulkan_image(const vulkan_image&)            = delete;
+    vulkan_image& operator=(const vulkan_image&) = delete;
     vulkan_image(vulkan_image&& _other) noexcept;
     vulkan_image& operator=(vulkan_image&& _other) noexcept;
 
@@ -21,15 +21,15 @@ public:
 
     void set_info(const vk::ImageMemoryBarrier2& _barrier);
 
-    vk::Format                 get_format() const noexcept;
-    vk::Extent2D               get_extent() const noexcept;
-    vk::PipelineStageFlags2    get_stage() const noexcept;
-    vk::AccessFlags2           get_access() const noexcept;
-    vk::ImageLayout            get_layout() const noexcept;
-    uint32_t                   get_queue() const noexcept;
-    vk::ClearValue             get_clear_value() const noexcept;
-    const vk::raii::Image&     get_image() const noexcept;
-    const vk::raii::ImageView& get_imageview() const noexcept;
+    [[nodiscard]] vk::Format                 get_format() const noexcept;
+    [[nodiscard]] vk::Extent2D               get_extent() const noexcept;
+    [[nodiscard]] vk::PipelineStageFlags2    get_stage() const noexcept;
+    [[nodiscard]] vk::AccessFlags2           get_access() const noexcept;
+    [[nodiscard]] vk::ImageLayout            get_layout() const noexcept;
+    [[nodiscard]] uint32_t                   get_queue() const noexcept;
+    [[nodiscard]] vk::ClearValue             get_clear_value() const noexcept;
+    [[nodiscard]] const vk::raii::Image&     get_image() const noexcept;
+    [[nodiscard]] const vk::raii::ImageView& get_imageview() const noexcept;
 
     static void copy_image_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
                                      const vk::Image&               _image,
