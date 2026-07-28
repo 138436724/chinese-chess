@@ -1,5 +1,12 @@
 #include "window.h"
 
+#ifndef NDEBUG
+#include "tools/renderdoc_capture.h"
+#endif  // !NDEBUG
+
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
 glfw_window::glfw_window()
 {
     constexpr uint32_t WIDTH  = 800;
@@ -11,6 +18,10 @@ glfw_window::glfw_window()
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     window = glfwCreateWindow(WIDTH, HEIGHT, "Chinese Chess", nullptr, nullptr);
+
+#ifndef NDEBUG
+    RENDERDOC_CAPTURE.set_window_handle(glfwGetWin32Window(window));
+#endif  // !NDEBUG
 
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, glfw_resize_callback);
@@ -58,7 +69,7 @@ glfw_window::~glfw_window()
     glfwTerminate();
 }
 
-void glfw_window::render() noexcept
+void glfw_window::render()
 {
     // render loop
     while (!glfwWindowShouldClose(window))
@@ -72,8 +83,24 @@ void glfw_window::render() noexcept
 
         const auto start = std::chrono::high_resolution_clock::now();
 
+#ifndef NDEBUG
+        if (need_capture)
+        {
+            begin_capture = true;
+            RENDERDOC_CAPTURE.begin_capture(*(app->get_instance()));
+        }
+#endif  // !NDEBUG
+
+#ifndef NDEBUG
+        // only for renderdoc capture, ui update in the last frame then capture the next frame
+        scene->update();
+        ui->update();
+        need_capture = scene->get_need_update();
+#else
+        // ui update and scene update in same frame
         ui->update();
         scene->update();
+#endif  // !NDEBUG
 
         auto ui_wait_info    = ui->render();
         auto scene_wait_info = scene->render();
@@ -84,6 +111,14 @@ void glfw_window::render() noexcept
             scene->save_image();
             need_save = false;
         }
+
+#ifndef NDEBUG
+        if (begin_capture)
+        {
+            RENDERDOC_CAPTURE.end_capture(*(app->get_instance()));
+            begin_capture = false;
+        }
+#endif  // !NDEBUG
 
         const auto end      = std::chrono::high_resolution_clock::now();
         const auto duration = std::chrono::duration<float>(end - start).count();
@@ -124,7 +159,7 @@ void glfw_window::glfw_key_callback(GLFWwindow* _window, int _key, int _scancode
     static_cast<glfw_window*>(glfwGetWindowUserPointer(_window))->key_callback(_window, _key, _scancode, _action, _mods);
 }
 
-void glfw_window::resize_callback(GLFWwindow* _window, int _width, int _height) noexcept
+void glfw_window::resize_callback(GLFWwindow* _window, int _width, int _height)
 {
     if (_width > 0 && _height > 0)
     {
@@ -138,11 +173,11 @@ void glfw_window::resize_callback(GLFWwindow* _window, int _width, int _height) 
     }
 }
 
-void glfw_window::cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) noexcept {}
+void glfw_window::cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) {}
 
-void glfw_window::mouse_button_callback(GLFWwindow* _window, int _button, int _action, int _mods) noexcept {}
+void glfw_window::mouse_button_callback(GLFWwindow* _window, int _button, int _action, int _mods) {}
 
-void glfw_window::key_callback(GLFWwindow* _window, int _key, int, int _action, int) noexcept
+void glfw_window::key_callback(GLFWwindow* _window, int _key, int, int _action, int)
 {
     if (_action == GLFW_PRESS || _action == GLFW_REPEAT)
     {

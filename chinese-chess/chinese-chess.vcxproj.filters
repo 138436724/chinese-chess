@@ -24,6 +24,9 @@
     <ClCompile Include="tools\shader_compiler.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="tools\renderdoc_capture.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="tools\image_helper.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -144,6 +147,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="tools\shader_compiler.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="tools\renderdoc_capture.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="tools\image_helper.h">

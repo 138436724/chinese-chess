@@ -159,6 +159,7 @@
     <ClCompile Include="tools\ocio_helper.cpp" />
     <ClCompile Include="tools\record_loader.cpp" />
     <ClCompile Include="tools\shader_compiler.cpp" />
+    <ClCompile Include="tools\renderdoc_capture.cpp" />
     <ClCompile Include="tools\string_helper.cpp" />
     <ClCompile Include="ui\ui_base.cpp" />
     <ClCompile Include="ui\ui_camera.cpp" />
@@ -199,6 +200,8 @@
     <ClInclude Include="tools\model_loader.h" />
     <ClInclude Include="tools\ocio_helper.h" />
     <ClInclude Include="tools\record_loader.h" />
+    <ClInclude Include="tools\renderdoc_app.h" />
+    <ClInclude Include="tools\renderdoc_capture.h" />
     <ClInclude Include="tools\shader_compiler.h" />
     <ClInclude Include="tools\string_helper.h" />
     <ClInclude Include="ui\ui_base.h" />

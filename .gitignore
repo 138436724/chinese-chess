@@ -386,3 +386,6 @@ imgui.ini
 
 # bat file
 *.bat
+
+# renderdoc file
+*.rdc
