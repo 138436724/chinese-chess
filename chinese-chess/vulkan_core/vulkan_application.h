@@ -53,7 +53,7 @@ private:
     void     create_pipeline();
 
     void pick_msaa_sample_count() const noexcept;
-    void pick_depth_format() const noexcept;
+    void pick_depth_format() const;
 
 #ifndef NDEBUG
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT      _severity,
@@ -83,6 +83,10 @@ private:
     vulkan_pipeline   pipeline;
     vulkan_descriptor descriptor;
 
+    vulkan_semaphore                  semaphore;
+    vulkan_recycle_bin                recycle_bin;
+    std::vector<vulkan_commandbuffer> commandbuffers;
+
     vulkan_buffer                  ocio_ubo;
     std::vector<vulkan_image>      ocio_images;
     std::vector<vk::raii::Sampler> ocio_samplers;
@@ -90,8 +94,4 @@ private:
     vulkan_image*     bind_scene_image = nullptr;
     vulkan_image*     bind_ui_image    = nullptr;
     vk::raii::Sampler image_sampler    = nullptr;
-
-    vulkan_semaphore                  semaphore;
-    vulkan_recycle_bin                recycle_bin;
-    std::vector<vulkan_commandbuffer> commandbuffers;
 };

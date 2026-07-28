@@ -17,22 +17,22 @@
 #pragma warning(pop)
 #endif  // _MSC_VER
 
-constexpr std::u8string_view OCIOS_PATH         = u8"resources\\ocios\\";
-constexpr std::u8string_view OCIO_FUNCTION_NAME = u8"ocio_conversion";
+constexpr std::string_view OCIOS_PATH         = "resources\\ocios\\";
+constexpr std::string_view OCIO_FUNCTION_NAME = "ocio_conversion";
 
 namespace OCIO = OCIO_NAMESPACE;
 
 namespace ocio_helper {
 
-[[nodiscard]] OCIO::GpuShaderDescRcPtr generate_shader_info(const std::filesystem::path& _ocio_path) noexcept;
+[[nodiscard]] OCIO::GpuShaderDescRcPtr generate_shader_info(const std::filesystem::path& _ocio_path);
 [[nodiscard]] std::vector<char>        replace_and_compile(const OCIO::GpuShaderDescRcPtr&      _shader_desc,
                                                            const std::filesystem::path&         _shader_path,
                                                            const std::vector<std::string_view>& _entry_name);
-[[nodiscard]] std::vector<uint8_t>     get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc) noexcept;
+[[nodiscard]] std::vector<uint8_t>     get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc);
 
 template <typename T>
     requires(std::same_as<T, uint8_t> || std::same_as<T, uint16_t> || std::same_as<T, half> || std::same_as<T, float>)
-inline void apply_on_image(const std::filesystem::path& _ocio_path, uint32_t _width, uint32_t _height, std::span<T> _data) noexcept
+inline void apply_on_image(const std::filesystem::path& _ocio_path, uint32_t _width, uint32_t _height, std::span<T> _data)
 {
     const auto config = OCIO::Config::CreateFromFile(_ocio_path.string().c_str());
 

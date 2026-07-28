@@ -27,7 +27,7 @@ template <typename new_string_class, typename old_string_class>
             && (std::same_as<new_string_class, std::string> || std::same_as<new_string_class, std::u8string>
                 || std::same_as<new_string_class, std::wstring>)
             && (!std::same_as<old_string_class, new_string_class>)
-[[nodiscard]] constexpr new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
+[[nodiscard]] inline new_string_class convert_to(const old_string_class& _string, const char* _encoding = "utf8") noexcept
 {
     icu::UnicodeString icu_string;
 
@@ -82,7 +82,7 @@ template <typename new_string_class, typename old_string_class>
 template <typename string_class>
     requires(std::same_as<string_class, std::string> || std::same_as<string_class, std::u8string>
              || std::same_as<string_class, std::wstring>)
-[[nodiscard]] constexpr string_class get_file_encoding(const std::filesystem::path& _file_path)
+[[nodiscard]] inline string_class get_file_encoding(const std::filesystem::path& _file_path)
 {
     std::ifstream in_file(_file_path.generic_string(), std::ios::ate | std::ios::binary);
     if (!in_file.is_open())

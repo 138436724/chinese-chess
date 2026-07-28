@@ -11,11 +11,11 @@
 #endif  // _WIN32
 
 
-constexpr std::u8string_view RECORDS_MANAGER = u8"棋局管理";
-constexpr std::u8string_view RECORDS_LIST    = u8"棋谱列表";
-constexpr std::u8string_view LOAD_RECORDS    = u8"加载棋谱";
-constexpr std::u8string_view LAST_STEP       = u8"上一步";
-constexpr std::u8string_view NEXT_STEP       = u8"下一步";
+constexpr std::string_view RECORDS_MANAGER = "棋局管理";
+constexpr std::string_view RECORDS_LIST    = "棋谱列表";
+constexpr std::string_view LOAD_RECORDS    = "加载棋谱";
+constexpr std::string_view LAST_STEP       = "上一步";
+constexpr std::string_view NEXT_STEP       = "下一步";
 
 
 ui_record::ui_record(scene_manager& _manager)
@@ -26,31 +26,31 @@ ui_record::ui_record(scene_manager& _manager)
     chess_board_material->background_color = glm::vec3(0.87843, 0.69020, 0.48627);
     chess_board_material->foreground_color = glm::vec3(0., 0., 0.);
 
-    chess_board               = manager.create<scene_model>(std::u8string(MODELS_PATH) + u8"chess_board.glb");
+    chess_board               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_board.glb");
     chess_board->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
     chess_board->custom_index = 0u;
     chess_board->material     = std::move(chess_board_material);
 
 
     // create board line
-    chess_board_line               = manager.create<scene_model>(std::u8string(MODELS_PATH) + u8"chess_board_line.glb");
+    chess_board_line               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_board_line.glb");
     chess_board_line->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
     chess_board_line->custom_index = 1u;
 
 
     // create all pieces and all materials
     std::ranges::for_each(all_chess_pieces, [this](auto& p) {
-        p               = manager.create<scene_model>(std::u8string(MODELS_PATH) + u8"chess_piece.glb");
+        p               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_piece.glb");
         p->custom_index = 2u;
     });
 }
 
-void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
+void ui_record::resize(uint32_t _width, uint32_t _height)
 {
     width  = _width;
     height = _height;
 
-    chess_board->material->alpha_map = manager.create<scene_image>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf",
+    chess_board->material->alpha_map = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                                    static_cast<uint32_t>(height / 9.0 * 2), L"楚河汉界");
 
     std::ranges::for_each(
@@ -60,7 +60,7 @@ void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
             piece_material->background_color = glm::vec3(1.0, 0.85, 0.75);
             piece_material->foreground_color = glm::vec3(0.6, 0.1, 0.1);
 
-            auto piece_image = manager.create<scene_image>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf",
+            auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
             piece_material->alpha_map = piece_image;
 
@@ -74,7 +74,7 @@ void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
             piece_material->background_color = glm::vec3(0.85, 0.75, 0.65);
             piece_material->foreground_color = glm::vec3(0.1, 0.1, 0.1);
 
-            auto piece_image = manager.create<scene_image>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf",
+            auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
             piece_material->alpha_map = piece_image;
 
@@ -85,11 +85,11 @@ void ui_record::resize(uint32_t _width, uint32_t _height) noexcept
     restore_board_state(0);
 }
 
-void ui_record::update() noexcept
+void ui_record::update()
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(RECORDS_MANAGER.data()));
+    ImGui::SeparatorText(RECORDS_MANAGER.data());
 
-    if (ImGui::Button(reinterpret_cast<const char*>(LOAD_RECORDS.data())))
+    if (ImGui::Button(LOAD_RECORDS.data()))
     {
         std::filesystem::path file_path;
 
@@ -120,17 +120,17 @@ void ui_record::update() noexcept
 
     if (!all_records.empty())
     {
-        if (ImGui::ListBox(reinterpret_cast<const char*>(RECORDS_LIST.data()), &now_record_index,
-                           all_records_c_str.data(), static_cast<int>(all_records_c_str.size())))
+        if (ImGui::ListBox(RECORDS_LIST.data(), &now_record_index, all_records_c_str.data(),
+                           static_cast<int>(all_records_c_str.size())))
         {
             restore_board_state(static_cast<uint32_t>(now_record_index));
         }
-        if (ImGui::Button(reinterpret_cast<const char*>(LAST_STEP.data())))
+        if (ImGui::Button(LAST_STEP.data()))
         {
             prev_step();
         }
         ImGui::SameLine();
-        if (ImGui::Button(reinterpret_cast<const char*>(NEXT_STEP.data())))
+        if (ImGui::Button(NEXT_STEP.data()))
         {
             next_step();
         }
@@ -156,12 +156,10 @@ void ui_record::handle(int _glfw_key) noexcept
 
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
-    all_records = record_loader::read_record<std::u8string>(_record_path);
+    all_records = record_loader::read_record<std::string>(_record_path);
 
-    all_records_c_str =
-        all_records
-        | std::views::transform([](const auto& _record) { return reinterpret_cast<const char*>(_record.data()); })
-        | std::ranges::to<std::vector>();
+    all_records_c_str = all_records | std::views::transform([](const auto& _record) static { return _record.data(); })
+                        | std::ranges::to<std::vector>();
 
     now_record_index = 0;
 
@@ -188,7 +186,7 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
 
 void ui_record::restore_board_state(uint32_t _index) noexcept
 {
-    std::ranges::for_each(all_chess_pieces, [](const auto& p) { p->is_show = false; });
+    std::ranges::for_each(all_chess_pieces, [](const auto& p) static { p->is_show = false; });
 
     const all_board_state& state        = board_state.at(_index);
     size_t                 index_offset = 0;

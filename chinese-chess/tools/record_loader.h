@@ -9,7 +9,7 @@
 #include <unicode/regex.h>
 #include <unordered_map>
 
-constexpr std::u8string_view RECORDS_PATH = u8"resources\\records\\";
+constexpr std::string_view RECORDS_PATH = "resources\\records\\";
 
 enum class PIECE_COLOR : uint8_t
 {
@@ -82,8 +82,7 @@ inline const std::unordered_map<UChar, PIECE_TYPE> piece_map = {
 }
 
 template <typename string_class>
-    requires std::same_as<string_class, std::string> || std::same_as<string_class, std::u8string>
-             || std::same_as<string_class, std::wstring>
+    requires std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>
 [[nodiscard]] std::vector<string_class> read_record(const std::filesystem::path& _record_path)
 {
     std::vector<string_class> all_records;

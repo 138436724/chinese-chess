@@ -11,12 +11,12 @@ public:
     ~ui_node() = default;
 
     void resize(uint32_t _width, uint32_t _height) noexcept;
-    void update() noexcept;
+    void update();
     void handle(int _glfw_key) noexcept;
 
 private:
-    void update_material() noexcept;
-    void update_model() noexcept;
+    void update_material();
+    void update_model();
 
     [[nodiscard]] std::optional<int> get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept;
 

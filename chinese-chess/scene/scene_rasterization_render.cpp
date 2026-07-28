@@ -34,7 +34,7 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     create_pipeline(_color_format);
 }
 
-void scene_rasterization_render::resize(uint32_t _width, uint32_t _height) noexcept
+void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
 {
     width                        = _width;
     height                       = _height;
@@ -62,13 +62,12 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height) noexc
                        vk::ClearDepthStencilValue(1.f, 0));
 }
 
-void scene_rasterization_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_rasterization_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    update_draw_commands(_waited_infos);
     update_descriptor();
 }
 
-void scene_rasterization_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index) noexcept
+void scene_rasterization_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
 {
     const auto render_output_barrier =
         vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
@@ -128,12 +127,12 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
     _commandbuffer.pushConstants2(vk::PushConstantsInfo(pipeline.get_pipeline_layout(), vk::ShaderStageFlagBits::eVertex,
                                                         0, sizeof(scene_rasterization_render::push_constant), &pc));
 
-    if (!model_manager.get_models().empty()) [[likely]]
+    if (model_manager.get_models_size() > 0) [[likely]]
     {
         _commandbuffer.bindVertexBuffers(0, *(model_manager.get_vertices_buffer().get_buffer()), vk::DeviceSize(0));
         _commandbuffer.bindIndexBuffer(*(model_manager.get_indices_buffer().get_buffer()), vk::DeviceSize(0), vk::IndexType::eUint32);
-        _commandbuffer.drawIndexedIndirect(draw_commands.get_buffer(), 0,
-                                           static_cast<uint32_t>(model_manager.get_models().size()),
+        _commandbuffer.drawIndexedIndirect(model_manager.get_draw_commands().get_buffer(), 0,
+                                           static_cast<uint32_t>(model_manager.get_models_size()),
                                            sizeof(vk::DrawIndexedIndirectCommand));
     }
 
@@ -154,7 +153,7 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
     const auto binding = model_vertex::get_binding_description();
     const auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
-    const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"rasterization.slang",
+    const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "rasterization.slang",
                                                                   {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
     if (spirv_code.empty())
     {
@@ -173,29 +172,6 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
                     vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
                     vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
                     std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
-}
-
-void scene_rasterization_render::update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
-{
-    if (!model_manager.get_models().empty())
-    {
-        const auto all_draw_commands =
-            model_manager.get_models() | std::views::transform([](const auto& p) {
-                const auto sp = p.lock();
-                return vk::DrawIndexedIndirectCommand(
-                    static_cast<uint32_t>(sp->model_info->indices.size()), (sp && sp->is_show) ? 1u : 0u,
-                    static_cast<uint32_t>(sp->model_info->index_offset / sizeof(uint32_t)),
-                    static_cast<uint32_t>(sp->model_info->vertex_offset / sizeof(model_vertex)), 0);
-            })
-            | std::ranges::to<std::vector>();
-
-        recycle_bin.retire(std::move(draw_commands), "rasterization old draw commands.");
-        _waited_infos.push_back(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, draw_commands,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            std::span(reinterpret_cast<const uint8_t*>(all_draw_commands.data()),
-                      sizeof(all_draw_commands.front()) * all_draw_commands.size())));
-    }
 }
 
 void scene_rasterization_render::update_descriptor()

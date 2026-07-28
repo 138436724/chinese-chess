@@ -8,27 +8,27 @@
 #endif  // _WIN32
 
 
-constexpr std::u8string_view MATERIAL_MANAGER          = u8"材质管理";
-constexpr std::u8string_view ADD_MATERIAL              = u8"添加材质";
-constexpr std::u8string_view MATERIAL                  = u8"材质";
-constexpr std::u8string_view MATERIAL_INDEX            = u8"材质ID";
-constexpr std::u8string_view MATERIAL_BACKGROUND_COLOR = u8"背景色";
-constexpr std::u8string_view MATERIAL_FOREGROUND_COLOR = u8"前景色";
-constexpr std::u8string_view MATERIAL_ROUGHNESS        = u8"粗糙度";
-constexpr std::u8string_view MATERIAL_METALLIC         = u8"金属度";
-constexpr std::u8string_view DELETE_MATERIAL           = u8"删除材质";
-constexpr std::u8string_view NO_MATERIAL               = u8"无材质";
-constexpr std::u8string_view ADD_IMAGE                 = u8"添加贴图";
+constexpr std::string_view MATERIAL_MANAGER          = "材质管理";
+constexpr std::string_view ADD_MATERIAL              = "添加材质";
+constexpr std::string_view MATERIAL                  = "材质";
+constexpr std::string_view MATERIAL_INDEX            = "材质ID";
+constexpr std::string_view MATERIAL_BACKGROUND_COLOR = "背景色";
+constexpr std::string_view MATERIAL_FOREGROUND_COLOR = "前景色";
+constexpr std::string_view MATERIAL_ROUGHNESS        = "粗糙度";
+constexpr std::string_view MATERIAL_METALLIC         = "金属度";
+constexpr std::string_view DELETE_MATERIAL           = "删除材质";
+constexpr std::string_view NO_MATERIAL               = "无材质";
+constexpr std::string_view ADD_IMAGE                 = "添加贴图";
 
-constexpr std::u8string_view MODEL_MANAGER     = u8"物体管理";
-constexpr std::u8string_view ADD_MODEL         = u8"添加物体";
-constexpr std::u8string_view MODEL             = u8"物体";
-constexpr std::u8string_view SHOW_MODEL        = u8"可见性";
-constexpr std::u8string_view MODEL_TRANSLATION = u8"平移";
-constexpr std::u8string_view MODEL_ROTATION    = u8"旋转";
-constexpr std::u8string_view MODEL_SCALING     = u8"缩放";
-constexpr std::u8string_view DELETE_MODEL      = u8"删除物体";
-constexpr std::u8string_view NO_MODEL          = u8"无物体";
+constexpr std::string_view MODEL_MANAGER     = "物体管理";
+constexpr std::string_view ADD_MODEL         = "添加物体";
+constexpr std::string_view MODEL             = "物体";
+constexpr std::string_view SHOW_MODEL        = "可见性";
+constexpr std::string_view MODEL_TRANSLATION = "平移";
+constexpr std::string_view MODEL_ROTATION    = "旋转";
+constexpr std::string_view MODEL_SCALING     = "缩放";
+constexpr std::string_view DELETE_MODEL      = "删除物体";
+constexpr std::string_view NO_MODEL          = "无物体";
 
 
 ui_node::ui_node(scene_manager& _manager) noexcept
@@ -38,7 +38,7 @@ ui_node::ui_node(scene_manager& _manager) noexcept
 
 void ui_node::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
 
-void ui_node::update() noexcept
+void ui_node::update()
 {
     update_model();
     update_material();
@@ -46,11 +46,11 @@ void ui_node::update() noexcept
 
 void ui_node::handle(int /*_glfw_key*/) noexcept {}
 
-void ui_node::update_material() noexcept
+void ui_node::update_material()
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(MATERIAL_MANAGER.data()));
+    ImGui::SeparatorText(MATERIAL_MANAGER.data());
 
-    if (ImGui::Button(reinterpret_cast<const char*>(ADD_MATERIAL.data())))
+    if (ImGui::Button(ADD_MATERIAL.data()))
     {
         materials.push_back(manager.create<scene_material>());
     }
@@ -62,16 +62,14 @@ void ui_node::update_material() noexcept
 
         auto& material_ptr = materials.at(i);
 
-        if (ImGui::CollapsingHeader(std::format("{} {}", reinterpret_cast<const char*>(MATERIAL.data()), i).c_str(), ImGuiTreeNodeFlags_None))
+        if (ImGui::CollapsingHeader(std::format("{} {}", MATERIAL.data(), i).c_str(), ImGuiTreeNodeFlags_None))
         {
-            if (ImGui::ColorEdit3(reinterpret_cast<const char*>(MATERIAL_BACKGROUND_COLOR.data()),
-                                  glm::value_ptr(material_ptr->background_color)))
+            if (ImGui::ColorEdit3(MATERIAL_BACKGROUND_COLOR.data(), glm::value_ptr(material_ptr->background_color)))
             {
                 manager.need_update();
             }
 
-            if (ImGui::ColorEdit3(reinterpret_cast<const char*>(MATERIAL_FOREGROUND_COLOR.data()),
-                                  glm::value_ptr(material_ptr->foreground_color)))
+            if (ImGui::ColorEdit3(MATERIAL_FOREGROUND_COLOR.data(), glm::value_ptr(material_ptr->foreground_color)))
             {
                 manager.need_update();
             }
@@ -82,7 +80,7 @@ void ui_node::update_material() noexcept
                 ImGui::SameLine();
             }
 
-            if (ImGui::Button(reinterpret_cast<const char*>(ADD_IMAGE.data())))
+            if (ImGui::Button(ADD_IMAGE.data()))
             {
                 std::filesystem::path file_path;
 
@@ -111,22 +109,22 @@ void ui_node::update_material() noexcept
                         std::erase_if(textures, [&](const auto& pair) { return pair.first == material_ptr->alpha_map; });
                     }
                     material_ptr->alpha_map = manager.create<scene_image>(file_path, false);
-                    textures.insert(std::make_pair(material_ptr->alpha_map, file_path));
+                    textures.emplace(material_ptr->alpha_map, file_path);
                     manager.need_update();
                 }
             }
 
-            if (ImGui::DragFloat(reinterpret_cast<const char*>(MATERIAL_ROUGHNESS.data()), &material_ptr->roughness, 0.01f, 0.f, 1.f))
+            if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.f, 1.f))
             {
                 manager.need_update();
             }
 
-            if (ImGui::DragFloat(reinterpret_cast<const char*>(MATERIAL_METALLIC.data()), &material_ptr->metallic, 0.01f, 0.f, 1.f))
+            if (ImGui::DragFloat(MATERIAL_METALLIC.data(), &material_ptr->metallic, 0.01f, 0.f, 1.f))
             {
                 manager.need_update();
             }
 
-            if (ImGui::Button(reinterpret_cast<const char*>(DELETE_MATERIAL.data())))
+            if (ImGui::Button(DELETE_MATERIAL.data()))
             {
                 delete_index = i;
             }
@@ -143,15 +141,15 @@ void ui_node::update_material() noexcept
 
     if (materials.empty())
     {
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), reinterpret_cast<const char*>(NO_MATERIAL.data()));
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), NO_MATERIAL.data());
     }
 }
 
-void ui_node::update_model() noexcept
+void ui_node::update_model()
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(MODEL_MANAGER.data()));
+    ImGui::SeparatorText(MODEL_MANAGER.data());
 
-    if (ImGui::Button(reinterpret_cast<const char*>(ADD_MODEL.data())))
+    if (ImGui::Button(ADD_MODEL.data()))
     {
         std::filesystem::path file_path;
 
@@ -186,9 +184,9 @@ void ui_node::update_model() noexcept
 
         auto& model_ptr = models.at(i);
 
-        if (ImGui::CollapsingHeader(std::format("{} {}", reinterpret_cast<const char*>(MODEL.data()), i).c_str(), ImGuiTreeNodeFlags_None))
+        if (ImGui::CollapsingHeader(std::format("{} {}", MODEL.data(), i).c_str(), ImGuiTreeNodeFlags_None))
         {
-            if (ImGui::Checkbox(reinterpret_cast<const char*>(SHOW_MODEL.data()), &model_ptr->is_show))
+            if (ImGui::Checkbox(SHOW_MODEL.data(), &model_ptr->is_show))
             {
                 manager.need_update();
             }
@@ -202,10 +200,9 @@ void ui_node::update_model() noexcept
                 glm::vec3 euler_degrees = glm::degrees(euler_radians);
 
                 bool modified = false;
-                modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(MODEL_TRANSLATION.data()),
-                                              glm::value_ptr(translate), 0.1f);
-                modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(MODEL_ROTATION.data()), glm::value_ptr(euler_degrees));
-                modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(MODEL_SCALING.data()), glm::value_ptr(scale), 0.1f);
+                modified |= ImGui::DragFloat3(MODEL_TRANSLATION.data(), glm::value_ptr(translate), 0.1f);
+                modified |= ImGui::DragFloat3(MODEL_ROTATION.data(), glm::value_ptr(euler_degrees));
+                modified |= ImGui::DragFloat3(MODEL_SCALING.data(), glm::value_ptr(scale), 0.1f);
 
                 if (modified)
                 {
@@ -224,26 +221,26 @@ void ui_node::update_model() noexcept
 
             if (!materials.empty())
             {
-                const auto all_material_index =
-                    std::views::iota(0u, materials.size()) | std::views::transform([this](const auto index) {
-                        return std::format("{} {}", reinterpret_cast<const char*>(MATERIAL.data()), index);
-                    })
+                const auto all_material_index = std::views::iota(0u, materials.size())
+                                                | std::views::transform([this](const auto index) {
+                                                      return std::format("{} {}", MATERIAL.data(), index);
+                                                  })
+                                                | std::ranges::to<std::vector>();
+
+                const auto all_material_index_string =
+                    all_material_index | std::views::transform([](const auto& s) static { return s.c_str(); })
                     | std::ranges::to<std::vector>();
 
-                const auto all_material_index_string = all_material_index
-                                                       | std::views::transform([](const auto& s) { return s.c_str(); })
-                                                       | std::ranges::to<std::vector>();
-
                 int material_index = get_material_index(model_ptr->material).value_or(-1);
-                if (ImGui::Combo(reinterpret_cast<const char*>(MATERIAL_INDEX.data()), &material_index,
-                                 all_material_index_string.data(), static_cast<int>(all_material_index_string.size())))
+                if (ImGui::Combo(MATERIAL_INDEX.data(), &material_index, all_material_index_string.data(),
+                                 static_cast<int>(all_material_index_string.size())))
                 {
                     model_ptr->material = materials.at(material_index);
                     manager.need_update();
                 }
             }
 
-            if (ImGui::Button(reinterpret_cast<const char*>(DELETE_MODEL.data())))
+            if (ImGui::Button(DELETE_MODEL.data()))
             {
                 delete_index = i;
             }
@@ -260,7 +257,7 @@ void ui_node::update_model() noexcept
 
     if (models.empty())
     {
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), reinterpret_cast<const char*>(NO_MODEL.data()));
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), NO_MODEL.data());
     }
 }
 

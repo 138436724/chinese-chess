@@ -19,29 +19,29 @@ void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _dia
     }
 }
 
-void shader_compiler::print_entrypoint_hashes(int _entrypoint_count,
-                                              int _target_count,
-                                              const Slang::ComPtr<slang::IComponentType>& _composed_program) const noexcept
+void shader_compiler::print_entrypoint_hashes(int                                         _entrypoint_count,
+                                              int                                         _target_count,
+                                              const Slang::ComPtr<slang::IComponentType>& _composed_program) const
 {
     std::ranges::for_each(std::views::iota(0, _target_count), [&](int target_index) {
         std::ranges::for_each(std::views::iota(0, _entrypoint_count), [&](int entrypoint_index) {
             Slang::ComPtr<slang::IBlob> entrypoint_hash_blob;
             _composed_program->getEntryPointHash(entrypoint_index, target_index, entrypoint_hash_blob.writeRef());
 
-            std::stringstream str_builder{};
-            std::ranges::for_each(std::span<const uint8_t>(static_cast<const uint8_t*>(entrypoint_hash_blob->getBufferPointer()),
-                                                           entrypoint_hash_blob->getBufferSize()),
-                                  [&str_builder](const auto& num) { str_builder << std::format("{:02X}", num); });
+            const auto hash_str =
+                std::span<const uint8_t>(static_cast<const uint8_t*>(entrypoint_hash_blob->getBufferPointer()),
+                                         entrypoint_hash_blob->getBufferSize())
+                | std::views::transform([](const auto& num) static { return std::format("{:02X}", num); })
+                | std::views::join | std::ranges::to<std::string>();
 
-            std::println("callIdx: {}, entrypoint: {}, target: {}, hash: {}", global_counter, entrypoint_index,
-                         target_index, str_builder.str());
+            std::println("callIdx: {}, entrypoint: {}, target: {}, hash: {}", global_counter, entrypoint_index, target_index, hash_str);
             global_counter++;
         });
     });
 }
 #else
 void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
-void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) const noexcept {}
+void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) const {}
 #endif  // !NDEBUG
 
 shader_compiler::shader_compiler()
@@ -85,8 +85,8 @@ shader_compiler::shader_compiler()
     session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path,
-                                                         const std::vector<std::string_view>& _entry_name) const noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::path&         _shader_path,
+                                                         const std::vector<std::string_view>& _entry_name) const
 {
     std::filesystem::path spirv_path = _shader_path;
     spirv_path.replace_extension(".spv");
@@ -133,8 +133,8 @@ std::vector<char> shader_compiler::compile_shader_to_spv(const std::filesystem::
     return std::vector<char>();
 }
 
-std::vector<char> shader_compiler::compile_shader_to_spv(const std::string& _shader_string,
-                                                         const std::vector<std::string_view>& _entry_name) const noexcept
+std::vector<char> shader_compiler::compile_shader_to_spv(const std::string&                   _shader_string,
+                                                         const std::vector<std::string_view>& _entry_name) const
 {
     Slang::ComPtr<slang::IBlob> spirv_code;
     const bool result = slang_to_slang_module(session_desc, _shader_string, false, _entry_name, spirv_code.writeRef());
@@ -153,7 +153,7 @@ bool shader_compiler::slang_to_slang_module(const slang::SessionDesc&           
                                             const std::string&                   _shader_string,
                                             bool                                 _as_shader_name,
                                             const std::vector<std::string_view>& _entry_name,
-                                            slang::IBlob**                       _spirv_code) const noexcept
+                                            slang::IBlob**                       _spirv_code) const
 {
     Slang::ComPtr<slang::ISession> session;
     const auto                     result = global_session->createSession(_session_desc, session.writeRef());
@@ -186,7 +186,7 @@ bool shader_compiler::slang_module_to_spv(Slang::ComPtr<slang::ISession>&      _
                                           Slang::ComPtr<slang::IBlob>&         _diagnostics_blob,
                                           Slang::ComPtr<slang::IModule>&       _slang_module,
                                           const std::vector<std::string_view>& _entry_name,
-                                          slang::IBlob**                       _spirv_code) const noexcept
+                                          slang::IBlob**                       _spirv_code) const
 {
     std::vector<slang::IComponentType*> component_types;
     for (const auto& entry_name : _entry_name)

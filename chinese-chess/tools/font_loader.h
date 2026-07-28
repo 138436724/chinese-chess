@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-constexpr std::u8string_view FONTS_PATH = u8"resources\\fonts\\";
+constexpr std::string_view FONTS_PATH = "resources\\fonts\\";
 
 struct character_info
 {

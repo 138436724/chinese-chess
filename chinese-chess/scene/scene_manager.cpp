@@ -53,7 +53,7 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
-    skybox_image = create(std::type_identity<scene_image>{}, std::u8string(TEXTURES_PATH) + u8"干裂地面.hdr", true);
+    skybox_image = create(std::type_identity<scene_image>{}, std::filesystem::path(TEXTURES_PATH) / u8"干裂地面.hdr", true);
 
     rasterization_render = std::make_unique<scene_rasterization_render>(
         app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, compute_queue,
@@ -91,7 +91,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     raytracing_render->resize(width, height);
 }
 
-void scene_manager::update() noexcept
+void scene_manager::update()
 {
     if (!is_dirty)
     {
@@ -100,16 +100,14 @@ void scene_manager::update() noexcept
 
     is_dirty = false;
 
-    wait_infos.clear();
-
-    material_manager->update(wait_infos);
-    model_manager->update(wait_infos);
-    light_manager->update(wait_infos);
+    material_manager->update(waited_infos);
+    model_manager->update(waited_infos);
+    light_manager->update(waited_infos);
 
     skybox_index = material_manager->get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
 
-    rasterization_render->update(wait_infos);
-    raytracing_render->update(wait_infos);
+    rasterization_render->update(waited_infos);
+    raytracing_render->update(waited_infos);
 }
 
 vk::SemaphoreSubmitInfo scene_manager::render()
@@ -119,7 +117,7 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
     commandbuffer.begin_record({});
 
-    commandbuffer.add_waited_info(std::move(wait_infos));
+    commandbuffer.add_waited_info(std::move(waited_infos));  // waited_infos clear here
 
     if (!use_ray_tracing)
     {
@@ -138,14 +136,14 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     return commandbuffer.get_submit_info();
 }
 
-void scene_manager::destroy() noexcept
+void scene_manager::destroy()
 {
     material_manager->clear();
     model_manager->clear();
     light_manager->clear();
 }
 
-void scene_manager::handle(int _glfw_key) noexcept
+void scene_manager::handle(int _glfw_key)
 {
     switch (_glfw_key)
     {
@@ -160,7 +158,7 @@ void scene_manager::handle(int _glfw_key) noexcept
                                                               compute_queue, transfer_queue, *model_manager, *material_manager,
                                                               *light_manager, image_sampler, render_output);
                 raytracing_render->resize(width, height);
-                raytracing_render->update(wait_infos);
+                raytracing_render->update(waited_infos);
             }
             else
             {
@@ -171,7 +169,7 @@ void scene_manager::handle(int _glfw_key) noexcept
                     graphic_queue, compute_queue, transfer_queue, *model_manager, *material_manager, *light_manager,
                     image_sampler, render_output, color_format);
                 rasterization_render->resize(width, height);
-                rasterization_render->update(wait_infos);
+                rasterization_render->update(waited_infos);
             }
             break;
         default:
@@ -198,15 +196,14 @@ void scene_manager::save_image()
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
-    std::u8string save_path(CAPTURES_PATH);
-    save_path += string_helper::convert_to<std::u8string, std::string>(std::format("{:%Y_%m_%d_%H_%M_%S}", now_second));
+    std::string save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
 
-    static const std::u8string ocio_config_path = std::u8string(OCIOS_PATH) + u8"studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
+    static const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
 
     const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
     if (vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format))
     {
-        save_path += u8".exr";
+        save_path += ".exr";
         std::vector<half> image_data(static_cast<half*>(staging_buffer.get_buffer_address().hostAddress),
                                      static_cast<half*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
         ocio_helper::apply_on_image<half>(ocio_config_path, image_width, image_height, image_data);
@@ -214,7 +211,7 @@ void scene_manager::save_image()
     }
     else if (vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format))
     {
-        save_path += u8".png";
+        save_path += ".png";
         std::vector<uint8_t> image_data(static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress),
                                         static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
         ocio_helper::apply_on_image<uint8_t>(ocio_config_path, image_width, image_height, image_data);
@@ -232,6 +229,11 @@ void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
     use_ray_tracing = _use_ray_tracing;
 }
 
+bool scene_manager::get_need_update() const noexcept
+{
+    return is_dirty;
+}
+
 scene_camera& scene_manager::get_active_camera() noexcept
 {
     return active_camera;
@@ -242,12 +244,12 @@ vulkan_image& scene_manager::get_render_image() noexcept
     return render_output;
 }
 
-std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name) noexcept
+std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name)
 {
     return model_manager->create(_model_name);
 }
 
-std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>) noexcept
+std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>)
 {
     return material_manager->create();
 }
@@ -255,12 +257,12 @@ std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_m
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
                                                    const std::filesystem::path& _font_path,
                                                    uint32_t                     _font_size,
-                                                   const std::wstring&          _characters) noexcept
+                                                   const std::wstring&          _characters)
 {
-    return material_manager->create(_font_path, _font_size, _characters, wait_infos);
+    return material_manager->create(_font_path, _font_size, _characters, waited_infos);
 }
 
-std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr) noexcept
+std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr)
 {
-    return material_manager->create(_image_path, _is_hdr, wait_infos);
+    return material_manager->create(_image_path, _is_hdr, waited_infos);
 }

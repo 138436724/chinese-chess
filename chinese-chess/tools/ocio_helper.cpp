@@ -6,9 +6,9 @@
 #include <algorithm>
 #include <ranges>
 
-OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem::path& _ocio_path) noexcept
+OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem::path& _ocio_path)
 {
-    const auto ocio_function_name = string_helper::convert_to<std::string, std::u8string>(std::u8string(OCIO_FUNCTION_NAME));
+    const auto ocio_function_name = std::string(OCIO_FUNCTION_NAME);
 
     const auto config = OCIO::Config::CreateFromFile(_ocio_path.string().c_str());
 
@@ -37,8 +37,7 @@ std::vector<char> ocio_helper::replace_and_compile(const OCIO::GpuShaderDescRcPt
                                                    const std::filesystem::path&         _shader_path,
                                                    const std::vector<std::string_view>& _entry_name)
 {
-    const auto ocio_function_name =
-        string_helper::convert_to<std::string, std::u8string>(u8"float4 " + std::u8string(OCIO_FUNCTION_NAME));
+    const auto ocio_function_name = ("float4 " + std::string(OCIO_FUNCTION_NAME));
 
     const std::string shader_string = _shader_desc->getShaderText();
 
@@ -65,7 +64,7 @@ std::vector<char> ocio_helper::replace_and_compile(const OCIO::GpuShaderDescRcPt
     return SHADER_COMPILER.compile_shader_to_spv(final_string, _entry_name);
 }
 
-std::vector<uint8_t> ocio_helper::get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc) noexcept
+std::vector<uint8_t> ocio_helper::get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc)
 {
     std::vector<uint8_t> buffer(_shader_desc->getUniformBufferSize());
 

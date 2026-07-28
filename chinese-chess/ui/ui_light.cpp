@@ -3,21 +3,21 @@
 #include <glm/gtc/type_ptr.hpp>
 
 
-constexpr std::u8string_view LIGHT_MANAGER     = u8"灯光管理";
-constexpr std::u8string_view LIGHT_TYPE        = u8"灯光类型";
-constexpr std::u8string_view DIRECTIONAL_LIGHT = u8"平行光";
-constexpr std::u8string_view POINT_LIGHT       = u8"点光源";
-constexpr std::u8string_view SPOT_LIGHT        = u8"聚光灯";
-constexpr std::u8string_view ADD_LIGHT         = u8"添加灯光";
-constexpr std::u8string_view DELETE_LIGHT      = u8"删除灯光";
-constexpr std::u8string_view NO_LIGHT          = u8"无灯光";
-constexpr std::u8string_view LIGHT_COLOR       = u8"灯光颜色";
-constexpr std::u8string_view LIGHT_INTENSITY   = u8"灯光强度";
-constexpr std::u8string_view LIGHT_DIRECTION   = u8"灯光方向";
-constexpr std::u8string_view LIGHT_POSITION    = u8"灯光位置";
-constexpr std::u8string_view LIGHT_RANGE       = u8"灯光范围";
-constexpr std::u8string_view LIGHT_INNER_CONE  = u8"内锥角";
-constexpr std::u8string_view LIGHT_OUTER_CONE  = u8"外锥角";
+constexpr std::string_view LIGHT_MANAGER     = "灯光管理";
+constexpr std::string_view LIGHT_TYPE        = "灯光类型";
+constexpr std::string_view DIRECTIONAL_LIGHT = "平行光";
+constexpr std::string_view POINT_LIGHT       = "点光源";
+constexpr std::string_view SPOT_LIGHT        = "聚光灯";
+constexpr std::string_view ADD_LIGHT         = "添加灯光";
+constexpr std::string_view DELETE_LIGHT      = "删除灯光";
+constexpr std::string_view NO_LIGHT          = "无灯光";
+constexpr std::string_view LIGHT_COLOR       = "灯光颜色";
+constexpr std::string_view LIGHT_INTENSITY   = "灯光强度";
+constexpr std::string_view LIGHT_DIRECTION   = "灯光方向";
+constexpr std::string_view LIGHT_POSITION    = "灯光位置";
+constexpr std::string_view LIGHT_RANGE       = "灯光范围";
+constexpr std::string_view LIGHT_INNER_CONE  = "内锥角";
+constexpr std::string_view LIGHT_OUTER_CONE  = "外锥角";
 
 
 ui_light::ui_light(scene_manager& _manager)
@@ -30,17 +30,14 @@ ui_light::ui_light(scene_manager& _manager)
 
 void ui_light::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
 
-void ui_light::update() noexcept
+void ui_light::update()
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(LIGHT_MANAGER.data()));
+    ImGui::SeparatorText(LIGHT_MANAGER.data());
 
-    const std::array all_light_types = {reinterpret_cast<const char*>(DIRECTIONAL_LIGHT.data()),
-                                        reinterpret_cast<const char*>(POINT_LIGHT.data()),
-                                        reinterpret_cast<const char*>(SPOT_LIGHT.data())};
-    ImGui::Combo(reinterpret_cast<const char*>(LIGHT_TYPE.data()), &add_light_type, all_light_types.data(),
-                 static_cast<int>(all_light_types.size()));
+    const std::array all_light_types = {DIRECTIONAL_LIGHT.data(), POINT_LIGHT.data(), SPOT_LIGHT.data()};
+    ImGui::Combo(LIGHT_TYPE.data(), &add_light_type, all_light_types.data(), static_cast<int>(all_light_types.size()));
 
-    if (ImGui::Button(reinterpret_cast<const char*>(ADD_LIGHT.data())))
+    if (ImGui::Button(ADD_LIGHT.data()))
     {
         switch (add_light_type)
         {
@@ -70,50 +67,40 @@ void ui_light::update() noexcept
                 std::string header_label;
                 if constexpr (std::is_same_v<T, directional_light>)
                 {
-                    header_label = std::format("{} {}", reinterpret_cast<const char*>(DIRECTIONAL_LIGHT.data()), i);
+                    header_label = std::format("{} {}", DIRECTIONAL_LIGHT.data(), i);
                 }
                 else if constexpr (std::is_same_v<T, point_light>)
                 {
-                    header_label = std::format("{} {}", reinterpret_cast<const char*>(POINT_LIGHT.data()), i);
+                    header_label = std::format("{} {}", POINT_LIGHT.data(), i);
                 }
                 else if constexpr (std::is_same_v<T, spot_light>)
                 {
-                    header_label = std::format("{} {}", reinterpret_cast<const char*>(SPOT_LIGHT.data()), i);
+                    header_label = std::format("{} {}", SPOT_LIGHT.data(), i);
                 }
 
                 bool modified = false;
                 if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
                 {
-                    modified |= ImGui::ColorEdit3(reinterpret_cast<const char*>(LIGHT_COLOR.data()),
-                                                  glm::value_ptr(light_data.color));
-                    modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_INTENSITY.data()),
-                                                 &light_data.intensity, 0.1f, 0.0f, 100.0f);
+                    modified |= ImGui::ColorEdit3(LIGHT_COLOR.data(), glm::value_ptr(light_data.color));
+                    modified |= ImGui::DragFloat(LIGHT_INTENSITY.data(), &light_data.intensity, 0.1f, 0.0f, 100.0f);
 
                     if constexpr (std::is_same_v<T, directional_light>)
                     {
-                        modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()),
-                                                      glm::value_ptr(light_data.direction), 0.01f);
+                        modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_data.direction), 0.01f);
                     }
                     else if constexpr (std::is_same_v<T, point_light>)
                     {
-                        modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_POSITION.data()),
-                                                      glm::value_ptr(light_data.position), 0.1f);
-                        modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_RANGE.data()),
-                                                     &light_data.range, 0.1f, 0.1f, 1000.0f);
+                        modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_data.position), 0.1f);
+                        modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_data.range, 0.1f, 0.1f, 1000.0f);
                     }
                     else if constexpr (std::is_same_v<T, spot_light>)
                     {
-                        modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_DIRECTION.data()),
-                                                      glm::value_ptr(light_data.direction), 0.01f);
-                        modified |= ImGui::DragFloat3(reinterpret_cast<const char*>(LIGHT_POSITION.data()),
-                                                      glm::value_ptr(light_data.position), 0.1f);
-                        modified |= ImGui::DragFloat(reinterpret_cast<const char*>(LIGHT_RANGE.data()),
-                                                     &light_data.range, 0.1f, 0.1f, 1000.0f);
-                        modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_INNER_CONE.data()),
-                                                       &light_data.inner_cone_angle, glm::radians(1.0f),
-                                                       glm::radians(light_data.outer_cone_angle));
-                        modified |= ImGui::SliderAngle(reinterpret_cast<const char*>(LIGHT_OUTER_CONE.data()),
-                                                       &light_data.outer_cone_angle,
+                        modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_data.direction), 0.01f);
+                        modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_data.position), 0.1f);
+                        modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_data.range, 0.1f, 0.1f, 1000.0f);
+                        modified |= ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_data.inner_cone_angle,
+                                                       glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
+                        modified |= ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_data.outer_cone_angle,
                                                        glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
                     }
 
@@ -122,7 +109,7 @@ void ui_light::update() noexcept
                         manager.need_update();
                     }
 
-                    if (ImGui::Button(reinterpret_cast<const char*>(DELETE_LIGHT.data())))
+                    if (ImGui::Button(DELETE_LIGHT.data()))
                     {
                         delete_index = i;
                     }
@@ -141,7 +128,7 @@ void ui_light::update() noexcept
 
     if (lights.empty())
     {
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), reinterpret_cast<const char*>(NO_LIGHT.data()));
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), NO_LIGHT.data());
     }
 }
 

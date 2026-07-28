@@ -38,9 +38,9 @@ scene_light_manager::scene_light_manager(const vma::raii::Allocator& _allocator,
 {
 }
 
-void scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    std::erase_if(lights, [](const auto& p) { return p.expired(); });
+    std::erase_if(lights, [](const auto& p) static { return p.expired(); });
 
     recycle_bin.retire(std::move(ssbo), "scene light manager old ssbo.");
 
@@ -62,14 +62,14 @@ const std::vector<std::weak_ptr<scene_light>>& scene_light_manager::get_lights()
     return lights;
 }
 
-void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
     if (!lights.empty())
     {
         const auto lights_ssbo = lights | std::views::transform([this](const auto& p) {
                                      const auto sp = p.lock();
                                      return std::visit(
-                                         [](auto& light) {
+                                         [](auto& light) static {
                                              using T = std::decay_t<decltype(light)>;
 
                                              if constexpr (std::is_same_v<T, directional_light>)

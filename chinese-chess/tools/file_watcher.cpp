@@ -37,8 +37,7 @@ file_watcher::file_watcher()
                 std::vector<char> hash(hash_len, '\0');
                 file_cache.read(hash.data(), hash_len);
 
-                file_watch_cache.insert(
-                    std::make_pair(std::string(path.begin(), path.end()), std::string(hash.begin(), hash.end())));
+                file_watch_cache.emplace(std::string(path.begin(), path.end()), std::string(hash.begin(), hash.end()));
             }
         }
 
@@ -48,7 +47,7 @@ file_watcher::file_watcher()
 
 file_watcher::~file_watcher()
 {
-    std::erase_if(file_watch_cache, [](const auto& item) { return !std::filesystem::exists(item.first); });
+    std::erase_if(file_watch_cache, [](const auto& item) static { return !std::filesystem::exists(item.first); });
 
     std::ofstream file_cache(hash_file_name.data(), std::ios::binary);
 
@@ -70,7 +69,7 @@ file_watcher::~file_watcher()
     file_cache.close();
 }
 
-std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_path) const noexcept
+std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_path) const
 {
     std::ifstream file(_file_path, std::ios::binary);
 
@@ -99,14 +98,12 @@ std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_
     EVP_MD_CTX_free(sha256);
     file.close();
 
-    std::stringstream file_hash;
-    file_hash << std::hex << std::uppercase << std::setfill('0');
-    std::ranges::for_each(std::views::iota(0u, hash_len),
-                          [&](unsigned int i) { file_hash << std::setw(2) << static_cast<int>(hash[i]); });
-    return file_hash.str();
+    return std::views::iota(0u, hash_len)
+           | std::views::transform([&](unsigned int i) { return std::format("{:02X}", hash[i]); }) | std::views::join
+           | std::ranges::to<std::string>();
 }
 
-bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) noexcept
+bool file_watcher::is_file_modified(const std::filesystem::path& _file_path)
 {
     const auto        file_hash = generate_file_hash(_file_path);
     const std::string file_path = _file_path.generic_string();

@@ -11,7 +11,7 @@ public:
     ~ui_light() = default;
 
     void resize(uint32_t _width, uint32_t _height) noexcept;
-    void update() noexcept;
+    void update();
     void handle(int _glfw_key) noexcept;
 
 private:

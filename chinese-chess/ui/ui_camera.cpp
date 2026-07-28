@@ -3,17 +3,17 @@
 #include <glm/gtc/type_ptr.hpp>
 
 
-constexpr std::u8string_view CAMERA_SETTING        = u8"摄像机设置";
-constexpr std::u8string_view CAMERA_TYPE           = u8"摄像机类型";
-constexpr std::u8string_view ORTHOGRAPHIC_CAMERA   = u8"正交投影";
-constexpr std::u8string_view PERSPECTIVE_CAMERA    = u8"透视投影";
-constexpr std::u8string_view CAMERA_POSITION       = u8"摄像机位置";
-constexpr std::u8string_view CAMERA_DIRECTION      = u8"摄像机前方向";
-constexpr std::u8string_view CAMERA_WORLD_UP       = u8"摄像机上方向";
-constexpr std::u8string_view LEFT_RIGHT_BOTTOM_TOP = u8"左右下上";
-constexpr std::u8string_view FOV                   = u8"视场角";
-constexpr std::u8string_view ASPECT                = u8"宽高比";
-constexpr std::u8string_view NEAR_FAR              = u8"近平面和远平面";
+constexpr std::string_view CAMERA_SETTING        = "摄像机设置";
+constexpr std::string_view CAMERA_TYPE           = "摄像机类型";
+constexpr std::string_view ORTHOGRAPHIC_CAMERA   = "正交投影";
+constexpr std::string_view PERSPECTIVE_CAMERA    = "透视投影";
+constexpr std::string_view CAMERA_POSITION       = "摄像机位置";
+constexpr std::string_view CAMERA_DIRECTION      = "摄像机前方向";
+constexpr std::string_view CAMERA_WORLD_UP       = "摄像机上方向";
+constexpr std::string_view LEFT_RIGHT_BOTTOM_TOP = "左右下上";
+constexpr std::string_view FOV                   = "视场角";
+constexpr std::string_view ASPECT                = "宽高比";
+constexpr std::string_view NEAR_FAR              = "近平面和远平面";
 
 
 ui_camera::ui_camera(scene_manager& _manager) noexcept
@@ -45,14 +45,13 @@ void ui_camera::resize(uint32_t _width, uint32_t _height) noexcept
 
 void ui_camera::update() noexcept
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(CAMERA_SETTING.data()));
+    ImGui::SeparatorText(CAMERA_SETTING.data());
 
     const std::array all_camera_types = {
-        reinterpret_cast<const char*>(ORTHOGRAPHIC_CAMERA.data()),
-        reinterpret_cast<const char*>(PERSPECTIVE_CAMERA.data()),
+        ORTHOGRAPHIC_CAMERA.data(),
+        PERSPECTIVE_CAMERA.data(),
     };
-    if (ImGui::Combo(reinterpret_cast<const char*>(CAMERA_TYPE.data()), &active_type, all_camera_types.data(),
-                     static_cast<int>(all_camera_types.size())))
+    if (ImGui::Combo(CAMERA_TYPE.data(), &active_type, all_camera_types.data(), static_cast<int>(all_camera_types.size())))
     {
         manager.get_active_camera().set_projection_type(static_cast<projection_type>(active_type));
         manager.need_update();
@@ -60,7 +59,7 @@ void ui_camera::update() noexcept
 
     if (static_cast<projection_type>(active_type) == projection_type::orthographic)
     {
-        if (ImGui::DragFloat4(reinterpret_cast<const char*>(LEFT_RIGHT_BOTTOM_TOP.data()), glm::value_ptr(orthographic_range)))
+        if (ImGui::DragFloat4(LEFT_RIGHT_BOTTOM_TOP.data(), glm::value_ptr(orthographic_range)))
         {
             manager.get_active_camera().set_orthographic_projection(orthographic_range.x, orthographic_range.y,
                                                                     orthographic_range.z, orthographic_range.w,
@@ -68,7 +67,7 @@ void ui_camera::update() noexcept
             manager.need_update();
         }
 
-        if (ImGui::DragFloat2(reinterpret_cast<const char*>(NEAR_FAR.data()), glm::value_ptr(orthographic_near_far)))
+        if (ImGui::DragFloat2(NEAR_FAR.data(), glm::value_ptr(orthographic_near_far)))
         {
             manager.get_active_camera().set_orthographic_projection(orthographic_range.x, orthographic_range.y,
                                                                     orthographic_range.z, orthographic_range.w,
@@ -78,21 +77,21 @@ void ui_camera::update() noexcept
     }
     else
     {
-        if (ImGui::DragFloat(reinterpret_cast<const char*>(FOV.data()), &fov_y, 0.1f, 0.1f, 179.f))
+        if (ImGui::DragFloat(FOV.data(), &fov_y, 0.1f, 0.1f, 179.f))
         {
             manager.get_active_camera().set_perspective_projection(glm::radians(fov_y), aspect, perspective_near_far.x,
                                                                    perspective_near_far.y);
             manager.need_update();
         }
 
-        if (ImGui::DragFloat(reinterpret_cast<const char*>(ASPECT.data()), &aspect, 0.1f))
+        if (ImGui::DragFloat(ASPECT.data(), &aspect, 0.1f))
         {
             manager.get_active_camera().set_perspective_projection(glm::radians(fov_y), aspect, perspective_near_far.x,
                                                                    perspective_near_far.y);
             manager.need_update();
         }
 
-        if (ImGui::DragFloat2(reinterpret_cast<const char*>(NEAR_FAR.data()), glm::value_ptr(perspective_near_far)))
+        if (ImGui::DragFloat2(NEAR_FAR.data(), glm::value_ptr(perspective_near_far)))
         {
             manager.get_active_camera().set_perspective_projection(glm::radians(fov_y), aspect, perspective_near_far.x,
                                                                    perspective_near_far.y);
@@ -100,19 +99,19 @@ void ui_camera::update() noexcept
         }
     }
 
-    if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_POSITION.data()), glm::value_ptr(position)))
+    if (ImGui::DragFloat3(CAMERA_POSITION.data(), glm::value_ptr(position)))
     {
         manager.get_active_camera().set_position(position);
         manager.need_update();
     }
 
-    if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_DIRECTION.data()), glm::value_ptr(direction)))
+    if (ImGui::DragFloat3(CAMERA_DIRECTION.data(), glm::value_ptr(direction)))
     {
         manager.get_active_camera().set_direction(direction);
         manager.need_update();
     }
 
-    if (ImGui::DragFloat3(reinterpret_cast<const char*>(CAMERA_WORLD_UP.data()), glm::value_ptr(world_up)))
+    if (ImGui::DragFloat3(CAMERA_WORLD_UP.data(), glm::value_ptr(world_up)))
     {
         manager.get_active_camera().set_world_up(world_up);
         manager.need_update();

@@ -66,7 +66,7 @@ void vulkan_commandbuffer::submit(bool _immediately)
 {
     const vk::CommandBufferSubmitInfo commandbuffer_submit_info(*commandbuffer, 0);
 
-    signal_info.push_back(semaphore->next(vk::PipelineStageFlagBits2::eAllCommands));
+    signal_info.push_back(semaphore->next(vk::PipelineStageFlagBits2::eNone));
     semaphore_value = signal_info.back().value;
 
     const std::array submit_info = {vk::SubmitInfo2({}, waited_info, commandbuffer_submit_info, signal_info)};
@@ -86,12 +86,12 @@ void vulkan_commandbuffer::wait() const
     semaphore->wait(semaphore_value);
 }
 
-void vulkan_commandbuffer::add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos) noexcept
+void vulkan_commandbuffer::add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)
 {
     waited_info.append_range(_submit_infos | std::views::as_rvalue);
 }
 
-void vulkan_commandbuffer::add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos) noexcept
+void vulkan_commandbuffer::add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)
 {
     signal_info.append_range(_submit_infos | std::views::as_rvalue);
 }

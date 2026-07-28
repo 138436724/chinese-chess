@@ -7,9 +7,9 @@
 #include <imgui_impl_vulkan.h>
 
 
-constexpr std::u8string_view SCENE_SETTING   = u8"场景设置";
-constexpr std::u8string_view SCENE_MANAGER   = u8"场景管理";
-constexpr std::u8string_view USE_RAY_TRACING = u8"使用光线追踪";
+constexpr std::string_view SCENE_SETTING   = "场景设置";
+constexpr std::string_view SCENE_MANAGER   = "场景管理";
+constexpr std::string_view USE_RAY_TRACING = "使用光线追踪";
 
 
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)
@@ -42,9 +42,8 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     }
 
-    io.Fonts->AddFontFromFileTTF(
-        string_helper::convert_to<std::string, std::u8string>(std::u8string(FONTS_PATH) + u8"LXGWWenKaiGB-Medium.ttf").c_str(),
-        13.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+    io.Fonts->AddFontFromFileTTF((std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf").c_str(), 13.0f, nullptr,
+                                 io.Fonts->GetGlyphRangesChineseFull());
 
     ImGui_ImplGlfw_InitForVulkan(_window, true);
 
@@ -125,10 +124,10 @@ void ui_manager::update()
 
     //ImGui::ShowDemoWindow(&show_demo_window);
 
-    ImGui::Begin(reinterpret_cast<const char*>(SCENE_SETTING.data()), &show_demo_window);
+    ImGui::Begin(SCENE_SETTING.data(), &show_demo_window);
 
     ray_tracing_ui();
-    std::ranges::for_each(ui_managers, [](auto& m) { m->update(); });
+    std::ranges::for_each(ui_managers, [](auto& m) static { m->update(); });
 
     ImGui::End();
 
@@ -192,7 +191,7 @@ vk::SemaphoreSubmitInfo ui_manager::render()
     return commandbuffer.get_submit_info();
 }
 
-void ui_manager::destroy() noexcept
+void ui_manager::destroy()
 {
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -211,9 +210,9 @@ vulkan_image& ui_manager::get_render_image() noexcept
 
 void ui_manager::ray_tracing_ui() noexcept
 {
-    ImGui::SeparatorText(reinterpret_cast<const char*>(SCENE_MANAGER.data()));
+    ImGui::SeparatorText(SCENE_MANAGER.data());
 
-    if (ImGui::Checkbox(reinterpret_cast<const char*>(USE_RAY_TRACING.data()), &use_ray_tracing))
+    if (ImGui::Checkbox(USE_RAY_TRACING.data(), &use_ray_tracing))
     {
         manager.set_use_ray_tracing(use_ray_tracing);
     }

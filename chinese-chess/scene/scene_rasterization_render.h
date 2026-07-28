@@ -27,13 +27,12 @@ public:
                                vk::Format                      _color_format);
     ~scene_rasterization_render() = default;
 
-    void resize(uint32_t _width, uint32_t _height) noexcept;
-    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
-    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index) noexcept;
+    void resize(uint32_t _width, uint32_t _height);
+    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index);
 
 private:
     void create_pipeline(vk::Format _color_format);
-    void update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void update_descriptor();
 
 private:
@@ -66,5 +65,4 @@ private:
     vulkan_pipeline                      pipeline;
     vk::raii::DescriptorPool             descriptor_pool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptor_sets;
-    vulkan_buffer                        draw_commands;
 };

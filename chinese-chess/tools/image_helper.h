@@ -18,8 +18,8 @@
 #pragma warning(pop)
 #endif  // _MSC_VER
 
-constexpr std::u8string_view CAPTURES_PATH = u8"resources\\captures\\";
-constexpr std::u8string_view TEXTURES_PATH = u8"resources\\textures\\";
+constexpr std::string_view CAPTURES_PATH = "resources\\captures\\";
+constexpr std::string_view TEXTURES_PATH = "resources\\textures\\";
 
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)

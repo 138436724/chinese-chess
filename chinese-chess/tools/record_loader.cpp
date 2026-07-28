@@ -154,11 +154,11 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
         {
             auto the_pieces = now_board.at(static_cast<size_t>(now_color))
                               | std::views::filter([&](const auto& _piece) { return _piece.piece_type == now_type; })
-                              | std::views::transform([](const auto& _piece) { return &_piece; })
+                              | std::views::transform([](const auto& _piece) static { return &_piece; })
                               | std::ranges::to<std::vector>();
 
 
-            std::ranges::sort(the_pieces, [](const auto& _l, const auto& _r) { return _l->y > _r->y; });
+            std::ranges::sort(the_pieces, [](const auto& _l, const auto& _r) static { return _l->y > _r->y; });
 
             switch (result[0])
             {

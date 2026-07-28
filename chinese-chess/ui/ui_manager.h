@@ -20,7 +20,7 @@ public:
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
     [[nodiscard]] vk::SemaphoreSubmitInfo render();
-    void                                  destroy() noexcept;
+    void                                  destroy();
     void                                  handle(int _glfw_key) noexcept;
 
     [[nodiscard]] vulkan_image& get_render_image() noexcept;
@@ -33,8 +33,8 @@ private:
     vk::Format color_format = vk::Format::eUndefined;
 
     vulkan_application&      app;
-    vulkan_recycle_bin       recycle_bin;
     vulkan_semaphore         semaphore;
+    vulkan_recycle_bin       recycle_bin;
     vulkan_queue             graphic_queue;
     vk::raii::DescriptorPool descriptor_pool = nullptr;
 

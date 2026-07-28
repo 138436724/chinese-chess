@@ -43,21 +43,20 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     create_pipeline_and_sbt();
 }
 
-void scene_raytracing_render::resize(uint32_t _width, uint32_t _height) noexcept
+void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
 {
     width  = _width;
     height = _height;
 }
 
-void scene_raytracing_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_raytracing_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
     // reset path tracing accumulation
     frame_index = 0;
-    update_tlas(_waited_infos);
     update_descriptor();
 }
 
-void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index) noexcept
+void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
 {
     const auto image_begin_barrier =
         vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
@@ -115,7 +114,7 @@ void scene_raytracing_render::create_pipeline_and_sbt()
     const vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_raytracing_render::push_constant));
 
     const auto spirv_code =
-        SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"ray_tracing.slang",
+        SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
                                               {RAY_GEN_ENTRY_NAME, RAY_MISS_ENTRY_NAME, RAY_SHADOW_MISS_ENTRY_NAME,
                                                RAY_CLOSEST_HIT_ENTRY_NAME, RAY_SHADOW_ANY_HIT_ENTRY_NAME});
     if (spirv_code.empty())
@@ -179,53 +178,6 @@ void scene_raytracing_render::create_pipeline_and_sbt()
     recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create sbt.");
 }
 
-void scene_raytracing_render::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
-{
-    // build tlas
-    recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
-
-    if (!model_manager.get_models().empty())
-    {
-        // todo generate tlas (graphics queue required: AS build needs VK_QUEUE_COMPUTE_BIT)
-        vulkan_commandbuffer commandbuffer =
-            std::move(vulkan_commandbuffer::create(device,
-                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
-                                                                                 vk::CommandBufferLevel::ePrimary, 1),
-                                                   &graphic_queue, &semaphore)
-                          .front());
-        commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-
-        // create top level acceleration structure
-        const auto instances = model_manager.get_models()
-                               | std::views::transform([](const auto& p) { return p.lock()->get_blas_instance(); })
-                               | std::ranges::to<std::vector>();
-
-        vulkan_buffer instance_buffer;
-        commandbuffer.add_waited_info({vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, instance_buffer,
-            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-                | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
-            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()))});
-
-
-        auto scratch_buffer = tlas.create_top_level_acceleration_structure(
-            physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),
-            instance_buffer.get_buffer_address().deviceAddress, graphic_queue.get_index());
-
-        recycle_bin.retire(std::move(scratch_buffer), "ray tracing scratch buffer to create tlas.");
-        recycle_bin.retire(std::move(instance_buffer), "ray tracing instance buffer to create tlas.");
-
-
-        commandbuffer.end_record();
-        commandbuffer.submit(false);
-
-        _waited_infos.push_back(commandbuffer.get_submit_info());
-
-        recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
-    }
-}
-
 void scene_raytracing_render::update_descriptor()
 {
     // update descriptor pool
@@ -251,11 +203,11 @@ void scene_raytracing_render::update_descriptor()
     std::ranges::for_each(descriptor_sets, [&](const auto& descriptor_set) {
         std::vector<vk::WriteDescriptorSet> write_sets;
 
-        const vk::DescriptorBufferInfo as_buffer_info(
-            tlas.get_buffer(), 0, sizeof(vk::AccelerationStructureInstanceKHR) * model_manager.get_models().size());
+        const vk::DescriptorBufferInfo as_buffer_info(model_manager.get_tlas().get_buffer(), 0,
+                                                      sizeof(vk::AccelerationStructureInstanceKHR) * model_manager.get_models_size());
         vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
             vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
-            vk::WriteDescriptorSetAccelerationStructureKHR(*(tlas.get_acceleration_structure())));
+            vk::WriteDescriptorSetAccelerationStructureKHR(*(model_manager.get_tlas().get_acceleration_structure())));
         write_sets.push_back(as_write_set.get());
 
         const vk::DescriptorImageInfo storage_image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);

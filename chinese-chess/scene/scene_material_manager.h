@@ -28,8 +28,8 @@ public:
     [[nodiscard]] std::shared_ptr<scene_image>    create(const std::filesystem::path&          _image_path,
                                                          bool                                  _is_hdr,
                                                          std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void                                          update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
-    void                                          clear() noexcept;
+    void                                          update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void                                          clear();
 
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
@@ -38,7 +38,7 @@ public:
     [[nodiscard]] std::vector<vk::DescriptorImageInfo> get_descriptor_info(const std::span<const vk::Sampler> _samplers) const;
 
 private:
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
 
     const vma::raii::Allocator& allocator;
     const vk::raii::Device&     device;

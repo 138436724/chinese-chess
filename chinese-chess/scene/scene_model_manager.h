@@ -2,7 +2,6 @@
 
 #include "scene_material_manager.h"
 #include "scene_model.h"
-#include "vulkan_core/vulkan_application.h"
 
 #include <filesystem>
 #include <memory>
@@ -24,17 +23,21 @@ public:
     ~scene_model_manager() = default;
 
     [[nodiscard]] std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
-    void                                       update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
-    void                                       clear() noexcept;
+    void                                       update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void                                       clear();
 
-    [[nodiscard]] const std::vector<std::weak_ptr<scene_model>>& get_models() const noexcept;
-    [[nodiscard]] const vulkan_buffer&                           get_vertices_buffer() const noexcept;
-    [[nodiscard]] const vulkan_buffer&                           get_indices_buffer() const noexcept;
-    [[nodiscard]] const vulkan_buffer&                           get_ssbo_buffer() const noexcept;
+    [[nodiscard]] size_t                               get_models_size() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                 get_vertices_buffer() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                 get_indices_buffer() const noexcept;
+    [[nodiscard]] const vulkan_acceleration_structure& get_tlas() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                 get_draw_commands() const noexcept;
+    [[nodiscard]] const vulkan_buffer&                 get_ssbo_buffer() const noexcept;
 
 private:
-    void update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
 
     const vma::raii::Allocator&     allocator;
     const vk::raii::PhysicalDevice& physical_device;
@@ -52,6 +55,9 @@ private:
 
     vulkan_buffer vertices_buffer;
     vulkan_buffer indices_buffer;
+
+    vulkan_acceleration_structure tlas;
+    vulkan_buffer                 draw_commands;
 
     vulkan_buffer ssbo;
 };

@@ -262,7 +262,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     }
 
 #ifndef NDEBUG
-    if (std::ranges::any_of(layer_properties, [](const auto& layer_property) {
+    if (std::ranges::any_of(layer_properties, [](const auto& layer_property) static {
             return strcmp(layer_property.layerName, "VK_LAYER_KHRONOS_validation") == 0;
         }))
     {
@@ -282,7 +282,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     }
 
 #ifndef NDEBUG
-    if (std::ranges::any_of(extension_properties, [](const auto& extension_property) {
+    if (std::ranges::any_of(extension_properties, [](const auto& extension_property) static {
             return strcmp(extension_property.extensionName, vk::EXTDebugUtilsExtensionName) == 0;
         }))
     {
@@ -314,7 +314,7 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
         vk::KHRRayTracingPipelineExtensionName,  vk::KHRDeferredHostOperationsExtensionName,
         vk::KHRBufferDeviceAddressExtensionName, vk::KHRPushDescriptorExtensionName};
 
-    const auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device) {
+    const auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device) static {
         auto features =
             _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features,
                                                    vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
@@ -392,14 +392,13 @@ void vulkan_application::create_pipeline()
 
     if constexpr (vulkan_common::USE_OCIO)
     {
-        shader_desc = ocio_helper::generate_shader_info(std::u8string(OCIOS_PATH)
-                                                        + u8"studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio");
-        spirv_code  = ocio_helper::replace_and_compile(shader_desc, std::u8string(SHADERS_PATH) + u8"blend_image.slang",
-                                                       {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
+        shader_desc = ocio_helper::generate_shader_info(std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio");
+        spirv_code = ocio_helper::replace_and_compile(shader_desc, std::filesystem::path(SHADERS_PATH) / "blend_image.slang",
+                                                      {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
     }
     else
     {
-        spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::u8string(SHADERS_PATH) + u8"blend_image.slang",
+        spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "blend_image.slang",
                                                            {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
     }
 
@@ -599,13 +598,18 @@ void vulkan_application::pick_msaa_sample_count() const noexcept
         (support_sample_count != sample_count_flags.end()) ? *support_sample_count : vk::SampleCountFlagBits::e1;
 }
 
-void vulkan_application::pick_depth_format() const noexcept
+void vulkan_application::pick_depth_format() const
 {
-    vulkan_common::DEPTH_FORMAT =
-        vulkan_common::find_supported_format(*physical_device,
-                                             {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
-                                             vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment)
-            .value();
+    const auto depth_format = vulkan_common::find_supported_format(
+        *physical_device, {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
+        vk::ImageTiling::eOptimal, vk::FormatFeatureFlagBits::eDepthStencilAttachment);
+
+    if (!depth_format)
+    {
+        throw std::runtime_error("No supported depth format found!");
+    }
+
+    vulkan_common::DEPTH_FORMAT = *depth_format;
 }
 
 #ifndef NDEBUG

@@ -19,9 +19,9 @@ public:
 
     template <typename T>
         requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
-    [[nodiscard]] std::shared_ptr<scene_light> create() noexcept;
+    [[nodiscard]] std::shared_ptr<scene_light> create();
 
-    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void clear() noexcept;
 
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
@@ -29,7 +29,7 @@ public:
     [[nodiscard]] const std::vector<std::weak_ptr<scene_light>>& get_lights() const noexcept;
 
 private:
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept;
+    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
 
     const vma::raii::Allocator& allocator;
     const vk::raii::Device&     device;
@@ -45,7 +45,7 @@ private:
 
 template <typename T>
     requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
-inline std::shared_ptr<scene_light> scene_light_manager::create() noexcept
+inline std::shared_ptr<scene_light> scene_light_manager::create()
 {
     auto light = std::make_shared<scene_light>();
     *light     = T();

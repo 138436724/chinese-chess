@@ -103,17 +103,10 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
 
     uint8_t* buffer_address = static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress);
 
-    // Copy handles for all 5 groups
-    // Group 0: raygen
-    memcpy(buffer_address + raygen_offset, shader_handles.data() + 0 * handle_size, handle_size);
-    // Group 1: miss_primary
-    memcpy(buffer_address + miss_primary_offset, shader_handles.data() + 1 * handle_size, handle_size);
-    // Group 2: miss_shadow
-    memcpy(buffer_address + miss_shadow_offset, shader_handles.data() + 2 * handle_size, handle_size);
-    // Group 3: hit_primary
-    memcpy(buffer_address + hit_primary_offset, shader_handles.data() + 3 * handle_size, handle_size);
-    // Group 4: hit_shadow
-    memcpy(buffer_address + hit_shadow_offset, shader_handles.data() + 4 * handle_size, handle_size);
+    // Copy handles for all groups
+    const std::array offsets = {raygen_offset, miss_primary_offset, miss_shadow_offset, hit_primary_offset, hit_shadow_offset};
+    for (auto [group_index, offset] : offsets | std::views::enumerate | std::views::take(_group_count))
+        memcpy(buffer_address + offset, shader_handles.data() + group_index * handle_size, handle_size);
 
     // Create StridedDeviceAddressRegion for each Vulkan SBT region
     // raygen: single group at raygen_offset, stride = raygen_entry_size (size of 1 entry)

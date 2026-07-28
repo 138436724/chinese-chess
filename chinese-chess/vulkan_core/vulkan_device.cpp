@@ -25,7 +25,7 @@ void vulkan_device::create(const vk::raii::PhysicalDevice&    _physical_device,
     std::vector<uint32_t> all_queues(_queues.begin(), _queues.end());
     std::ranges::sort(all_queues);
     const auto result = std::ranges::unique(all_queues);
-    all_queues.erase(result.begin(), result.end());
+    all_queues.erase(result.begin(), all_queues.end());
 
     constexpr float queue_priority           = 0.0f;
     const auto      device_queue_create_info = all_queues | std::views::transform([&queue_priority](const auto& index) {

@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vulkan/vulkan.hpp>
 
-constexpr std::u8string_view MODELS_PATH = u8"resources\\models\\";
+constexpr std::string_view MODELS_PATH = "resources\\models\\";
 
 enum class model_vertex_type : uint32_t
 {

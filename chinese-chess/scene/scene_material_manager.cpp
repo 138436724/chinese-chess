@@ -153,25 +153,25 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     return image;
 }
 
-void scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    std::erase_if(materials, [](const auto& p) { return p.expired(); });
+    std::erase_if(materials, [](const auto& p) static { return p.expired(); });
 
-    auto iter = std::ranges::partition(images, [](const auto& sp) { return sp.use_count() == 1; });
+    auto iter = std::ranges::partition(images, [](const auto& sp) static { return sp.use_count() == 1; });
     std::vector<std::shared_ptr<scene_image>> retire_images;
     retire_images.reserve(std::distance(images.begin(), iter.begin()));
     std::ranges::move(images.begin(), iter.begin(), std::back_inserter(retire_images));
     recycle_bin.retire(std::move(retire_images), "scene material manager unused images.");
     images.erase(images.begin(), iter.begin());
 
-    std::erase_if(images_cache, [](const auto& p) { return p.second.expired(); });
+    std::erase_if(images_cache, [](const auto& p) static { return p.second.expired(); });
 
     recycle_bin.retire(std::move(ssbo), "scene material manager old ssbo.");
 
     update_ssbo(_waited_infos);
 }
 
-void scene_material_manager::clear() noexcept
+void scene_material_manager::clear()
 {
     materials.clear();
     recycle_bin.retire(std::move(images), "scene material manager old images.");
@@ -244,7 +244,7 @@ std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info
     }
 }
 
-void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) noexcept
+void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
     if (!materials.empty())
     {

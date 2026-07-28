@@ -54,7 +54,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
     surface = vk::raii::SurfaceKHR(_instance, _surface);
 
     const auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
-    const auto format_iter       = std::ranges::find_if(available_formats, [](const auto& format) {
+    const auto format_iter       = std::ranges::find_if(available_formats, [](const auto& format) static {
         if constexpr (vulkan_common::USE_OCIO)
         {
             return format.format == vk::Format::eB8G8R8A8Unorm && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
@@ -69,7 +69,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
     const auto available_present_modes = _physical_device.getSurfacePresentModesKHR(surface);
     present_mode =
         std::ranges::any_of(available_present_modes,
-                            [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
+                            [](const vk::PresentModeKHR value) static { return vk::PresentModeKHR::eMailbox == value; }) ?
             vk::PresentModeKHR::eMailbox :
             vk::PresentModeKHR::eFifo;
 
