@@ -1,6 +1,10 @@
 #include "vulkan_common.h"
 
+#include "vulkan_buffer.h"
 #include "vulkan_commandbuffer.h"
+#include "vulkan_image.h"
+#include "vulkan_queue.h"
+#include "vulkan_recycle_bin.h"
 
 #include <vulkan/utility/vk_format_utils.h>
 
@@ -13,7 +17,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
                                                      const vulkan_queue&            _transfer_queue,
                                                      vulkan_buffer&                 _buffer,
                                                      vk::BufferUsageFlags           _usage,
-                                                     const std::span<const uint8_t> _data) noexcept
+                                                     const std::span<const uint8_t> _data,
+                                                     const std::string&             _buffer_name) noexcept
 {
     const std::array queue_array = {_transfer_queue.get_index()};
 
@@ -21,14 +26,14 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     _buffer.create(_allocator, _device,
                    vk::BufferCreateInfo({}, _data.size(), _usage | vk::BufferUsageFlagBits::eTransferDst,
                                         vk::SharingMode::eExclusive, queue_array),
-                   vk::MemoryPropertyFlagBits::eDeviceLocal);
+                   vma::MemoryUsage::eGpuOnly, _buffer_name);
 
     // create staging buffer
     vulkan_buffer staging_buffer;
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, _data.size(), vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, queue_array),
-                          vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                          vma::MemoryUsage::eCpuToGpu, std::format("Staging{}", _buffer_name));
 
 
     // begin a transfer commandbuffer
@@ -51,6 +56,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
 
     // copy data to buffer
     memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
+    staging_buffer.flush();
+
     vulkan_buffer::copy_buffer_to_buffer(*transfer_commandbuffer, staging_buffer.get_buffer(), _buffer.get_buffer(),
                                          vk::BufferCopy2(0, 0, _data.size()));
 
@@ -114,7 +121,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                     const vk::Extent3D&                         _image_extent,
                                                     vulkan_image&                               _image,
                                                     const std::span<const uint8_t>              _data,
-                                                    const std::span<const vk::BufferImageCopy2> _copy_info) noexcept
+                                                    const std::span<const vk::BufferImageCopy2> _copy_info,
+                                                    const std::string&                          _image_name) noexcept
 {
     const std::array queue_array = {_transfer_queue.get_index()};
 
@@ -124,16 +132,17 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                    vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo view_info({}, {}, _image_view_type, _image_format, {},
                                       vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-    _image.create(_allocator, _device, image_info, view_info, vk::MemoryPropertyFlagBits::eDeviceLocal,
-                  vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+    _image.create(_allocator, _device, image_info, view_info, vma::MemoryUsage::eGpuOnly,
+                  vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), _image_name);
 
     // create staging buffer
     vulkan_buffer staging_buffer;
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, _data.size(), vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, queue_array),
-                          vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                          vma::MemoryUsage::eCpuToGpu, std::format("Staging{}", _image_name));
     memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
+    staging_buffer.flush();
 
 
     // begin a transfer commandbuffer
@@ -228,7 +237,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                                     const vulkan_queue&         _graphic_queue,
                                                                     const vulkan_queue&         _transfer_queue,
                                                                     vulkan_image&               _image,
-                                                                    vulkan_buffer&              _buffer) noexcept
+                                                                    vulkan_buffer&              _buffer,
+                                                                    const std::string&          _buffer_name) noexcept
 {
     const auto [image_width, image_height]     = _image.get_extent();
     const VkFormat                image_format = static_cast<VkFormat>(_image.get_format());
@@ -242,7 +252,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     _buffer.create(_allocator, _device,
                    vk::BufferCreateInfo({}, static_cast<size_t>(image_width) * image_height * block_size,
                                         vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, queue_array),
-                   vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                   vma::MemoryUsage::eGpuToCpu, _buffer_name);
 
     // begin a graphic commandbuffer
     vulkan_commandbuffer graphic_commandbuffer =

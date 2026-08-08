@@ -117,13 +117,14 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
                                                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress
                                                    | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR,
                                                vk::SharingMode::eExclusive, 1, &_queue),
-                          vk::MemoryPropertyFlagBits::eDeviceLocal);
+                          vma::MemoryUsage::eGpuOnly,
+                          _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas_scratch" : "tlas_scratch");
 
     buffer.create(_allocator, _device,
                   vk::BufferCreateInfo({}, build_size.accelerationStructureSize,
                                        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
                                        vk::SharingMode::eExclusive, 1, &_queue),
-                  vk::MemoryPropertyFlagBits::eDeviceLocal);
+                  vma::MemoryUsage::eGpuOnly, _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas" : "tlas");
 
     vk::AccelerationStructureCreateInfoKHR create_info({}, buffer.get_buffer(), {},
                                                        build_size.accelerationStructureSize, _type, {});

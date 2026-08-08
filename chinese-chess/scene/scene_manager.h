@@ -6,8 +6,12 @@
 #include "scene_model_manager.h"
 #include "scene_rasterization_render.h"
 #include "scene_raytracing_render.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
+#include "vulkan_core/vulkan_image.h"
+#include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
-#include "vulkan_core/vulkan_shader_binding_table.h"
+
+class vulkan_application;
 
 class scene_manager
 {
@@ -27,7 +31,7 @@ public:
 
     template <typename T, typename... Args>
         requires(std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image>
-                 || std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+                 || std::same_as<T, scene_light>)
     [[nodiscard]] auto create(Args&&... args);
 
     void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
@@ -37,18 +41,14 @@ public:
     vulkan_image& get_render_image() noexcept;
 
 private:
-    template <typename T>
-        requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
-    [[nodiscard]] std::shared_ptr<scene_light> create(std::type_identity<T>);
+    [[nodiscard]] std::shared_ptr<scene_light> create(std::type_identity<scene_light>);
     [[nodiscard]] std::shared_ptr<scene_model> create(std::type_identity<scene_model>, const std::filesystem::path& _model_name);
     [[nodiscard]] std::shared_ptr<scene_material> create(std::type_identity<scene_material>);
     [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
                                                          const std::filesystem::path& _font_path,
                                                          uint32_t                     _font_size,
                                                          const std::wstring&          _characters);
-    [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
-                                                         const std::filesystem::path& _image_path,
-                                                         bool                         _is_hdr);
+    [[nodiscard]] std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr);
 
 private:
     bool is_dirty = true;
@@ -87,16 +87,9 @@ private:
 
 template <typename T, typename... Args>
     requires(std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image>
-             || std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
+             || std::same_as<T, scene_light>)
 inline auto scene_manager::create(Args&&... args)
 {
     is_dirty = true;
     return create(std::type_identity<T>{}, std::forward<Args>(args)...);
-}
-
-template <typename T>
-    requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
-inline std::shared_ptr<scene_light> scene_manager::create(std::type_identity<T>)
-{
-    return light_manager->create<T>();
 }

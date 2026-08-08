@@ -19,7 +19,7 @@ enum brdf_type : uint32_t
     ggx = 1 // 预留：微面元 BRDF
 };
 
-// ---- 光源数据结构（std430 布局，与 C++ scene_light.h 中 light_data 对齐） ----
+// ---- 光源数据结构（std430 布局，与 C++ scene_light_manager.cpp 中 light_data 对齐） ----
 struct light_data
 {
     float3 color;           // 光源颜色 (RGB)，线性空间

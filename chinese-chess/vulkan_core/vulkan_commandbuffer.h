@@ -1,9 +1,9 @@
 #pragma once
 
-#include "vulkan_queue.h"
-#include "vulkan_semaphore.h"
-
 #include <vulkan/vulkan_raii.hpp>
+
+class vulkan_queue;
+class vulkan_semaphore;
 
 class vulkan_commandbuffer
 {

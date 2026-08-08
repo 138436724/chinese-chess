@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_queue

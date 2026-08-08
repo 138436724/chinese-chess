@@ -1,9 +1,12 @@
 #pragma once
-#include "scene/scene_manager.h"
-#include "ui/ui_manager.h"
-#include "vulkan_core/vulkan_application.h"
 
 #include <GLFW/glfw3.h>
+#include <array>
+#include <memory>
+
+class scene_manager;
+class ui_manager;
+class vulkan_application;
 
 class glfw_window
 {

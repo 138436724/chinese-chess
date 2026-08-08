@@ -1,7 +1,13 @@
 #include "scene_rasterization_render.h"
 
+#include "scene_light_manager.h"
+#include "scene_material_manager.h"
+#include "scene_model_manager.h"
 #include "tools/shader_compiler.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_queue.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&     _allocator,
                                                        const vk::raii::PhysicalDevice& _physical_device,
@@ -47,8 +53,8 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                                          vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, render_output.get_format(), {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-    color_image.create(allocator, device, color_image_info, color_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal,
-                       vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+    color_image.create(allocator, device, color_image_info, color_view_info, vma::MemoryUsage::eGpuOnly,
+                       vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "rasterization_color");
 
     // depth
     recycle_bin.retire(std::move(depth_image), "rasterization old depth image.");
@@ -58,8 +64,8 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                                          vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
-    depth_image.create(allocator, device, depth_image_info, depth_view_info, vk::MemoryPropertyFlagBits::eDeviceLocal,
-                       vk::ClearDepthStencilValue(1.f, 0));
+    depth_image.create(allocator, device, depth_image_info, depth_view_info, vma::MemoryUsage::eGpuOnly,
+                       vk::ClearDepthStencilValue(1.f, 0), "rasterization_depth");
 }
 
 void scene_rasterization_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)

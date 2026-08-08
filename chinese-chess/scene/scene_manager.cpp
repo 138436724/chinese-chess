@@ -4,6 +4,7 @@
 #include "tools/ocio_helper.h"
 #include "tools/shader_compiler.h"
 #include "tools/string_helper.h"
+#include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_common.h"
 
 #include <GLFW/glfw3.h>
@@ -85,7 +86,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
-                         vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f));
+                         vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
     rasterization_render->resize(width, height);
     raytracing_render->resize(width, height);
@@ -193,6 +194,8 @@ void scene_manager::save_image()
 
     semaphore.wait(wait_value.value);
 
+    staging_buffer.invalidate();
+
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
@@ -242,6 +245,11 @@ scene_camera& scene_manager::get_active_camera() noexcept
 vulkan_image& scene_manager::get_render_image() noexcept
 {
     return render_output;
+}
+
+std::shared_ptr<scene_light> scene_manager::create(std::type_identity<scene_light>)
+{
+    return light_manager->create();
 }
 
 std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name)

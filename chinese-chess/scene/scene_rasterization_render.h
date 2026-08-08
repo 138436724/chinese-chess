@@ -1,12 +1,19 @@
 #pragma once
 
 #include "scene_camera.h"
-#include "scene_light_manager.h"
-#include "scene_material_manager.h"
-#include "scene_model_manager.h"
+#include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_pipeline.h"
 
 #include <glm/glm.hpp>
+#include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
+#include <vulkan/vulkan_raii.hpp>
+
+class vulkan_recycle_bin;
+class vulkan_semaphore;
+class vulkan_queue;
+class scene_model_manager;
+class scene_material_manager;
+class scene_light_manager;
 
 class scene_rasterization_render
 {

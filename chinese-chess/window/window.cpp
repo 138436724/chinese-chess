@@ -1,5 +1,9 @@
 #include "window.h"
 
+#include "scene/scene_manager.h"
+#include "ui/ui_manager.h"
+#include "vulkan_core/vulkan_application.h"
+
 #ifndef NDEBUG
 #include "tools/renderdoc_capture.h"
 #endif  // !NDEBUG

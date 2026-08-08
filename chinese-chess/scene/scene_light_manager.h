@@ -1,10 +1,14 @@
 #pragma once
 
 #include "scene_light.h"
-#include "vulkan_core/vulkan_application.h"
+#include "vulkan_core/vulkan_buffer.h"
 
 #include <memory>
 #include <vector>
+
+class vulkan_recycle_bin;
+class vulkan_semaphore;
+class vulkan_queue;
 
 class scene_light_manager
 {
@@ -17,8 +21,6 @@ public:
                         const vulkan_queue&         _transfer_queue) noexcept;
     ~scene_light_manager() = default;
 
-    template <typename T>
-        requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
     [[nodiscard]] std::shared_ptr<scene_light> create();
 
     void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
@@ -42,13 +44,3 @@ private:
 
     vulkan_buffer ssbo;
 };
-
-template <typename T>
-    requires(std::same_as<T, directional_light> || std::same_as<T, point_light> || std::same_as<T, spot_light>)
-inline std::shared_ptr<scene_light> scene_light_manager::create()
-{
-    auto light = std::make_shared<scene_light>();
-    *light     = T();
-    lights.push_back(light);
-    return light;
-}

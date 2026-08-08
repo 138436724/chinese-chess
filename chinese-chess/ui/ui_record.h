@@ -1,9 +1,13 @@
 #pragma once
 
-#include "scene/scene_manager.h"
 #include "tools/record_loader.h"
 
+#include <glm/glm.hpp>
 #include <imgui.h>
+
+struct scene_model;
+struct scene_material;
+class scene_manager;
 
 class ui_record
 {

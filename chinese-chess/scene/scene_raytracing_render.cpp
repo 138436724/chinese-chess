@@ -1,7 +1,14 @@
 #include "scene_raytracing_render.h"
 
+#include "scene_light_manager.h"
+#include "scene_material_manager.h"
+#include "scene_model_manager.h"
 #include "tools/shader_compiler.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_image.h"
+#include "vulkan_core/vulkan_queue.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 
 enum class stage_indices : uint32_t
 {

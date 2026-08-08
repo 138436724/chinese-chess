@@ -16,8 +16,12 @@ public:
     void create(const vma::raii::Allocator& _allocator,
                 const vk::raii::Device&     _device,
                 const vk::BufferCreateInfo& _buffer_info,
-                vk::MemoryPropertyFlags     _properties);
+                vma::MemoryUsage            _usage,
+                const std::string&          _name = "");
     void clear() noexcept;
+
+    void flush() const;
+    void invalidate() const;
 
     void set_info(const vk::BufferMemoryBarrier2& _barrier);
 

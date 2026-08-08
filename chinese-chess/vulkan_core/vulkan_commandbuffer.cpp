@@ -1,5 +1,8 @@
 #include "vulkan_commandbuffer.h"
 
+#include "vulkan_queue.h"
+#include "vulkan_semaphore.h"
+
 #include <algorithm>
 #include <ranges>
 

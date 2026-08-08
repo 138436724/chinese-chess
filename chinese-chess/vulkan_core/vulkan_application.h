@@ -60,7 +60,7 @@ private:
                                                            vk::DebugUtilsMessageTypeFlagsEXT             _type,
                                                            const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
                                                            void*);
-#endif  // NDEBUG
+#endif  // !NDEBUG
 
     std::vector<const char*> required_instance_layers;
     std::vector<const char*> required_instance_extensions;

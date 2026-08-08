@@ -1,8 +1,16 @@
 #pragma once
 
-#include "scene/scene_manager.h"
+#include "scene/scene_light.h"
+#include "scene/scene_material.h"
 
+#include <filesystem>
 #include <imgui.h>
+#include <memory>
+#include <optional>
+#include <vector>
+
+struct scene_model;
+class scene_manager;
 
 class ui_node
 {

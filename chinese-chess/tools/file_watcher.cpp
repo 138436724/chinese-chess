@@ -1,6 +1,5 @@
 #include "file_watcher.h"
 
-#include <algorithm>
 #include <fstream>
 #include <openssl/evp.h>
 #include <ranges>

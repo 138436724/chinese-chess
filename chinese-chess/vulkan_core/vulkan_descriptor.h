@@ -1,6 +1,7 @@
 #pragma once
 
 #include <variant>
+#include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
 using DescriptorBufferOrImageInfo = std::variant<vk::DescriptorBufferInfo, vk::DescriptorImageInfo>;

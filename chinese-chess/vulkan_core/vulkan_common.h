@@ -1,16 +1,18 @@
 #pragma once
 
-#include "vulkan_buffer.h"
-#include "vulkan_image.h"
-#include "vulkan_queue.h"
-#include "vulkan_recycle_bin.h"
-#include "vulkan_semaphore.h"
-
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
+#include <vulkan/vulkan_raii.hpp>
+
+class vulkan_recycle_bin;
+class vulkan_semaphore;
+class vulkan_queue;
+class vulkan_buffer;
+class vulkan_image;
 
 namespace vulkan_common {
 
@@ -46,6 +48,21 @@ inline constexpr bool                    USE_OCIO             = true;
     return t;
 }
 
+[[nodiscard]] inline constexpr bool is_host_accessible_usage(vma::MemoryUsage _usage) noexcept
+{
+    switch (_usage)
+    {
+        case vma::MemoryUsage::eCpuOnly:
+        case vma::MemoryUsage::eCpuToGpu:
+        case vma::MemoryUsage::eGpuToCpu:
+        case vma::MemoryUsage::eCpuCopy:
+        case vma::MemoryUsage::eAutoPreferHost:
+            return true;
+        default:
+            return false;
+    }
+}
+
 [[nodiscard]] vk::SemaphoreSubmitInfo upload_buffer(const vma::raii::Allocator&    _allocator,
                                                     const vk::raii::Device&        _device,
                                                     vulkan_recycle_bin&            _recycle_bin,
@@ -54,7 +71,8 @@ inline constexpr bool                    USE_OCIO             = true;
                                                     const vulkan_queue&            _transfer_queue,
                                                     vulkan_buffer&                 _buffer,
                                                     vk::BufferUsageFlags           _usage,
-                                                    const std::span<const uint8_t> _data) noexcept;
+                                                    const std::span<const uint8_t> _data,
+                                                    const std::string&             _buffer_name = "") noexcept;
 
 [[nodiscard]] vk::SemaphoreSubmitInfo upload_image(const vma::raii::Allocator&                 _allocator,
                                                    const vk::raii::Device&                     _device,
@@ -68,7 +86,8 @@ inline constexpr bool                    USE_OCIO             = true;
                                                    const vk::Extent3D&                         _image_extent,
                                                    vulkan_image&                               _image,
                                                    const std::span<const uint8_t>              _data,
-                                                   const std::span<const vk::BufferImageCopy2> _copy_info) noexcept;
+                                                   const std::span<const vk::BufferImageCopy2> _copy_info,
+                                                   const std::string& _image_name = "") noexcept;
 
 [[nodiscard]] vk::SemaphoreSubmitInfo download_image(const vma::raii::Allocator& _allocator,
                                                      const vk::raii::Device&     _device,
@@ -77,5 +96,6 @@ inline constexpr bool                    USE_OCIO             = true;
                                                      const vulkan_queue&         _graphic_queue,
                                                      const vulkan_queue&         _transfer_queue,
                                                      vulkan_image&               _image,
-                                                     vulkan_buffer&              _buffer) noexcept;
+                                                     vulkan_buffer&              _buffer,
+                                                     const std::string&          _buffer_name = "") noexcept;
 }  // namespace vulkan_common

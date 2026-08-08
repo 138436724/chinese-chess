@@ -3,6 +3,8 @@
 #include "tools/font_loader.h"
 #include "tools/image_helper.h"
 #include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_queue.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <ranges>
 #include <vulkan/utility/vk_format_utils.h>
@@ -99,9 +101,10 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     }
 
     // create image and upload
-    _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                                        vk::ImageType::e2D, vk::ImageViewType::e2D, vk::Format::eR8Unorm,
-                                                        vk::Extent3D(all_width, all_height, 1), *image, font_data, copy_infos));
+    _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
+                                                        transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
+                                                        vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1),
+                                                        *image, font_data, copy_infos, "font-atlas"));
 
     images.emplace_back(image);
     images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(image));
@@ -135,7 +138,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), *image,
             std::span(reinterpret_cast<const uint8_t*>(image_data.buffer.data()),
                       image_data.buffer.size() * sizeof(image_data.buffer.front())),
-            {}));
+            {}, "material_texture"));
     }
     else
     {
@@ -143,9 +146,10 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         const auto       image_data =
             image_helper::read_image<uint8_t>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
 
-        _waited_infos.push_back(vulkan_common::upload_image(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
-            image_format, vk::Extent3D(image_data.width, image_data.height, 1), *image, image_data.buffer, {}));
+        _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
+                                                            transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
+                                                            image_format, vk::Extent3D(image_data.width, image_data.height, 1),
+                                                            *image, image_data.buffer, {}, "material_texture"));
     }
 
     images.emplace_back(image);
@@ -264,6 +268,7 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             std::span(reinterpret_cast<const uint8_t*>(materials_ssbo.data()),
-                      sizeof(materials_ssbo.front()) * materials_ssbo.size())));
+                      sizeof(materials_ssbo.front()) * materials_ssbo.size()),
+            "material_ssbo"));
     }
 }

@@ -1,5 +1,7 @@
 #include "ui_record.h"
 
+#include "scene/scene_manager.h"
+#include "scene/scene_material.h"
 #include "tools/font_loader.h"
 #include "tools/model_loader.h"
 

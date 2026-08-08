@@ -2,6 +2,8 @@
 
 #include "vulkan_buffer.h"
 
+#include "vulkan_common.h"
+
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
     : stage(std::exchange(_other.stage, {}))
     , access(std::exchange(_other.access, {}))
@@ -27,7 +29,8 @@ vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
 void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
                            const vk::raii::Device&     _device,
                            const vk::BufferCreateInfo& _buffer_info,
-                           vk::MemoryPropertyFlags     _properties)
+                           vma::MemoryUsage            _usage,
+                           const std::string&          _name)
 {
     if (_buffer_info.queueFamilyIndexCount != 1 || _buffer_info.sharingMode != vk::SharingMode::eExclusive)
     {
@@ -37,41 +40,50 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
     queue = *_buffer_info.pQueueFamilyIndices;
 
     vma::AllocationCreateInfo create_info{};
-    if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+    create_info.setUsage(_usage);
+
+    if (vulkan_common::is_host_accessible_usage(_usage))
     {
-        create_info
-            .setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
-            .setUsage(vma::MemoryUsage::eAutoPreferHost);
-    }
-    else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
-    {
-        create_info.setUsage(vma::MemoryUsage::eGpuOnly);
-    }
-    else
-    {
-        create_info.setUsage(vma::MemoryUsage::eAuto);
+        const vma::AllocationCreateFlagBits flags = _usage == vma::MemoryUsage::eGpuToCpu ?
+                                                        vma::AllocationCreateFlagBits::eHostAccessRandom :
+                                                        vma::AllocationCreateFlagBits::eHostAccessSequentialWrite;
+
+        create_info.setFlags(flags | vma::AllocationCreateFlagBits::eMapped);
     }
 
     buffer = _allocator.createBuffer(_buffer_info, create_info);
 
-    if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
+    if (vulkan_common::is_host_accessible_usage(_usage))
     {
         buffer_address = buffer.getAllocation().getInfo().pMappedData;
     }
-    else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
+    else
     {
         buffer_address = _device.getBufferAddress(vk::BufferDeviceAddressInfo(buffer));
     }
 
-    //#ifndef NDEBUG
-    //	_device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(buffer.objectType, reinterpret_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), ""));
-    //#endif // !NDEBUG
+#ifndef NDEBUG
+    _device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(
+        buffer.objectType, reinterpret_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), std::format("Buffer{}", _name).c_str()));
+#else
+    (void)_name;
+#endif  // !NDEBUG
 }
 
 void vulkan_buffer::clear() noexcept
 {
     buffer_address = nullptr;
     buffer.clear();
+}
+
+void vulkan_buffer::flush() const
+{
+    buffer.getAllocation().flush(0, VK_WHOLE_SIZE);
+}
+
+void vulkan_buffer::invalidate() const
+{
+    buffer.getAllocation().invalidate(0, VK_WHOLE_SIZE);
 }
 
 void vulkan_buffer::set_info(const vk::BufferMemoryBarrier2& _barrier)

@@ -16,8 +16,9 @@ public:
                 const vk::raii::Device&     _device,
                 const vk::ImageCreateInfo&  _image_info,
                 vk::ImageViewCreateInfo&    _imageview_info,
-                vk::MemoryPropertyFlags     _properties,
-                const vk::ClearValue&       _clear_value);
+                vma::MemoryUsage            _usage,
+                const vk::ClearValue&       _clear_value,
+                const std::string&          _name = "");
 
     void set_info(const vk::ImageMemoryBarrier2& _barrier);
 

@@ -25,8 +25,13 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
     pick_depth_format();
 
     allocator = vma::raii::Allocator(instance, *device,
-                                     vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, *physical_device,
-                                                              {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
+                                     vma::AllocatorCreateInfo(
+#ifndef NDEBUG
+                                         vma::AllocatorCreateFlagBits::eBufferDeviceAddress | vma::AllocatorCreateFlagBits::eExtMemoryBudget,
+#else
+                                         vma::AllocatorCreateFlagBits::eBufferDeviceAddress,
+#endif  // !NDEBUG
+                                         *physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
 
     graphic_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eGraphics));
     transfer_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eTransfer));
@@ -268,7 +273,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     {
         required_instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
     }
-#endif  // NDEBUG
+#endif  // !NDEBUG
 
     const auto extension_properties = context.enumerateInstanceExtensionProperties();
     for (const auto& required_extension : required_instance_extensions)
@@ -288,7 +293,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     {
         required_instance_extensions.push_back(vk::EXTDebugUtilsExtensionName);
     }
-#endif  // NDEBUG
+#endif  // !NDEBUG
 
     const vk::InstanceCreateInfo instance_create_info(_flags, &app_info, required_instance_layers,
                                                       required_instance_extensions, nullptr);
@@ -303,7 +308,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
                                                                    | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
     const vk::DebugUtilsMessengerCreateInfoEXT debug_messenger_create_info({}, severity_flags, message_type_flags, &debug_callback);
     debug_messenger = instance.createDebugUtilsMessengerEXT(debug_messenger_create_info);
-#endif  // NDEBUG
+#endif  // !NDEBUG
 }
 
 uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _surface)
@@ -417,7 +422,7 @@ void vulkan_application::create_pipeline()
             commandbuffer.add_waited_info({vulkan_common::upload_buffer(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, ocio_ubo,
                 vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer,
-                buffer)});
+                buffer, "ocio_ubo")});
 
             bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eUniformBuffer,
                                                                  1, vk::ShaderStageFlagBits::eFragment, nullptr));
@@ -488,7 +493,7 @@ void vulkan_application::create_pipeline()
                 vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge,
                 vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, 0.f, vk::False, 1.f,
                 vk::False, vk::CompareOp::eAlways, 0.f, 0.f, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-            ocio_samplers.push_back(std::move(vk::raii::Sampler(*device, sampler_info)));
+            ocio_samplers.emplace_back(vk::raii::Sampler(*device, sampler_info));
 
             const size_t binding_idx = static_cast<size_t>(shader_desc->getTextureShaderBindingIndex(i));
             if (binding_idx == 0)
@@ -537,7 +542,8 @@ void vulkan_application::create_pipeline()
             commandbuffer.add_waited_info({vulkan_common::upload_image(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e3D,
                 vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), image,
-                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())), {})});
+                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
+                {}, "ocio_lut")});
             ocio_images.push_back(std::move(image));
 
             vk::SamplerCreateInfo sampler_info(
@@ -625,4 +631,4 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL vulkan_application::debug_callback(vk::DebugUti
     }
     return vk::False;
 }
-#endif  // NDEBUG
+#endif  // !NDEBUG

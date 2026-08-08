@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="chinese-chess/chinese-chess.vcxproj" Id="06fd0e51-5e6a-4f58-b529-4e04e24b2ac3" />
-</Solution>

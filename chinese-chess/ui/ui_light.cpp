@@ -1,5 +1,7 @@
 #include "ui_light.h"
 
+#include "scene/scene_manager.h"
+
 #include <glm/gtc/type_ptr.hpp>
 
 
@@ -23,8 +25,11 @@ constexpr std::string_view LIGHT_OUTER_CONE  = "外锥角";
 ui_light::ui_light(scene_manager& _manager)
     : manager(_manager)
 {
-    auto light = manager.create<directional_light>();
-    *light = directional_light{.color = glm::vec3(1.0f, 0.95f, 0.85f), .intensity = 5.f, .direction = glm::vec3(1.f, 1.f, 10.f)};
+    auto light = manager.create<scene_light>();
+    *light     = scene_light{.active_type = light_type::directional,
+                             .color       = glm::vec3(1.0f, 0.95f, 0.85f),
+                             .intensity   = 5.f,
+                             .direction   = glm::vec3(1.f, 1.f, 10.f)};
     lights.push_back(std::move(light));
 }
 
@@ -39,20 +44,9 @@ void ui_light::update()
 
     if (ImGui::Button(ADD_LIGHT.data()))
     {
-        switch (add_light_type)
-        {
-            case 0:
-                lights.push_back(manager.create<std::variant_alternative_t<0u, scene_light>>());
-                break;
-            case 1:
-                lights.push_back(manager.create<std::variant_alternative_t<1u, scene_light>>());
-                break;
-            case 2:
-                lights.push_back(manager.create<std::variant_alternative_t<2u, scene_light>>());
-                break;
-            default:
-                break;
-        }
+        auto light         = manager.create<scene_light>();
+        light->active_type = static_cast<light_type>(add_light_type);
+        lights.push_back(std::move(light));
     }
 
     std::optional<size_t> delete_index = std::nullopt;
@@ -60,62 +54,62 @@ void ui_light::update()
     {
         ImGui::PushID(static_cast<int>(i));
 
-        std::visit(
-            [&](auto& light_data) {
-                using T = std::decay_t<decltype(light_data)>;
+        auto& light_ptr = lights.at(i);
 
-                std::string header_label;
-                if constexpr (std::is_same_v<T, directional_light>)
-                {
-                    header_label = std::format("{} {}", DIRECTIONAL_LIGHT.data(), i);
-                }
-                else if constexpr (std::is_same_v<T, point_light>)
-                {
-                    header_label = std::format("{} {}", POINT_LIGHT.data(), i);
-                }
-                else if constexpr (std::is_same_v<T, spot_light>)
-                {
-                    header_label = std::format("{} {}", SPOT_LIGHT.data(), i);
-                }
+        std::string header_label;
+        switch (light_ptr->active_type)
+        {
+            case light_type::directional:
+                header_label = std::format("{} {}", DIRECTIONAL_LIGHT.data(), i);
+                break;
+            case light_type::point:
+                header_label = std::format("{} {}", POINT_LIGHT.data(), i);
+                break;
+            case light_type::spot:
+                header_label = std::format("{} {}", SPOT_LIGHT.data(), i);
+                break;
+            default:
+                std::unreachable();
+        }
 
-                bool modified = false;
-                if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
-                {
-                    modified |= ImGui::ColorEdit3(LIGHT_COLOR.data(), glm::value_ptr(light_data.color));
-                    modified |= ImGui::DragFloat(LIGHT_INTENSITY.data(), &light_data.intensity, 0.1f, 0.0f, 100.0f);
+        bool modified = false;
+        if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
+        {
+            modified |= ImGui::ColorEdit3(LIGHT_COLOR.data(), glm::value_ptr(light_ptr->color));
+            modified |= ImGui::DragFloat(LIGHT_INTENSITY.data(), &light_ptr->intensity, 0.1f, 0.0f, 100.0f);
 
-                    if constexpr (std::is_same_v<T, directional_light>)
-                    {
-                        modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_data.direction), 0.01f);
-                    }
-                    else if constexpr (std::is_same_v<T, point_light>)
-                    {
-                        modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_data.position), 0.1f);
-                        modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_data.range, 0.1f, 0.1f, 1000.0f);
-                    }
-                    else if constexpr (std::is_same_v<T, spot_light>)
-                    {
-                        modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_data.direction), 0.01f);
-                        modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_data.position), 0.1f);
-                        modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_data.range, 0.1f, 0.1f, 1000.0f);
-                        modified |= ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_data.inner_cone_angle,
-                                                       glm::radians(1.0f), glm::radians(light_data.outer_cone_angle));
-                        modified |= ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_data.outer_cone_angle,
-                                                       glm::radians(light_data.inner_cone_angle), glm::radians(90.0f));
-                    }
+            switch (light_ptr->active_type)
+            {
+                case light_type::directional:
+                    modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_ptr->direction), 0.01f);
+                    break;
+                case light_type::point:
+                    modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_ptr->position), 0.1f);
+                    modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_ptr->range, 0.1f, 0.1f, 1000.0f);
+                    break;
+                case light_type::spot:
+                    modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_ptr->direction), 0.01f);
+                    modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_ptr->position), 0.1f);
+                    modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_ptr->range, 0.1f, 0.1f, 1000.0f);
+                    modified |= ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_ptr->inner_cone_angle,
+                                                   glm::radians(1.0f), glm::radians(light_ptr->outer_cone_angle));
+                    modified |= ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_ptr->outer_cone_angle,
+                                                   glm::radians(light_ptr->inner_cone_angle), glm::radians(90.0f));
+                    break;
+                default:
+                    std::unreachable();
+            }
 
-                    if (modified)
-                    {
-                        manager.need_update();
-                    }
+            if (modified)
+            {
+                manager.need_update();
+            }
 
-                    if (ImGui::Button(DELETE_LIGHT.data()))
-                    {
-                        delete_index = i;
-                    }
-                }
-            },
-            *lights.at(i));
+            if (ImGui::Button(DELETE_LIGHT.data()))
+            {
+                delete_index = i;
+            }
+        }
 
         ImGui::PopID();
     }

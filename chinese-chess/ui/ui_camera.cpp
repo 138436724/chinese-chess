@@ -1,5 +1,7 @@
 #include "ui_camera.h"
 
+#include "scene/scene_manager.h"
+
 #include <glm/gtc/type_ptr.hpp>
 
 

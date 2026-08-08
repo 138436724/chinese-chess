@@ -1,12 +1,17 @@
 #pragma once
 
-#include "scene_material_manager.h"
 #include "scene_model.h"
+#include "vulkan_core/vulkan_buffer.h"
 
 #include <filesystem>
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
+class vulkan_recycle_bin;
+class vulkan_semaphore;
+class vulkan_queue;
+class scene_material_manager;
 
 class scene_model_manager
 {

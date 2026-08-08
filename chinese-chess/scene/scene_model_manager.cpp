@@ -1,6 +1,10 @@
 #include "scene_model_manager.h"
 
+#include "scene_material_manager.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_queue.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <algorithm>
 #include <ranges>
@@ -145,7 +149,7 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vertices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            staging_vertex));
+            staging_vertex, "model_vertex"));
 
 
         // recreate index buffer
@@ -166,7 +170,7 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, indices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            staging_index));
+            staging_index, "model_index"));
 
 
         // update blas todo use compute_queue build
@@ -225,7 +229,8 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
-            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()))});
+            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
+            "tlas_instance")});
 
 
         auto scratch_buffer = tlas.create_top_level_acceleration_structure(
@@ -264,7 +269,8 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, draw_commands,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             std::span(reinterpret_cast<const uint8_t*>(all_draw_commands.data()),
-                      sizeof(all_draw_commands.front()) * all_draw_commands.size())));
+                      sizeof(all_draw_commands.front()) * all_draw_commands.size()),
+            "draw_commands"));
     }
 }
 
@@ -289,6 +295,7 @@ void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            std::span(reinterpret_cast<const uint8_t*>(models_ssbo.data()), sizeof(models_ssbo.front()) * models_ssbo.size())));
+            std::span(reinterpret_cast<const uint8_t*>(models_ssbo.data()), sizeof(models_ssbo.front()) * models_ssbo.size()),
+            "model_ssbo"));
     }
 }

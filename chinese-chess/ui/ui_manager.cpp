@@ -1,6 +1,12 @@
 #include "ui_manager.h"
 
+#include "scene/scene_manager.h"
 #include "tools/font_loader.h"
+#include "ui_camera.h"
+#include "ui_light.h"
+#include "ui_node.h"
+#include "ui_record.h"
+#include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_common.h"
 
 #include <imgui_impl_glfw.h>
@@ -98,7 +104,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
-                         vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+                         vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
     // msaa color
     recycle_bin.retire(std::move(color_image), "ui old color image.");
@@ -108,7 +114,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     color_image.create(app.get_allocator(), *app.get_device(), color_image_info, color_view_info,
-                       vk::MemoryPropertyFlagBits::eDeviceLocal, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+                       vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 
     std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });

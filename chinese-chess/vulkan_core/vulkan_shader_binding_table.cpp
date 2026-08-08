@@ -90,13 +90,13 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
                                            vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst
                                                | vk::BufferUsageFlagBits::eShaderDeviceAddress,
                                            vk::SharingMode::eExclusive, 1, &_queue),
-                      vk::MemoryPropertyFlagBits::eDeviceLocal);
+                      vma::MemoryUsage::eGpuOnly, "sbt");
 
     vulkan_buffer staging_buffer;
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, 1, &_queue),
-                          vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                          vma::MemoryUsage::eCpuToGpu, "sbt_staging");
 
     const std::vector<uint8_t> shader_handles =
         _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);
@@ -107,6 +107,8 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     const std::array offsets = {raygen_offset, miss_primary_offset, miss_shadow_offset, hit_primary_offset, hit_shadow_offset};
     for (auto [group_index, offset] : offsets | std::views::enumerate | std::views::take(_group_count))
         memcpy(buffer_address + offset, shader_handles.data() + group_index * handle_size, handle_size);
+
+    staging_buffer.flush();
 
     // Create StridedDeviceAddressRegion for each Vulkan SBT region
     // raygen: single group at raygen_offset, stride = raygen_entry_size (size of 1 entry)

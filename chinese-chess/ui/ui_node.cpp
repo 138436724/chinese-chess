@@ -1,5 +1,7 @@
 #include "ui_node.h"
 
+#include "scene/scene_manager.h"
+
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <ranges>

@@ -1,9 +1,11 @@
 #pragma once
 
-#include "scene/scene_manager.h"
+#include "scene/scene_camera.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>
+
+class scene_manager;
 
 class ui_camera
 {

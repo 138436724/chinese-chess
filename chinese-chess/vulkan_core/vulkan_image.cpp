@@ -34,8 +34,9 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
                           const vk::raii::Device&     _device,
                           const vk::ImageCreateInfo&  _image_info,
                           vk::ImageViewCreateInfo&    _imageview_info,
-                          vk::MemoryPropertyFlags     _properties,
-                          const vk::ClearValue&       _clear_value)
+                          vma::MemoryUsage            _usage,
+                          const vk::ClearValue&       _clear_value,
+                          const std::string&          _name)
 {
     if (_image_info.format != _imageview_info.format || _image_info.arrayLayers != _imageview_info.subresourceRange.layerCount)
     {
@@ -53,25 +54,22 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
     queue = *_image_info.pQueueFamilyIndices;
 
     vma::AllocationCreateInfo create_info{};
-    if (_properties & vk::MemoryPropertyFlagBits::eHostVisible)
-    {
-        create_info
-            .setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped)
-            .setUsage(vma::MemoryUsage::eAutoPreferHost);
-    }
-    else if (_properties & vk::MemoryPropertyFlagBits::eDeviceLocal)
-    {
-        create_info.setUsage(vma::MemoryUsage::eGpuOnly);
-    }
-    else
-    {
-        create_info.setUsage(vma::MemoryUsage::eAuto);
-    }
+    create_info.setUsage(_usage);
 
     image = _allocator.createImage(_image_info, create_info);
 
     _imageview_info.image = image;
     imageview             = vk::raii::ImageView(_device, _imageview_info, _allocator.getAllocationCallbacks());
+
+#ifndef NDEBUG
+    _device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(
+        image.objectType, reinterpret_cast<uint64_t>(static_cast<VkImage>(*image)), std::format("Image{}", _name).c_str()));
+    _device.setDebugUtilsObjectNameEXT(
+        vk::DebugUtilsObjectNameInfoEXT(imageview.objectType, reinterpret_cast<uint64_t>(static_cast<VkImageView>(*imageview)),
+                                        std::format("ImageView{}", _name).c_str()));
+#else
+    (void)_name;
+#endif  // !NDEBUG
 }
 
 void vulkan_image::set_info(const vk::ImageMemoryBarrier2& _barrier)

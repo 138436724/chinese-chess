@@ -33,7 +33,7 @@ template <typename new_string_class, typename old_string_class>
 
     if constexpr (std::same_as<old_string_class, std::string>)
     {
-        icu_string = std::move(icu::UnicodeString(_string.c_str(), static_cast<int32_t>(_string.size()), _encoding));
+        icu_string = icu::UnicodeString(_string.c_str(), static_cast<int32_t>(_string.size()), _encoding);
     }
     else if constexpr (std::same_as<old_string_class, std::u8string>)
     {

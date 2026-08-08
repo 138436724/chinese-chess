@@ -1,8 +1,12 @@
 #pragma once
 
-#include "scene/scene_manager.h"
+#include "scene/scene_light.h"
 
 #include <imgui.h>
+#include <memory>
+#include <vector>
+
+class scene_manager;
 
 class ui_light
 {
