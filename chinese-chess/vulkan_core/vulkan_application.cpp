@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <expected>
 #include <format>
 #include <print>
 #include <ranges>
@@ -392,8 +393,8 @@ void vulkan_application::create_pipeline()
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
     };
 
-    std::vector<char>        spirv_code;
-    OCIO::GpuShaderDescRcPtr shader_desc = nullptr;
+    std::expected<std::vector<char>, std::string> spirv_code;
+    OCIO::GpuShaderDescRcPtr                      shader_desc = nullptr;
 
     if constexpr (vulkan_common::USE_OCIO)
     {
@@ -407,9 +408,9 @@ void vulkan_application::create_pipeline()
                                                            {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
     }
 
-    if (spirv_code.empty())
+    if (!spirv_code)
     {
-        throw std::runtime_error("compile .spv failed!");
+        throw std::runtime_error(spirv_code.error());
     }
 
     if constexpr (vulkan_common::USE_OCIO)
@@ -572,9 +573,9 @@ void vulkan_application::create_pipeline()
         }
     }
 
-    const vk::raii::ShaderModule shaderModule(*device,
-                                              vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char),
-                                                                         reinterpret_cast<const uint32_t*>(spirv_code.data())));
+    const vk::raii::ShaderModule shaderModule(
+        *device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
+                                            reinterpret_cast<const uint32_t*>(spirv_code->data())));
     const std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTRY_NAME.data()),
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTRY_NAME.data()),
@@ -612,7 +613,7 @@ void vulkan_application::pick_depth_format() const
 
     if (!depth_format)
     {
-        throw std::runtime_error("No supported depth format found!");
+        throw std::runtime_error(depth_format.error());
     }
 
     vulkan_common::DEPTH_FORMAT = *depth_format;

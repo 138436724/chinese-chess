@@ -59,8 +59,12 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
         std::views::zip(std::wstring_view(L"帥仕相傌俥炮兵"), std::u16string_view(u"帥仕相傌俥炮兵")), [this](const auto& _pair) {
             const auto& [chw, chu]           = _pair;
             auto piece_material              = manager.create<scene_material>();
-            piece_material->background_color = glm::vec3(1.0, 0.85, 0.75);
-            piece_material->foreground_color = glm::vec3(0.6, 0.1, 0.1);
+            piece_material->background_color = glm::vec3(0.95f, 0.92f, 0.85f);
+            piece_material->foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
+            piece_material->roughness        = 0.3f;
+            piece_material->opacity          = 0.8f;
+            piece_material->ior              = 1.5f;
+            piece_material->transmission     = 1.0f;
 
             auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
@@ -73,8 +77,12 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
         std::views::zip(std::wstring_view(L"將士象馬車砲卒"), std::u16string_view(u"將士象馬車砲卒")), [this](const auto& _pair) {
             const auto& [chw, chu]           = _pair;
             auto piece_material              = manager.create<scene_material>();
-            piece_material->background_color = glm::vec3(0.85, 0.75, 0.65);
-            piece_material->foreground_color = glm::vec3(0.1, 0.1, 0.1);
+            piece_material->background_color = glm::vec3(0.15f, 0.45f, 0.32f);
+            piece_material->foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
+            piece_material->roughness        = 0.3f;
+            piece_material->opacity          = 0.8f;
+            piece_material->ior              = 1.5f;
+            piece_material->transmission     = 1.0f;
 
             auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                            static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));

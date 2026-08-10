@@ -13,4 +13,7 @@ struct scene_material
     std::shared_ptr<scene_image> alpha_map        = nullptr;
     float                        roughness        = 0.5f;
     float                        metallic         = 0.0f;
+    float                        opacity          = 1.0f;
+    float                        ior              = 1.5f;
+    float                        transmission     = 0.0f;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <expected>
 #include <filesystem>
 #include <slang-com-ptr.h>
 #include <slang.h>
@@ -20,10 +21,10 @@ constexpr std::string_view SHADERS_PATH                  = "resources\\shaders\\
 class shader_compiler
 {
 public:
-    [[nodiscard]] std::vector<char>       compile_shader_to_spv(const std::filesystem::path&         _shader_path,
-                                                                const std::vector<std::string_view>& _entry_name) const;
-    [[nodiscard]] std::vector<char>       compile_shader_to_spv(const std::string&                   _shader_string,
-                                                                const std::vector<std::string_view>& _entry_name) const;
+    [[nodiscard]] std::expected<std::vector<char>, std::string> compile_shader_to_spv(const std::filesystem::path& _shader_path,
+                                                                                      const std::vector<std::string_view>& _entry_name) const;
+    [[nodiscard]] std::expected<std::vector<char>, std::string> compile_shader_to_spv(const std::string& _shader_string,
+                                                                                      const std::vector<std::string_view>& _entry_name) const;
     [[nodiscard]] static shader_compiler& get_shader_compiler() noexcept;
 
 private:
@@ -34,19 +35,18 @@ private:
     shader_compiler(shader_compiler&&)                 = delete;
     shader_compiler& operator=(shader_compiler&&)      = delete;
 
+    [[nodiscard]] static inline std::string get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept;
     static void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept;
     void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Slang::ComPtr<slang::IComponentType>& _composed_program) const;
 
-    bool slang_to_slang_module(const slang::SessionDesc&            _session_desc,
-                               const std::string&                   _shader_string,
-                               bool                                 _as_shader_name,
-                               const std::vector<std::string_view>& _entry_name,
-                               slang::IBlob**                       _spirv_code) const;
-    bool slang_module_to_spv(Slang::ComPtr<slang::ISession>&      _session,
-                             Slang::ComPtr<slang::IBlob>&         _diagnostics_blob,
-                             Slang::ComPtr<slang::IModule>&       _slang_module,
-                             const std::vector<std::string_view>& _entry_name,
-                             slang::IBlob**                       _spirv_code) const;
+    std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_to_slang_module(const slang::SessionDesc& _session_desc,
+                                                                                  const std::string& _shader_string,
+                                                                                  bool               _as_shader_name,
+                                                                                  const std::vector<std::string_view>& _entry_name) const;
+    std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session,
+                                                                                Slang::ComPtr<slang::IBlob>& _diagnostics_blob,
+                                                                                Slang::ComPtr<slang::IModule>& _slang_module,
+                                                                                const std::vector<std::string_view>& _entry_name) const;
 
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;

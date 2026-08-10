@@ -8,6 +8,7 @@
 #include <Imath/half.h>
 #include <OpenColorIO/OpenColorIO.h>
 #include <OpenColorIO/OpenColorTypes.h>
+#include <expected>
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -25,10 +26,10 @@ namespace OCIO = OCIO_NAMESPACE;
 namespace ocio_helper {
 
 [[nodiscard]] OCIO::GpuShaderDescRcPtr generate_shader_info(const std::filesystem::path& _ocio_path);
-[[nodiscard]] std::vector<char>        replace_and_compile(const OCIO::GpuShaderDescRcPtr&      _shader_desc,
-                                                           const std::filesystem::path&         _shader_path,
-                                                           const std::vector<std::string_view>& _entry_name);
-[[nodiscard]] std::vector<uint8_t>     get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc);
+[[nodiscard]] std::expected<std::vector<char>, std::string> replace_and_compile(const OCIO::GpuShaderDescRcPtr& _shader_desc,
+                                                                                const std::filesystem::path& _shader_path,
+                                                                                const std::vector<std::string_view>& _entry_name);
+[[nodiscard]] std::vector<uint8_t> get_uniform_buffer_data(const OCIO::GpuShaderDescRcPtr& _shader_desc);
 
 template <typename T>
     requires(std::same_as<T, uint8_t> || std::same_as<T, uint16_t> || std::same_as<T, half> || std::same_as<T, float>)

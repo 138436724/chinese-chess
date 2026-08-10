@@ -52,6 +52,7 @@ void scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
 void scene_light_manager::clear() noexcept
 {
     lights.clear();
+    recycle_bin.retire(std::move(ssbo), "scene light manager clear ssbo.");
 }
 
 const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept

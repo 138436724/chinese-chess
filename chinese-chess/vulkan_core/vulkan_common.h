@@ -1,10 +1,12 @@
 #pragma once
 
+#include <expected>
+#include <format>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <optional>
 #include <ranges>
 #include <span>
+#include <string>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -21,10 +23,10 @@ inline constinit vk::Format              DEPTH_FORMAT         = vk::Format::eUnd
 inline constexpr uint32_t                MAX_FRAMES_IN_FLIGHT = 3;
 inline constexpr bool                    USE_OCIO             = true;
 
-[[nodiscard]] inline std::optional<vk::Format> find_supported_format(const vk::raii::PhysicalDevice& _physical_device,
-                                                                     const std::vector<vk::Format>&  _candidates,
-                                                                     vk::ImageTiling                 _tiling,
-                                                                     vk::FormatFeatureFlags          _features) noexcept
+[[nodiscard]] inline std::expected<vk::Format, std::string> find_supported_format(const vk::raii::PhysicalDevice& _physical_device,
+                                                                                  const std::vector<vk::Format>& _candidates,
+                                                                                  vk::ImageTiling _tiling,
+                                                                                  vk::FormatFeatureFlags _features) noexcept
 {
     auto format_iter = std::ranges::find_if(_candidates, [&](const auto& format) {
         vk::FormatProperties props = _physical_device.getFormatProperties(format);
@@ -32,7 +34,14 @@ inline constexpr bool                    USE_OCIO             = true;
                || (_tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & _features) == _features);
     });
 
-    return format_iter == _candidates.end() ? std::nullopt : std::optional<vk::Format>(*format_iter);
+    if (format_iter == _candidates.end()) [[unlikely]]
+    {
+        std::string result = _candidates
+                             | std::views::transform([](const auto& _format) { return vk::to_string(_format); })
+                             | std::views::join_with(',') | std::ranges::to<std::string>();
+        return std::unexpected(std::format("No supported format among candidates: {}", result));
+    }
+    return *format_iter;
 }
 
 [[nodiscard]] inline constexpr auto align_up(const auto value, const size_t alignment) noexcept

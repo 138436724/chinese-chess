@@ -230,11 +230,11 @@ chinese-chess/
 ├── scene/            (10 个类)      # 场景管理
 │   ├── scene_manager                # 场景编排器：双管线管理、脏检查、F5 热重载、save_image
 │   ├── scene_model                  # 模型（BLAS 实例、变换矩阵、is_show 可见性、材质引用）
-│   ├── scene_material               # PBR 材质（双色混合 + 粗糙度 + 金属度 + Alpha 贴图）
+│   ├── scene_material               # PBR 材质（双色混合 + 粗糙度 + 金属度 + Alpha 贴图 + 透射参数 opacity/ior/transmission）
 │   ├── scene_light                  # 光源（扁平结构体，light_type 区分方向光/点光源/聚光灯）
 │   ├── scene_camera                 # 透视/正交相机 + 缓存逆矩阵
 │   ├── scene_model_manager          # 顶点/索引缓冲、BLAS/TLAS、间接绘制命令、模型 SSBO
-│   ├── scene_material_manager       # 材质/纹理生命周期、纹理索引、材质 SSBO、字形图集上传
+│   ├── scene_material               # PBR 材质（双色混合 + 粗糙度 + 金属度 + Alpha 贴图 + 透射参数 opacity/ior/transmission）
 │   ├── scene_light_manager          # 灯光生命周期 + 灯光 SSBO
 │   ├── scene_rasterization_render   # 前向 MSAA 渲染：间接绘制、动态渲染、is_show 支持
 │   └── scene_raytracing_render      # 路径追踪：TLAS 引用、push constant 累积参数
@@ -246,8 +246,8 @@ chinese-chess/
 │   ├── ui_node                      # 材质 + 物体管理面板（含贴图/模型文件选择）
 │   └── ui_record                    # 棋谱加载与逐步回放（ICU4C 正则解析，WASD 键导航）
 ├── tools/            (9 个类)       # 工具与加载器
-│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（.spv 缓存 + SHA-256 增量编译）
-│   ├── model_loader                 # glTF/GLB 模型加载 (fastgltf)，consteval 顶点属性描述
+│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（.spv 缓存 + SHA-256；std::expected 返回，失败带 Slang 诊断）
+│   ├── model_loader                 # glTF/GLB 模型加载 (fastgltf)，std::expected<model_data, load_error>，consteval 顶点属性描述
 │   ├── image_helper                 # 图像读写 PNG/EXR/HDR (OpenImageIO)
 │   ├── ocio_helper                  # OpenColorIO：GPU shader 生成/替换编译、LUT+UBO 上传、CPU 变换
 │   ├── font_loader                  # FreeType 字形栅格化（逐字符 glyph 信息）
@@ -338,18 +338,20 @@ chinese-chess/
 
 蒙特卡洛路径追踪器（当前实现）：
 
-- **NEE（Next Event Estimation）**：每个命中点对所有光源执行直接光照采样（方向光/点光源/聚光灯均为 delta 分布）
-- **直接光照 BRDF**：`diffuse = (1-kS)·(1-metallic)·albedo/π`（Lambertian）+ `specular = evaluate_ggx(...)`（Trowbridge-Reitz NDF + Smith 几何 + Fresnel-Schlick）
-- **间接弹射**：Lambertian 余弦加权半球采样，吞吐量累计（`throughput *= albedo / p_continue`）
-- **俄罗斯轮盘赌**：`p_continue = min(1, max_component(throughput·albedo))`，低于 0.05 直接截断
-- **最大弹射次数**：`MAX_BOUNCES = 8`（utils.slang）
-- **时域累积**：`t = 1/(frame_index+1)`（即 alpha = 1/(1+已累积帧数)），Wang Hash 种子按帧变化，子像素随机抖动抗锯齿
-- **阴影光线**：Any-Hit Shader + `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | SKIP_CLOSEST_HIT | CULL_BACK_FACING_TRIANGLES`
-- **天空**：`skybox_index` 有效时从 HDR 等距矩形纹理采样；否则回退默认天空色 `(0.53, 0.81, 0.98)`
-- **常量**：`MAX_BOUNCES = 8`、`MAX_LIGHTS = 64`、`SHADOW_EPSILON = 0.001`（utils.slang）
-- **预留实现**：`lighting.slang` 中的 `power_heuristic`（MIS）、GGX 重要性采样、BRDF 分派函数当前未被主循环使用
+- **NEE（Next Event Estimation）**：每个命中点对所有光源执行直接光照采样（方向光/点光源/聚光灯均为 delta 分布），阴影光线（Any-Hit + `ACCEPT_FIRST_HIT_AND_END_SEARCH | SKIP_CLOSEST_HIT | CULL_BACK_FACING_TRIANGLES`，半透明材质按 `opacity` 概率穿透），贡献按 MIS 幂启发式（`power_heuristic`）加权
+- **直接光照 BRDF**：`diffuse = (1-kS)·(1-metallic)·albedo/π`（Lambertian）+ `specular = evaluate_ggx(...)`（Trowbridge-Reitz NDF + Smith 几何 + Fresnel-Schlick）；单光源贡献带 firefly 钳制 `min(亮度(throughput)×100, 100)`
+- **恒定环境光**：`AMBIENT_LIGHT`（默认 0.25），直接光之后以 `材质色 × AMBIENT_LIGHT × (0.5 + 0.5·NdotV)` 叠加，完全阴影区域也有基础可见度
+- **间接弹射（波瓣选择）**：按概率三分支——透射（`opacity × transmission`，玉石折射 + Beer-Lambert 吸收）、GGX 镜面（VNDF 重要性采样）、Disney 漫反射；吞吐量 `×= lobe_value / (lobe_prob × p_continue)`，`MAX_THROUGHPUT = 10` 钳制
+  - 玉石透射：`absorption_density = JADE_BASE_ABSORPTION(12) + JADE_ENGRAVE_ABSORPTION(30) × texture_weight`，仅进入时衰减（`T = exp(-density × PIECE_THICKNESS)`）；`texture_weight`（字符 alpha 权重）随 `HitPayload` 透传，刻字区更暗更实
+- **高度雾**：解析指数雾（`evaluate_height_fog`），命中点弹射段与 miss 无穷远处均应用，含太阳散射
+- **俄罗斯轮盘赌 / 最大弹射**：`p_continue = min(1, 亮度(throughput))`，低于 0.05 截断；`MAX_BOUNCES = 8`
+- **时域累积**：`t = 1/(frame_index+1)`，Wang Hash 种子按帧变化，子像素随机抖动抗锯齿；新采样亮度超已累积均值 4 倍时做 firefly 钳制
+- **天空**：`skybox_index` 有效时从 HDR 等距矩形纹理采样，过暗回退程序化渐变天空；应用高度雾
+- **玉石棋子**：红方白玉 `(0.95, 0.92, 0.85)` + 深红刻字，黑方青玉 `(0.15, 0.45, 0.32)` + 墨绿刻字；`opacity=0.8, ior=1.5, transmission=1.0, roughness=0.3`，材质面板可调（不透明度/折射率/透射强度滑条）
+- **常量**：`MAX_BOUNCES = 8`、`MAX_LIGHTS = 64`、`SHADOW_EPSILON = 0.001`（common.slang）
+- 主循环未使用：BRDF LUT（`scene_brdflut.slang`，遗留）、`sample_hemisphere_uniform`、`evaluate_brdf`/`sample_brdf` 分派辅助函数
 
-> 注：历史版本中的 Disney Diffuse、波瓣选择、高度雾、Firefly 多级钳制、BRDF LUT 引用等已不在当前路径追踪主循环中（`lighting.slang` 保留了部分函数定义）。
+
 
 ### 其他着色器
 
@@ -371,21 +373,22 @@ chinese-chess/
 | 着色器 | 管线 | 入口点 | 状态 / 功能 |
 |--------|------|--------|------|
 | `rasterization.slang` | Graphics | `vertMain`, `fragMain` | 使用中：前向 MSAA，Bindless 纹理，间接绘制（法线已注释） |
-| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + Lambertian 间接 + 俄罗斯轮盘赌 + 时域累积 + HDR 天空） |
-| `lighting.slang` | (module) | — | 使用中：光源采样、Lambertian/GGX BRDF、阴影光线、天空采样；MIS power heuristic 为预留实现 |
-| `utils.slang` | (module) | — | 使用中：Wang Hash RNG、随机数、重心插值、共享常量 |
+| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + MIS、GGX/Disney 波瓣选择、玉石透射、高度雾、恒定环境光、俄罗斯轮盘赌、时域累积、HDR 天空） |
+| `lighting.slang` | (module) | — | 使用中：光源采样、Lambertian/Disney/GGX BRDF、阴影光线、MIS power heuristic、天空采样、高度雾 |
+| `common.slang` | (module) | — | 使用中：常量、Wang Hash RNG、随机数、数学/颜色工具、切线空间、Hammersley 序列、全屏三角形 |
+| `scene_data.slang` | (module) | — | 使用中：Vertex / model_data / material_data / light_data / push constant 结构（与 C++ 对齐） |
 | `blend_image.slang` | Graphics | `vertMain`, `fragMain` | 使用中：场景+UI Alpha 合成；`ocio_conversion()` 编译期被 OCIO 代码替换 |
 | `scene_skybox.slang` | Graphics | `vertMain`, `fragMain` | 遗留：HDR 立方体贴图 + Uncharted 2 色调映射（未被引用） |
 | `scene_brdflut.slang` | Graphics | `vertMain`, `fragMain` | 遗留：BRDF 积分 LUT（Hammersley + GGX 重要性采样，Sascha Willems 示例，未被引用） |
 | `scene_cubemap.slang` | Graphics | `vertMain`, `fragMain` | 遗留：等距矩形→6 面立方体贴图（MRT，未被引用） |
 
 着色器依赖关系：
+```
+common.slang ← scene_data.slang ← lighting.slang ← ray_tracing.slang
+blend_image.slang / rasterization.slang 使用 common / scene_data 模块
+scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
+```
 
-```
-utils.slang  ←  lighting.slang  ←  ray_tracing.slang
-blend_image.slang / rasterization.slang 为独立模块（blend_image 编译期注入 OCIO 代码）
-scene_skybox / scene_brdflut / scene_cubemap 为独立遗留模块
-```
 
 着色器使用 **Slang** 编译为 SPIR-V（`spirv_1_4` target，最大优化级别），运行时编译并缓存 `.spv` 文件（SHA-256 判定是否重新编译）。入口点名称定义在 `tools/shader_compiler.h` 中。
 
@@ -414,12 +417,12 @@ scene_skybox / scene_brdflut / scene_cubemap 为独立遗留模块
 
 ## 已知问题
 
-以下问题基于 2026-08-08 本地工作区源码验证（含未提交的 CMake 迁移与 scene_light 扁平结构体重构）。详细清单见 `CLAUDE.md` Known Issues 一节。
+以下问题基于 2026-08-09 本地工作区源码验证（含 std::expected 改造、玉石透射、环境光等近期改动）。详细清单见 `CLAUDE.md` Known Issues 一节。
 
 ### 正确性
 
 1. **光追 Push Constant 超限**（`scene_raytracing_render.h:46-53`）：push_constant 结构体 152 字节（2×mat4 + alignas(16) uint + 2×uint），超过规范保证最小值 128；未查询 `maxPushConstantsSize`，部分 GPU 可能异常。
-2. **光栅化缺少 texture_index 守卫**（`rasterization.slang` fragMain）：仅守卫 `material_index`，无纹理材质会以 0xFFFFFFFF 索引 bindless 数组；RT 路径已守卫。描述符布局未启用 `ePartiallyBound`，未填充槽位技术上未定义。
+2. ~~光栅化缺少 texture_index 守卫~~（已修复 2026-08-09：rasterization.slang 现同时守卫 material_index 与 texture_index）；描述符布局仍未启用 ePartiallyBound，未填充槽位技术上未定义。
 3. **F5 热重载遇编译错误直接终止**（`scene_manager.cpp:151`）：先回收旧渲染器再构造新的，着色器编译失败抛异常 → `std::terminate`，旧管线也已不可恢复。
 4. **OCIO GPU 合成绑定序错位**：管线布局为 [scene, ui, sampler, UBO, 纹理对...]，而 `bind_image()` 按 [scene, ui, sampler, 纹理对..., UBO] 顺序写入描述符 → 自 binding 3 起 UBO/纹理全部错位。OCIO 函数体替换（`replace_and_compile`）与 LUT/UBO 上传均已实现，但因绑定错位 GPU 变换实际不可用；debug callback 仅打印，未过滤相关验证错误。
 5. **删除全部灯光后写入空描述符**：light manager 仅在非空时重建 SSBO，而 RT 描述符无条件写入 → 无灯光时写入空缓冲（`nullDescriptor` 未启用）。
@@ -432,7 +435,7 @@ scene_skybox / scene_brdflut / scene_cubemap 为独立遗留模块
 - 管理器更新时无条件 retire 并重建 SSBO/TLAS/间接绘制缓冲（仅当对应集合非空时才重新上传）；
 - BLAS/TLAS 构建计划迁移到计算队列（源码 TODO；TLAS 构建需要 VK_QUEUE_COMPUTE_BIT）；
 - `save_image` 中布局转换应在所有权转移后在目标队列执行（源码 TODO）；
-- **遗留/未使用着色器**：`scene_skybox.slang`、`scene_brdflut.slang`、`scene_cubemap.slang` 未被 C++ 引用；`ray_tracing.slang` 仍本地定义 `sample_cosine_hemisphere`/`max_component`，`scene_brdflut`/`scene_cubemap` 未 import `utils` —— 此前的"着色器代码收敛"声明与当前源码不符；
+- **遗留/未使用着色器**：scene_skybox.slang / scene_brdflut.slang / scene_cubemap.slang 未被 C++ 引用（保留待复用）；已消除重复：ray_tracing.slang 不再本地定义工具函数，三个遗留模块与全部入口着色器统一 import common / scene_data / lighting；
 - `CMakeLists.txt` 未显式设置 `/utf-8`（源文件为无 BOM UTF-8），非 UTF-8 系统区域下构建需自行补充（见[构建](#构建)）；
 - CMakePresets 中的 x86 与 Linux/macOS 预设未维护，仅 Windows x64 经过测试。
 
@@ -447,7 +450,7 @@ scene_skybox / scene_brdflut / scene_cubemap 为独立遗留模块
 2026-05  光线追踪封装（加速结构创建，移除 proxy 库）；光追初步实现；SSBO 重写光追；可按棋谱移动棋子；可切换光栅化/光追；替换为立体模型并尝试路径追踪
 2026-06  重写提升可维护性；纠正矩阵乘法顺序；UI 与场景管理封装；多光源处理；灯光/摄像机 UI 封装；高光计算；物体与材质封装（proxy4 取代虚函数）；VMA 管理存储；HDR 天空采样；智能队列选择与独立命令池；时间线信号量取代栅栏并添加回收站
 2026-07  物理设备/逻辑设备封装；彻底分离传输与图像队列（时间线信号量同步，不再直接等待命令完成）；拆分单独的时间线信号量与回收站；特定条件触发 RenderDoc 抓帧；modelmanager 统一构建 TLAS 与间接绘制命令；尽量移除 u8string
-2026-08  （工作区未提交）CMake 迁移：CMakeLists.txt + CMakePresets.json 取代 .slnx/.vcxproj；新增 vcpkg 子模块；scene_light 由 std::variant 重构为扁平结构体（light_type 区分类型），manager 与 UI 同步适配；重新扫描并更新 README/CLAUDE 文档
+2026-08  （工作区未提交）CMake 迁移：CMakeLists.txt + CMakePresets.json 取代 .slnx/.vcxproj；新增 vcpkg 子模块；scene_light 由 std::variant 重构为扁平结构体；着色器全量重写（common/scene_data 模块化、去重、修复布局与 texture_index 守卫）；半透明玉石棋子（白玉/青玉 + 刻字吸收 + 材质面板透射参数）；恒定环境光；std::expected 改造（model_loader/shader_compiler/oci_helper/find_supported_format，失败携带具体原因与 Slang 诊断）；重新扫描并更新 README/CLAUDE 文档
 ```
 
 ---

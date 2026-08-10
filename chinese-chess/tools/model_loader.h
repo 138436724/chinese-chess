@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <expected>
 #include <filesystem>
 #include <glm/glm.hpp>
 #include <string_view>
@@ -77,8 +78,12 @@ struct model_vertex
 
 namespace model_loader {
 
-[[nodiscard]] bool load_model(const std::filesystem::path& _file_path,
-                              std::vector<model_vertex>&   _vertices,
-                              std::vector<uint32_t>&       _indices) noexcept;
+struct model_data
+{
+    std::vector<model_vertex> vertices;
+    std::vector<uint32_t>     indices;
+};
+
+[[nodiscard]] std::expected<model_data, std::string> load_model(const std::filesystem::path& _file_path) noexcept;
 
 }  // namespace model_loader

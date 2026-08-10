@@ -1,93 +1,88 @@
-struct VSOutput
+// ============================================================================
+// scene_cubemap.slang — 等距矩形投影 → 立方体贴图转换（Legacy，当前 C++ 未引用）
+// 将 2D 全景图渲染为 6 面立方体贴图（MRT 一次 Pass 输出 6 个面）。
+// 入口：vertMain（全屏三角形，复用 common.slang）+ fragMain（6 面输出）。
+// ============================================================================
+
+import common;
+
+struct vs_output
 {
-    float2 v_UV : TEXCOORD0;
-    float4 position : SV_POSITION;
+  float2 uv : TEXCOORD0;
+  float4 position : SV_Position;
 };
 
-struct FSOutput
+struct fs_output
 {
-    float4 outFace0;
-    float4 outFace1;
-    float4 outFace2;
-    float4 outFace3;
-    float4 outFace4;
-    float4 outFace5;
-}
-
-#define UX3D_MATH_PI 3.1415926535897932384626433832795
-#define UX3D_MATH_INV_PI (1.0 / UX3D_MATH_PI)
+  float4 face_0;
+  float4 face_1;
+  float4 face_2;
+  float4 face_3;
+  float4 face_4;
+  float4 face_5;
+};
 
 [[vk::binding(0, 0)]]
-Sampler2D uPanorama;
+Sampler2D panorama;
 
-float3 uvToXYZ(int face, float2 uv)
+// 面索引 + UV（NDC [-1,1]）→ 方向向量
+float3 face_uv_to_xyz(int face, float2 uv)
 {
-    if (face == 0)
-        return float3(1.f, uv.y, -uv.x);
-
-    else if (face == 1)
-        return float3(-1.f, uv.y, uv.x);
-
-    else if (face == 2)
-        return float3(+uv.x, -1.f, +uv.y);
-
-    else if (face == 3)
-        return float3(+uv.x, 1.f, -uv.y);
-
-    else if (face == 4)
-        return float3(+uv.x, uv.y, 1.f);
-
-    else
-    { // if(face == 5)
-        return float3(-uv.x, +uv.y, -1.f);
-    }
+  if (face == 0)
+    return float3(1.f, uv.y, -uv.x);
+  else if (face == 1)
+    return float3(-1.f, uv.y, uv.x);
+  else if (face == 2)
+    return float3(uv.x, -1.f, uv.y);
+  else if (face == 3)
+    return float3(uv.x, 1.f, -uv.y);
+  else if (face == 4)
+    return float3(uv.x, uv.y, 1.f);
+  else
+    return float3(-uv.x, uv.y, -1.f); // face == 5
 }
 
-float2 dirToUV(float3 dir)
+// 方向向量 → 等距矩形 UV
+float2 dir_to_uv(float3 dir)
 {
-    return float2(0.5f + 0.5f * atan2(dir.z, dir.x) / UX3D_MATH_PI, 1.f - acos(dir.y) / UX3D_MATH_PI);
+  return float2(0.5f + 0.5f * atan2(dir.z, dir.x) / PI, 1.f - acos(dir.y) / PI);
 }
 
 [shader("vertex")]
-VSOutput vertMain(uint VertexID: SV_VertexID)
+vs_output vertMain(uint vertex_id : SV_VertexID)
 {
-    float x = -1.0 + float((VertexID & 1) << 2);
-    float y = -1.0 + float((VertexID & 2) << 1);
-
-    VSOutput output;
-    output.v_UV = float2((x + 1.0) * 0.5, (y + 1.0) * 0.5);
-    output.position = float4(x, y, 0.0, 1.0);
-    return output;
+  vs_output output;
+  fullscreen_vs_output fs = fullscreen_triangle_vertex(vertex_id);
+  output.uv       = fs.uv;
+  output.position = fs.position;
+  return output;
 }
 
 [shader("fragment")]
-FSOutput fragMain(float2 inUV)
+fs_output fragMain(vs_output input)
 {
-    FSOutput output;
+  fs_output output;
 
-    for (int face = 0; face < 6; face++)
-    {
-        float3 scan = uvToXYZ(face, inUV * 2.0 - 1.0);
+  for (int face = 0; face < 6; face++)
+  {
+    float3 scan      = face_uv_to_xyz(face, input.uv * 2.0 - 1.0);
+    float3 direction = normalize(scan);
+    float2 src       = dir_to_uv(direction);
+    float4 color     = float4(panorama.Sample(src).rgb, 1.f);
 
-        float3 direction = normalize(scan);
+    if (face == 0)
+      output.face_0 = color;
+    else if (face == 1)
+      output.face_1 = color;
+    else if (face == 2)
+      output.face_2 = color;
+    else if (face == 3)
+      output.face_3 = color;
+    else if (face == 4)
+      output.face_4 = color;
+    else
+      output.face_5 = color;
+  }
 
-        float2 src = dirToUV(direction);
-
-        float4 color = float4(uPanorama.Sample(src).rgb, 1.f);
-
-        if (face == 0)
-            output.outFace0 = color;
-        else if (face == 1)
-            output.outFace1 = color;
-        else if (face == 2)
-            output.outFace2 = color;
-        else if (face == 3)
-            output.outFace3 = color;
-        else if (face == 4)
-            output.outFace4 = color;
-        else // if(face == 5)
-            output.outFace5 = color;
-    }
-
-    return output;
+  return output;
 }

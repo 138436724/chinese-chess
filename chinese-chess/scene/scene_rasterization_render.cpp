@@ -161,14 +161,14 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
 
     const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "rasterization.slang",
                                                                   {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
-    if (spirv_code.empty())
+    if (!spirv_code)
     {
-        throw std::runtime_error("Failed to compile .spv!");
+        throw std::runtime_error(spirv_code.error());
     }
 
-    const vk::raii::ShaderModule shaderModule(device,
-                                              vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char),
-                                                                         reinterpret_cast<const uint32_t*>(spirv_code.data())));
+    const vk::raii::ShaderModule shaderModule(
+        device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
+                                           reinterpret_cast<const uint32_t*>(spirv_code->data())));
     std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTRY_NAME.data()),
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTRY_NAME.data()),

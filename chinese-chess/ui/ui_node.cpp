@@ -18,6 +18,9 @@ constexpr std::string_view MATERIAL_BACKGROUND_COLOR = "背景色";
 constexpr std::string_view MATERIAL_FOREGROUND_COLOR = "前景色";
 constexpr std::string_view MATERIAL_ROUGHNESS        = "粗糙度";
 constexpr std::string_view MATERIAL_METALLIC         = "金属度";
+constexpr std::string_view MATERIAL_OPACITY          = "不透明度";
+constexpr std::string_view MATERIAL_IOR              = "折射率";
+constexpr std::string_view MATERIAL_TRANSMISSION     = "透射强度";
 constexpr std::string_view DELETE_MATERIAL           = "删除材质";
 constexpr std::string_view NO_MATERIAL               = "无材质";
 constexpr std::string_view ADD_IMAGE                 = "添加贴图";
@@ -122,6 +125,21 @@ void ui_node::update_material()
             }
 
             if (ImGui::DragFloat(MATERIAL_METALLIC.data(), &material_ptr->metallic, 0.01f, 0.f, 1.f))
+            {
+                manager.need_update();
+            }
+
+            if (ImGui::DragFloat(MATERIAL_OPACITY.data(), &material_ptr->opacity, 0.01f, 0.f, 1.f))
+            {
+                manager.need_update();
+            }
+
+            if (ImGui::DragFloat(MATERIAL_IOR.data(), &material_ptr->ior, 0.01f, 1.f, 3.f))
+            {
+                manager.need_update();
+            }
+
+            if (ImGui::DragFloat(MATERIAL_TRANSMISSION.data(), &material_ptr->transmission, 0.01f, 0.f, 1.f))
             {
                 manager.need_update();
             }

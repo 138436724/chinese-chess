@@ -40,16 +40,17 @@ tools/           Utilities: shader compiler, model loader, image I/O, OCIO, font
 | `vulkan_core/` | 15 pairs | `vulkan_application` (orchestrator), `vulkan_device` (RAII), `vulkan_physical_device` (C++23 `cartesian_product` QF selection), `vulkan_swapchain` (Mailbox/FIFO, per-image binary semaphores), `vulkan_buffer`/`vulkan_image` (VMA + state tracking), `vulkan_commandbuffer` (timeline semaphore integration), `vulkan_queue`, `vulkan_semaphore` (timeline + atomic CPU counter), `vulkan_recycle_bin` (deferred destroy), `vulkan_pipeline` (graphics + RT), `vulkan_descriptor` (multi-frame, variant-based writes), `vulkan_acceleration_structure` (BLAS/TLAS), `vulkan_shader_binding_table` |
 | `scene/` | 10 pairs | `scene_manager` (orchestrator, F5 hot-reload, save_image QFOT), `scene_camera`, `scene_light` (flat struct, `light_type` discriminator), `scene_material`, `scene_model` (transform+BLAS instance, `is_show`), `scene_model_manager` (vertex/index buffers, BLAS/TLAS, indirect draw commands, model SSBO), `scene_material_manager` (texture index, material SSBO, font atlases), `scene_light_manager` (light SSBO), `scene_rasterization_render` (MSAA indirect draw, bindless), `scene_raytracing_render` (path tracing, accumulation) |
 | `ui/` | 6 pairs | `ui_manager` (ImGui init/render, RT toggle), `ui_base` (`pro::proxy` facade), `ui_record` (chess notation playback), `ui_camera`, `ui_light`, `ui_node` (materials + models). NOTE: `ui_memory` no longer exists. |
-| `tools/` | 9 cpp, 10 h | `shader_compiler` (Slang→SPIR-V, .spv cache with SHA-256), `model_loader` (glTF/GLB via fastgltf), `image_helper` (OpenImageIO PNG/EXR/HDR), `ocio_helper` (OCIO shader gen + replace_and_compile + LUT/UBO upload; CPU-side `apply_on_image`), `font_loader` (FreeType), `record_loader` (ICU4C regex chess notation parser), `file_watcher` (SHA-256 hot-reload), `string_helper` (ICU charset detection), `renderdoc_capture` (v1.7.0 API, debug-only) |
+| `tools/` | 9 cpp, 10 h | `shader_compiler` (Slang→SPIR-V, .spv cache with SHA-256, returns `std::expected` + Slang diagnostics on failure), `model_loader` (glTF/GLB via fastgltf, returns `std::expected<model_data, load_error>` with `to_string`), `image_helper` (OpenImageIO PNG/EXR/HDR), `ocio_helper` (OCIO shader gen + replace_and_compile + LUT/UBO upload; CPU-side `apply_on_image`), `font_loader` (FreeType), `record_loader` (ICU4C regex chess notation parser), `file_watcher` (SHA-256 hot-reload), `string_helper` (ICU charset detection), `renderdoc_capture` (v1.7.0 API, debug-only) |
 
-## Shaders (8 Slang files in `resources/shaders/`)
+## Shaders (9 Slang files in `resources/shaders/`)
 
 | File | Pipeline | Role |
 |------|----------|------|
-| `rasterization.slang` | Graphics | Forward MSAA: bindless textures, indirect draw, model/material SSBO. NOTE: fragment does NOT guard `texture_index` (only `material_index`) — asymmetric with RT |
-| `ray_tracing.slang` | RT (5 entry points) | Path tracer: NEE for all lights (Lambertian + GGX Cook-Torrance direct), Lambertian cosine-weighted indirect bounce, Russian roulette, temporal accumulation `t=1/(frame_index+1)`, HDR equirect sky with fallback color |
-| `lighting.slang` | (module) | Light sampling (directional/point/spot), Lambertian + GGX BRDFs, shadow rays, sky sampling. `power_heuristic` (MIS) and GGX importance sampling exist but are NOT called by the current main loop |
-| `utils.slang` | (module) | Wang hash RNG, `random_float[2/3]`, generic barycentric `interpolate`, constants (`MAX_BOUNCES=8`, `MAX_LIGHTS=64`, `SHADOW_EPSILON`, `PI`, `INV_PI`) |
+| `rasterization.slang` | Graphics | Forward MSAA: bindless textures, indirect draw, model/material SSBO (uses `common` + `scene_data`). Guards both `material_index` and `texture_index` |
+| `ray_tracing.slang` | RT (5 entry points) | Path tracer: NEE + MIS direct light, GGX/Disney lobe selection, jade transmission (Beer-Lambert), height fog, ambient light, Russian roulette, temporal accumulation, HDR equirect sky with procedural fallback |
+| `lighting.slang` | (module) | Light sampling (directional/point/spot), Lambertian/Disney/GGX BRDFs, shadow rays, MIS power heuristic, sky sampling, height fog. Imports `common` + `scene_data` |
+| `common.slang` | (module) | Constants, Wang hash RNG, `random_float[2/3]`, `hash_noise`, math/color helpers, tangent space, generic `interpolate`, Hammersley 2D, fullscreen triangle vertex |
+| `scene_data.slang` | (module) | Shared GPU data structures aligned with C++: `Vertex`, `model_data`, `material_data` (+opacity/ior/transmission), `light_data`, raster/RT push constants |
 | `blend_image.slang` | Graphics | Full-screen composite: scene+UI alpha lerp; `ocio_conversion()` stub body replaced at compile time by `ocio_helper::replace_and_compile` (when `USE_OCIO=true`) |
 | `scene_skybox.slang` | Graphics | Legacy, unused: HDR cubemap + Uncharted 2 tone mapping |
 | `scene_brdflut.slang` | Graphics | Legacy, unused: BRDF split-sum LUT (Sascha Willems example) |
@@ -58,21 +59,19 @@ tools/           Utilities: shader compiler, model loader, image I/O, OCIO, font
 Dependency graph:
 
 ```
-utils.slang  ←  lighting.slang  ←  ray_tracing.slang
-blend_image.slang / rasterization.slang are standalone (blend_image gets OCIO code injected)
-scene_skybox / scene_brdflut / scene_cubemap are standalone legacy modules (no imports)
+common.slang ← scene_data.slang ← lighting.slang ← ray_tracing.slang
+blend_image.slang / rasterization.slang use common / scene_data
+scene_skybox / scene_brdflut / scene_cubemap are legacy modules (reuse common)
 ```
 
-Compiled at runtime by `shader_compiler` (Slang → SPIR-V, `spirv_1_4`, max optimization, `.spv` cache). Entry point names in `tools/shader_compiler.h`.
-
-Note: `ray_tracing.slang` still defines `sample_cosine_hemisphere` and `max_component` locally; `scene_brdflut`/`scene_cubemap` do NOT import `utils`/`lighting`. The earlier "shader code deduplicated" claim does not match current sources.
+Note: all modules now share `common.slang` / `scene_data.slang`; `utils.slang` was removed (replaced by `common.slang`).
 
 ### GPU Data Structures (shared C++/Slang, std430-style)
 
 - **model_data** (raster binding 0 vertex / RT binding 2): `mat4 model_matrix; uint32_t material_index; Vertex* vertex_address; uint32_t* index_address;` — C++ struct in `scene_model_manager.cpp` uses explicit `alignas` (mat4 64B, u32+pad 8B, addresses 8B each → 88B)
-- **material_data** (raster binding 1 / RT binding 3): `float3 background_color; uint32_t texture_index; float3 foreground_color; float roughness; float metallic;` — C++ struct uses `alignas(16)` on vec3/float members (80B); verify against Slang layout when modifying
+- **material_data** (raster binding 1 / RT binding 3): `float3 background_color; uint32_t texture_index; float3 foreground_color; float roughness; float metallic; float opacity; float ior; float transmission;` — C++ struct in `scene_material_manager.cpp` uses `alignas(16)` on vec3/float members (80B); `scene_material` exposes the three RT-only fields with defaults (opacity=1, ior=1.5, transmission=0)
 - **light_data** (RT binding 4 only): `float3 color; uint32_t active_type; float3 direction; float intensity; float3 position; float range; float inner_cone_angle; float outer_cone_angle;` (C++ struct in `scene_light_manager.cpp`, `alignas(16)` on vec3)
-- **Vertex**: shader-side differs — rasterization `{position, uv}` (normal commented); RT `{position, normal, uv}`. CPU `model_vertex` always uploads `{position, normal, uv}`
+- **Vertex**: single shared definition in `scene_data.slang` = `{position, normal, uv}`, identical to CPU `model_vertex` (32B). Rasterization vertex input uses only `{position, uv}` (matches its bound vertex attributes)
 - **Push constants**: rasterization = `proj` + `view` (128B); RT = `invProj` + `invView` + `hdr_skybox_id` + `light_count` + `frame_index` (152B — exceeds 128B spec minimum, see Known Issues #1)
 
 ## Key Design Patterns
@@ -118,14 +117,19 @@ Debug build: `scene->update()` runs before `ui->update()`; at frame end `need_ca
 
 ### Path Tracing Pipeline (current implementation)
 
-- **Direct lighting (NEE)**: for each light in `light_data[]` (count in push constants): sample light (all are delta distributions, pdf=1), cast shadow ray (any-hit + `ACCEPT_FIRST_HIT_AND_END_SEARCH` + `SKIP_CLOSEST_HIT` + back-face cull), add `(diffuse + specular) * NdotL`
-  - diffuse: `(1-kS) * (1-metallic) * albedo / PI`
+- **Direct lighting (NEE)**: for each light in `light_data[]` (count in push constants): sample light (directional/point/spot, all delta pdf=1), cast shadow ray (any-hit + `ACCEPT_FIRST_HIT_AND_END_SEARCH` + `SKIP_CLOSEST_HIT` + back-face cull; translucent materials pass probabilistically by `opacity`), add `(diffuse + specular) * NdotL` weighted by MIS power heuristic (`power_heuristic`)
+  - diffuse: `(1-kS) * (1-metallic) * albedo / PI` (Lambertian)
   - specular: GGX Cook-Torrance (`d_ggx` Trowbridge-Reitz NDF, `g_smith` Schlick-GGX geometry, `f_schlick` Fresnel)
-- **Indirect bounce**: Lambertian cosine-weighted hemisphere sampling (`sample_lambertian`); throughput `*= albedo`; Russian roulette `p_continue = min(1, max_component(throughput))`, paths with `p_continue < 0.05` are killed, surviving paths divide by `p_continue`
-- **Max depth**: `MAX_BOUNCES = 8` (recursion via secondary `TraceRay`; `maxRayRecursionDepth` from device properties)
-- **Temporal accumulation**: `t = 1 / (frame_index + 1)`; frame_index resets on scene update; per-pixel jitter `random_float2` seeded by `wang_hash(pixel * constants + frame_index)`
-- **Sky**: if `skybox_index != 0xFFFFFFFF`, sample HDR equirect texture (`sample_hdr_sky`); else constant fallback `(0.53, 0.81, 0.98)`
-- **Not implemented in the current main loop** (despite helpers existing in `lighting.slang`): MIS power heuristic, GGX/Disney lobe selection, height fog, firefly clamping, BRDF LUT usage
+  - per-light contribution firefly clamp: `min(luminance(throughput)*100, 100)`
+- **Ambient light**: constant `AMBIENT_LIGHT` (default 0.25) added after direct lighting as `material_color * AMBIENT_LIGHT * (0.5 + 0.5*NdotV)`, so fully shadowed areas stay visible
+- **Indirect bounce (lobe selection)**: one branch chosen by probability — transmission (`opacity*transmission`, jade refraction + Beer-Lambert absorption), GGX specular (VNDF importance sampling), or Disney diffuse; throughput `*= lobe_value / (lobe_prob * p_continue)` with `MAX_THROUGHPUT=10` clamp
+  - jade transmission: `absorption_density = JADE_BASE_ABSORPTION(12) + JADE_ENGRAVE_ABSORPTION(30) * texture_weight`, applied on entry only (`T = exp(-density * PIECE_THICKNESS)`); `texture_weight` (alpha-map glyph weight) is carried in `HitPayload`
+- **Height fog**: analytic exponential fog (`evaluate_height_fog`) applied at closest-hit (bounce segment) and miss (infinite distance), with sun scattering
+- **Russian roulette / max depth**: `p_continue = min(1, luminance(throughput))`, paths below 0.05 killed; `MAX_BOUNCES = 8` (recursion via secondary `TraceRay`)
+- **Temporal accumulation**: `t = 1 / (frame_index + 1)`; frame_index resets on scene update; per-pixel jitter `random_float2` seeded by `wang_hash(pixel * constants + frame_index)`; firefly clamp `4x` accumulated luminance
+- **Sky**: if `skybox_index != 0xFFFFFFFF`, sample HDR equirect texture (`sample_hdr_sky`) with fallback to procedural gradient sky when too dark; height fog applied
+- **Chess pieces**: jade material (red = white jade `(0.95,0.92,0.85)` + dark red glyphs, black = green jade `(0.15,0.45,0.32)` + dark green glyphs; `opacity=0.8, ior=1.5, transmission=1.0, roughness=0.3`), tunable in the material panel (不透明度/折射率/透射强度 sliders)
+- Not used by the main loop: BRDF LUT (`scene_brdflut.slang`, legacy), `sample_hemisphere_uniform`, `evaluate_brdf`/`sample_brdf` dispatch helpers
 
 ## Data Flow (per frame)
 
@@ -149,12 +153,13 @@ Debug note: `scene->update()` runs BEFORE `ui->update()` (capture timing); Relea
 
 ## Resources
 
-- **Models** (`resources/models/`): `chess_board.glb`, `chess_board_line.glb`, `chess_piece.glb`, `scene_skybox.glb`, `chess_all.blend` (+ `.blend1` backup). `Box.glb`/`Cube.glb`/`Sphere.glb` no longer exist.
+- **Models** (`resources/models/`): `chess_board.glb`, `chess_board_line.glb`, `chess_piece.glb`, `scene_skybox.glb`, `chess_all.blend` (+ `.blend1` backup); `Box.glb`/`Cube.glb`/`Sphere.glb` exist in the working tree as untracked test assets.
 - **Fonts** (`resources/fonts/`): LXGW WenKai GB (Light/Medium/Regular), LXGW WenKai Mono GB (Light/Medium/Regular), Source Han Sans SC (7 weights), 华文粗楷-SC.ttf — 14 font files + OFL.txt. Runtime currently loads `LXGWWenKaiGB-Medium.ttf` for ImGui (13px) and for board/piece glyph atlases.
 - **Textures** (`resources/textures/`): `干裂地面.hdr` (~90 MB) — default HDR skybox.
 - **OCIO** (`resources/ocios/`): 5 ACES 2.0 + OCIO v2.4 configs (studio, D60, all-views, reference, CG) + `aces_conversion_graph.svg`. The all-views studio config is used for both CPU save transform and GPU shader generation.
 - **Records** (`resources/records/`): `棋谱1.txt` (GB2312 sample).
-- **Shaders**: 8 `.slang` files; compiled `.spv` cache files sit next to them (gitignored).
+- **Shaders**: 9 `.slang` files (`common`/`scene_data` modules + 7 entry shaders); compiled `.spv` cache files sit next to them (gitignored).
+
 
 ## Required GPU Features
 
@@ -192,7 +197,7 @@ Verified 2026-08-08 against the local working tree (CMake migration and scene_li
 
 1. **RT push constants 152 > 128 bytes** (`scene_raytracing_render.h:46-53`): exceeds spec-guaranteed minimum; no `maxPushConstantsSize` query. Fix: pack into UBO or gate device selection.
 
-2. **Rasterization lacks texture_index guard** (`rasterization.slang` fragMain): guards only `material_index`; the RT path guards `texture_index != 0xFFFFFFFF` first. Also `ePartiallyBound` is still not enabled on the descriptor layout, so unfilled bindless slots remain technically undefined.
+2. ~~Rasterization lacks texture_index guard~~ (FIXED 2026-08-09: `rasterization.slang` now guards both `material_index` and `texture_index`). Remaining: `ePartiallyBound` is still not enabled on the descriptor layout, so unfilled bindless slots remain technically undefined.
 
 3. **F5 hot-reload terminates on shader error** (`scene_manager.cpp:151`): old render retired BEFORE the new one is constructed; compile error → `std::terminate`. Fix: construct first, retire on success.
 
@@ -212,6 +217,7 @@ Verified 2026-08-08 against the local working tree (CMake migration and scene_li
 
 11. **CMake / MSVC flags**: `CMakeLists.txt` does not set `/utf-8` (sources are BOM-less UTF-8 with Chinese literals). Existing `out/build` scripts had `/utf-8 /W4 /permissive-`. x86/Linux/macOS presets exist but are unmaintained.
 
-12. **Legacy/unused shaders & code duplication**: `scene_skybox.slang`, `scene_brdflut.slang`, `scene_cubemap.slang` are not referenced by C++. `ray_tracing.slang` still duplicates `sample_cosine_hemisphere`/`max_component`; `scene_brdflut`/`scene_cubemap` do not import `utils`/`lighting`. The earlier "RESOLVED shader duplication" note no longer matches sources.
+12. ~~Legacy/unused shaders & code duplication~~ (RESOLVED 2026-08-09): `scene_skybox`/`scene_brdflut`/`scene_cubemap` remain unused but now reuse `common.slang`; `ray_tracing.slang` no longer duplicates helpers; `utils.slang` replaced by `common.slang` + `scene_data.slang`. Known issue #2 (texture_index guard) also fixed.
+
 
 13. **Docs/build migration**: the project moved to CMake (`.slnx`/`.vcxproj` deleted in the working tree, `vcpkg` added as a submodule). Docs were re-scanned and updated accordingly; vcpkg-configuration now points at the GitHub default registry (the old Gitee-mirror claim is stale).

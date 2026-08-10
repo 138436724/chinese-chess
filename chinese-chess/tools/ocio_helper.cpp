@@ -33,9 +33,9 @@ OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem
     return shader_desc;
 }
 
-std::vector<char> ocio_helper::replace_and_compile(const OCIO::GpuShaderDescRcPtr&      _shader_desc,
-                                                   const std::filesystem::path&         _shader_path,
-                                                   const std::vector<std::string_view>& _entry_name)
+std::expected<std::vector<char>, std::string> ocio_helper::replace_and_compile(const OCIO::GpuShaderDescRcPtr& _shader_desc,
+                                                                               const std::filesystem::path& _shader_path,
+                                                                               const std::vector<std::string_view>& _entry_name)
 {
     const auto ocio_function_name = ("float4 " + std::string(OCIO_FUNCTION_NAME));
 

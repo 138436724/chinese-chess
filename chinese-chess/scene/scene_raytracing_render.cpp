@@ -124,13 +124,13 @@ void scene_raytracing_render::create_pipeline_and_sbt()
         SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
                                               {RAY_GEN_ENTRY_NAME, RAY_MISS_ENTRY_NAME, RAY_SHADOW_MISS_ENTRY_NAME,
                                                RAY_CLOSEST_HIT_ENTRY_NAME, RAY_SHADOW_ANY_HIT_ENTRY_NAME});
-    if (spirv_code.empty())
+    if (!spirv_code)
     {
-        throw std::runtime_error("Failed to compile .spv!");
+        throw std::runtime_error(spirv_code.error());
     }
-    const vk::raii::ShaderModule shaderModule(device,
-                                              vk::ShaderModuleCreateInfo({}, spirv_code.size() * sizeof(char),
-                                                                         reinterpret_cast<const uint32_t*>(spirv_code.data())));
+    const vk::raii::ShaderModule shaderModule(
+        device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
+                                           reinterpret_cast<const uint32_t*>(spirv_code->data())));
 
     std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, RAY_GEN_ENTRY_NAME.data()),

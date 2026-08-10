@@ -16,6 +16,9 @@ struct material_data
     alignas(16) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
     float roughness                        = 0.5f;
     alignas(16) float metallic             = 0.0f;
+    float opacity                          = 1.0f;
+    float ior                              = 1.5f;
+    float transmission                     = 0.0f;
 };
 
 scene_material_manager::scene_material_manager(const vma::raii::Allocator& _allocator,
@@ -178,8 +181,9 @@ void scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waite
 void scene_material_manager::clear()
 {
     materials.clear();
-    recycle_bin.retire(std::move(images), "scene material manager old images.");
+    recycle_bin.retire(std::move(images), "scene material manager clear images.");
     images_cache.clear();
+    recycle_bin.retire(std::move(ssbo), "scene material manager clear ssbo.");
 }
 
 const vulkan_buffer& scene_material_manager::get_ssbo_buffer() const noexcept
@@ -260,7 +264,10 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
                                          get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
                                      .foreground_color = sp->foreground_color,
                                      .roughness        = sp->roughness,
-                                     .metallic         = sp->metallic};
+                                     .metallic         = sp->metallic,
+                                     .opacity          = sp->opacity,
+                                     .ior              = sp->ior,
+                                     .transmission     = sp->transmission};
             })
             | std::ranges::to<std::vector>();
 

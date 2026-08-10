@@ -1,69 +1,70 @@
-struct Vertex
-{
-    float3 position;
-    // float3 normal;
-    float2 uv;
-};
+import common;
+import scene_data;
 
-struct push_constant
-{
-    float4x4 proj_matrix;
-    float4x4 view_matrix;
-};
-
-struct model_data
-{
-    float4x4 model_matrix;
-    uint32_t material_index;
-    Vertex *vertex_address;
-    uint32_t *index_address;
-};
-
-struct material_data
-{
-    float3 background_color;
-    uint32_t texture_index;
-    float3 foreground_color;
-    float roughness;
-    float metallic;
-};
+// ============================================================================
+// rasterization.slang — 光栅化主着色器（顶点 + 片元）
+//   vertMain : 间接绘制（SV_DrawIndex）取模型矩阵 → 世界 → 视图 → 投影
+//   fragMain : bindless 材质采样（alpha 图权重 lerp 底色/前景色）
+// 绑定布局（与 scene_rasterization_render.cpp 一致）：
+//   binding 0: models    (StructuredBuffer<model_data>)
+//   binding 1: materials (StructuredBuffer<material_data>)
+//   binding 2: samplers  (bindless Sampler2D[])
+// 注意：SSBO 默认 std430 布局，UBO 为 std140。
+// ============================================================================
 
 [[vk::push_constant]]
-ConstantBuffer<push_constant> pushConst;   // camera info
-StructuredBuffer<model_data> models;       // SSBO, has all model info
-StructuredBuffer<material_data> materials; // SSBO, has all material info
-Sampler2D[] samplers;                      // bindless descriptor, texture used in materials
-// attention please, SSBO is std430 layout default, but UBO is std140
+ConstantBuffer<raster_push_constant> pushConst;  // 相机投影/视图矩阵
+
+StructuredBuffer<model_data>    models;     // 模型运行时数据
+StructuredBuffer<material_data> materials;  // 材质数据
+Sampler2D[] samplers;                       // bindless 纹理数组
+
+// 顶点输入：与管线顶点属性（location 0 = position, location 1 = uv）一致
+struct raster_vertex
+{
+  float3 position;
+  float2 uv;
+};
 
 struct VSOutput
 {
-    float4 position : SV_Position;
-    float2 uv;
-    uint32_t material_index;
+  float4   position : SV_Position;
+  float2   uv;
+  uint32_t material_index;
 };
 
 [shader("vertex")]
-VSOutput vertMain(Vertex input, uint draw_id: SV_DrawIndex)
+VSOutput vertMain(raster_vertex input, uint draw_id: SV_DrawIndex)
 {
-    model_data now_model = models[draw_id];
-    VSOutput output;
-    output.position = mul(pushConst.proj_matrix,
-                          mul(pushConst.view_matrix, mul(now_model.model_matrix, float4(input.position, 1.0))));
-    output.uv = input.uv;
-    output.material_index = now_model.material_index;
-    return output;
+  model_data now_model = models[draw_id];
+
+  VSOutput output;
+  output.position =
+      mul(pushConst.proj_matrix, mul(pushConst.view_matrix, mul(now_model.model_matrix, float4(input.position, 1.0))));
+  output.uv             = input.uv;
+  output.material_index = now_model.material_index;
+  return output;
 }
 
 [shader("fragment")]
-float4 fragMain(VSOutput output) : SV_Target
+float4 fragMain(VSOutput output)
+    : SV_Target
 {
-    float4 color = float4(0.0, 0.0, 0.0, 1.0);
-    if (output.material_index != 0xFFFFFFFF)
+  float4 color = float4(0.0, 0.0, 0.0, 1.0);
+
+  if(output.material_index != 0xFFFFFFFF)
+  {
+    material_data now_material = materials[output.material_index];
+    if(now_material.texture_index != 0xFFFFFFFF)
     {
-        material_data now_material = materials[output.material_index];
-        Sampler2D now_texture = samplers[now_material.texture_index];
-        float weight = now_texture.Sample(output.uv).x;
-        color = float4(lerp(now_material.background_color, now_material.foreground_color, weight), 1.0);
+      Sampler2D now_texture = samplers[now_material.texture_index];
+      float     weight      = now_texture.Sample(output.uv).x;
+      color                 = float4(lerp(now_material.background_color, now_material.foreground_color, weight), 1.0);
     }
-    return color;
+    else
+    {
+      color = float4(now_material.background_color, 1.0);
+    }
+  }
+  return color;
 }

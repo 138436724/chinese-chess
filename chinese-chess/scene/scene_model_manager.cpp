@@ -7,6 +7,7 @@
 #include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <algorithm>
+#include <format>
 #include <ranges>
 
 struct model_data  // std430 layout
@@ -54,11 +55,15 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
     }
 
     // read vertex and index data from model file
-    auto mesh = std::make_shared<model_information>();
-    if (!model_loader::load_model(_model_path, mesh->vertices, mesh->indices))
+    auto mesh         = std::make_shared<model_information>();
+    auto loaded_model = model_loader::load_model(_model_path);
+    if (!loaded_model)
     {
-        throw std::runtime_error("Failed to read model!");
+        throw std::runtime_error(std::format("Failed to load model {}: {}", _model_path.string(), loaded_model.error()));
     }
+
+    mesh->vertices = std::move(loaded_model->vertices);
+    mesh->indices  = std::move(loaded_model->indices);
 
     meshes.emplace_back(mesh);
     models_cache.emplace(_model_path, std::weak_ptr<model_information>(mesh));
@@ -92,8 +97,11 @@ void scene_model_manager::clear()
     meshes.clear();
     models_cache.clear();
 
-    vertices_buffer.clear();
-    indices_buffer.clear();
+    recycle_bin.retire(std::move(vertices_buffer), "scene model manager clear vertices buffer.");
+    recycle_bin.retire(std::move(indices_buffer), "scene model manager clear indices buffer.");
+    recycle_bin.retire(std::move(tlas), "scene model manager clear tlas.");
+    recycle_bin.retire(std::move(draw_commands), "scene model manager clear draw commands.");
+    recycle_bin.retire(std::move(ssbo), "scene model manager clear ssbo.");
 }
 
 size_t scene_model_manager::get_models_size() const noexcept
