@@ -67,7 +67,29 @@ vulkan_buffer vulkan_acceleration_structure::create_top_level_acceleration_struc
 
     return create_acceleration_structure(_physical_device, _device, _allocator, _commandbuffer,
                                          vk::AccelerationStructureTypeKHR::eTopLevel,
-                                         vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, _queue);
+                                         vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace
+                                             | vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+                                         _queue);
+}
+
+void vulkan_acceleration_structure::update_top_level_acceleration_structure(const vk::raii::CommandBuffer& _commandbuffer,
+                                                                            uint32_t _instances_size,
+                                                                            vk::DeviceOrHostAddressConstKHR _instances_data,
+                                                                            vk::DeviceAddress _scratch_address)
+{
+    vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
+
+    geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eInstances, geometry_instances, {});
+
+    range_info = vk::AccelerationStructureBuildRangeInfoKHR(_instances_size);
+
+    vk::AccelerationStructureBuildGeometryInfoKHR build_info(
+        vk::AccelerationStructureTypeKHR::eTopLevel,
+        vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace | vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+        vk::BuildAccelerationStructureModeKHR::eUpdate, acceleration_structure, acceleration_structure, geometry);
+    build_info.scratchData.deviceAddress = _scratch_address;
+
+    _commandbuffer.buildAccelerationStructuresKHR(build_info, &range_info);
 }
 
 const vk::raii::AccelerationStructureKHR& vulkan_acceleration_structure::get_acceleration_structure() const noexcept
@@ -107,19 +129,6 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
         _device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, build_info,
                                                       range_info.primitiveCount);
 
-
-    // Make sure the scratch buffer is properly aligned
-    const VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
-
-    vulkan_buffer scratch_buffer;
-    scratch_buffer.create(_allocator, _device,
-                          vk::BufferCreateInfo({}, scratch_size,
-                                               vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress
-                                                   | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR,
-                                               vk::SharingMode::eExclusive, 1, &_queue),
-                          vma::MemoryUsage::eGpuOnly,
-                          _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas_scratch" : "tlas_scratch");
-
     buffer.create(_allocator, _device,
                   vk::BufferCreateInfo({}, build_size.accelerationStructureSize,
                                        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -136,6 +145,24 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
 
     address = _device.getAccelerationStructureAddressKHR(address_info);
 
+    VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
+    if (_flags & vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate)
+    {
+        const vk::AccelerationStructureBuildGeometryInfoKHR update_build_info(
+            _type, _flags, vk::BuildAccelerationStructureModeKHR::eUpdate, {}, acceleration_structure, geometry);
+        const auto update_size = _device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice,
+                                                                               update_build_info, range_info.primitiveCount);
+        scratch_size = std::max(scratch_size, vulkan_common::align_up(update_size.updateScratchSize, scratch_alignment));
+    }
+
+    vulkan_buffer scratch_buffer;
+    scratch_buffer.create(_allocator, _device,
+                          vk::BufferCreateInfo({}, scratch_size,
+                                               vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress
+                                                   | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR,
+                                               vk::SharingMode::eExclusive, 1, &_queue),
+                          vma::MemoryUsage::eGpuOnly,
+                          _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas_scratch" : "tlas_scratch");
 
     build_info.dstAccelerationStructure  = acceleration_structure;
     build_info.scratchData.deviceAddress = scratch_buffer.get_buffer_address().deviceAddress;

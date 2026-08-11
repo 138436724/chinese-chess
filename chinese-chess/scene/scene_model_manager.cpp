@@ -50,6 +50,7 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
             auto model        = std::make_shared<scene_model>();
             model->model_info = std::shared_ptr<model_information>(iter->second);
             models.emplace_back(model);
+            is_dirty = true;
             return model;
         }
     }
@@ -72,14 +73,28 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
     model->model_info = mesh;
     models.emplace_back(model);
 
+    is_dirty = true;
     return model;
 }
 
-void scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    std::erase_if(models, [](const auto& p) static { return p.expired(); });
-    std::erase_if(meshes, [](const auto& p) static { return p.expired(); });
+    const auto removed_models = std::erase_if(models, [](const auto& p) static {
+        const auto sp = p.lock();
+        return !sp || sp->model_info == nullptr;
+    });
+    const auto removed_meshes = std::erase_if(meshes, [](const auto& p) static { return p.expired(); });
     std::erase_if(models_cache, [](const auto& p) static { return p.second.expired(); });
+
+    if (removed_models != 0 || removed_meshes != 0)
+    {
+        is_dirty = true;
+    }
+
+    if (!is_dirty)
+    {
+        return false;
+    }
 
     recycle_bin.retire(std::move(vertices_buffer), "scene model manager old vertices buffer.");
     recycle_bin.retire(std::move(indices_buffer), "scene model manager old indices buffer.");
@@ -89,6 +104,10 @@ void scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
     update_tlas(_waited_infos);
     update_draw_commands(_waited_infos);
     update_ssbo(_waited_infos);
+
+    is_dirty = false;
+
+    return true;
 }
 
 void scene_model_manager::clear()
@@ -96,9 +115,12 @@ void scene_model_manager::clear()
     models.clear();
     meshes.clear();
     models_cache.clear();
+    is_dirty = true;
 
     recycle_bin.retire(std::move(vertices_buffer), "scene model manager clear vertices buffer.");
     recycle_bin.retire(std::move(indices_buffer), "scene model manager clear indices buffer.");
+    tlas_instance_count = 0;
+    recycle_bin.retire(std::move(tlas_scratch_buffer), "scene model manager clear tlas scratch buffer.");
     recycle_bin.retire(std::move(tlas), "scene model manager clear tlas.");
     recycle_bin.retire(std::move(draw_commands), "scene model manager clear draw commands.");
     recycle_bin.retire(std::move(ssbo), "scene model manager clear ssbo.");
@@ -127,6 +149,11 @@ const vulkan_acceleration_structure& scene_model_manager::get_tlas() const noexc
 const vulkan_buffer& scene_model_manager::get_draw_commands() const noexcept
 {
     return draw_commands;
+}
+
+void scene_model_manager::need_update() noexcept
+{
+    is_dirty = true;
 }
 
 const vulkan_buffer& scene_model_manager::get_ssbo_buffer() const noexcept
@@ -212,50 +239,69 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
 
 void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    // build tlas
-    recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
-
-    if (!models.empty())
+    if (models.empty())
     {
-        // todo generate tlas (graphics queue required: AS build needs VK_QUEUE_COMPUTE_BIT)
-        vulkan_commandbuffer commandbuffer =
-            std::move(vulkan_commandbuffer::create(device,
-                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
-                                                                                 vk::CommandBufferLevel::ePrimary, 1),
-                                                   &graphic_queue, &semaphore)
-                          .front());
-        commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+        recycle_bin.retire(std::move(tlas), "ray tracing clear tlas.");
+        tlas_instance_count = 0;
+        return;
+    }
 
+    const auto instances = models
+                           | std::views::transform([](const auto& p) static { return p.lock()->get_blas_instance(); })
+                           | std::ranges::to<std::vector>();
 
-        // create top level acceleration structure
-        const auto instances = models
-                               | std::views::transform([](const auto& p) static { return p.lock()->get_blas_instance(); })
-                               | std::ranges::to<std::vector>();
+    // todo generate tlas (graphics queue required: AS build needs VK_QUEUE_COMPUTE_BIT)
+    vulkan_commandbuffer commandbuffer = std::move(
+        vulkan_commandbuffer::create(
+            device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
+            &graphic_queue, &semaphore)
+            .front());
+    commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-        vulkan_buffer instance_buffer;
+    if (tlas_instance_count != 0 && instances.size() == tlas_instance_count)
+    {
+        vulkan_buffer tlas_instance_buffer;
         commandbuffer.add_waited_info({vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, instance_buffer,
+            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
             "tlas_instance")});
 
+        tlas.update_top_level_acceleration_structure(*commandbuffer, static_cast<uint32_t>(instances.size()),
+                                                     tlas_instance_buffer.get_buffer_address().deviceAddress,
+                                                     tlas_scratch_buffer.get_buffer_address().deviceAddress);
 
-        auto scratch_buffer = tlas.create_top_level_acceleration_structure(
-            physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),
-            instance_buffer.get_buffer_address().deviceAddress, graphic_queue.get_index());
-
-        recycle_bin.retire(std::move(scratch_buffer), "ray tracing scratch buffer to create tlas.");
-        recycle_bin.retire(std::move(instance_buffer), "ray tracing instance buffer to create tlas.");
-
-
-        commandbuffer.end_record();
-        commandbuffer.submit(false);
-
-        _waited_infos.push_back(commandbuffer.get_submit_info());
-
-        recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
+        recycle_bin.retire(std::move(tlas_instance_buffer), "ray tracing old tlas instance buffer.");
     }
+    else
+    {
+        recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
+        recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
+
+        vulkan_buffer tlas_instance_buffer;
+        commandbuffer.add_waited_info({vulkan_common::upload_buffer(
+            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
+            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
+                | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
+            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
+            "tlas_instance")});
+
+        tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(
+            physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),
+            tlas_instance_buffer.get_buffer_address().deviceAddress, graphic_queue.get_index());
+
+        recycle_bin.retire(std::move(tlas_instance_buffer), "ray tracing old tlas instance buffer.");
+    }
+
+    tlas_instance_count = instances.size();
+
+    commandbuffer.end_record();
+    commandbuffer.submit(false);
+
+    _waited_infos.push_back(commandbuffer.get_submit_info());
+
+    recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
 }
 
 void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)

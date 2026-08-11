@@ -23,8 +23,10 @@ public:
 
     [[nodiscard]] std::shared_ptr<scene_light> create();
 
-    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void clear() noexcept;
+    [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void               clear() noexcept;
+
+    void need_update() noexcept;
 
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
@@ -39,6 +41,8 @@ private:
     vulkan_semaphore&           semaphore;
     const vulkan_queue&         graphic_queue;
     const vulkan_queue&         transfer_queue;
+
+    bool is_dirty = true;
 
     std::vector<std::weak_ptr<scene_light>> lights;
 

@@ -18,7 +18,7 @@ Chinese docs: `README_CN.md`.
 - **C++23**: `target_compile_features(cxx_std_23)` (existing `out/build` scripts use `-std:c++latest /utf-8 /W4 /permissive-`)
 - **Preprocessor defines**: `VK_USE_PLATFORM_WIN32_KHR`, `GLFW_INCLUDE_VULKAN`, `GLM_FORCE_RADIANS`, `GLM_ENABLE_EXPERIMENTAL`, `GLM_FORCE_DEPTH_ZERO_TO_ONE`, `NOMINMAX`, `UNICODE`, `_UNICODE`
 - **Include path**: `chinese-chess/` (project root; all includes relative to it)
-- ⚠️ `CMakeLists.txt` does **not** pass `/utf-8`; sources are BOM-less UTF-8 with Chinese literals/comments. On non-UTF-8 system locales, add `target_compile_options(chinese-chess PRIVATE /utf-8)`.
+- `/utf-8` is set via `add_compile_options(/utf-8)` under `if(WIN32)` in `CMakeLists.txt`; sources are BOM-less UTF-8 with Chinese literals/comments.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ Note: all modules now share `common.slang` / `scene_data.slang`; `utils.slang` w
 - **material_data** (raster binding 1 / RT binding 3): `float3 background_color; uint32_t texture_index; float3 foreground_color; float roughness; float metallic; float opacity; float ior; float transmission;` — C++ struct in `scene_material_manager.cpp` uses `alignas(16)` on vec3/float members (80B); `scene_material` exposes the three RT-only fields with defaults (opacity=1, ior=1.5, transmission=0)
 - **light_data** (RT binding 4 only): `float3 color; uint32_t active_type; float3 direction; float intensity; float3 position; float range; float inner_cone_angle; float outer_cone_angle;` (C++ struct in `scene_light_manager.cpp`, `alignas(16)` on vec3)
 - **Vertex**: single shared definition in `scene_data.slang` = `{position, normal, uv}`, identical to CPU `model_vertex` (32B). Rasterization vertex input uses only `{position, uv}` (matches its bound vertex attributes)
-- **Push constants**: rasterization = `proj` + `view` (128B); RT = `invProj` + `invView` + `hdr_skybox_id` + `light_count` + `frame_index` (152B — exceeds 128B spec minimum, see Known Issues #1)
+- **Push constants**: rasterization = `proj` + `view` (128B); RT = `invProj` + `invView` + `hdr_skybox_id` + `light_count` + `frame_index` (144B — exceeds 128B spec minimum, see Known Issues #1)
 
 ## Key Design Patterns
 
@@ -92,22 +92,22 @@ Note: all modules now share `common.slang` / `scene_data.slang`; `utils.slang` w
 Upload: transfer CB releases ownership (no layout change — pure transfer queue lacks shader stages), graphics CB acquires and transitions to `eShaderReadOnlyOptimal`. Download: graphics release → transfer CB transitions to `eTransferSrcOptimal`, copies to staging → graphics re-acquires and restores the original layout.
 
 ### Manager Architecture (since 2026-07-28)
-`scene_model_manager` owns vertices/indices buffers, per-mesh BLAS, the shared TLAS, indirect draw command buffer (`is_show` → instanceCount 0/1; RT instance mask 0xFF/0) and the model SSBO (material index + vertex/index device addresses). `scene_material_manager` owns the material SSBO and bindless texture array (≤1024 slots, font atlases included); `scene_light_manager` owns the light SSBO.
+`scene_model_manager` owns vertices/indices buffers, per-mesh BLAS, the shared TLAS, indirect draw command buffer (`is_show` → instanceCount 0/1; RT instance mask 0xFF/0) and the model SSBO (material index + vertex/index device addresses). `scene_material_manager` owns the material SSBO and bindless texture array (≤1024 slots, font atlases included); `scene_light_manager` owns the light SSBO. Each manager self-tracks a single `is_dirty` flag: `create()` and `update()` (on real pointer removal) set it, `update()` consumes it and returns whether work was done (`bool`), early-returning when nothing changed. `scene_manager::update()` folds the managers` results into `any_dirty`: only then the active renderer rebuilds descriptors, otherwise it just resets the RT accumulation. UI routes changes through `need_update()` (everything) / `need_camera_update()` / `need_material_update()` / `need_model_update()` / `need_light_update()`. TLAS 增量优化：实例数量不变时仅 refit（`update_top_level_acceleration_structure`，`eUpdate` 模式 + 持久 scratch 缓冲；实例缓冲为每次更新重建的局部缓冲，见 Known Issue #17），增删模型才完全重建。
 
 ### Bindless Descriptors
-Single descriptor array (≤1024 `eCombinedImageSampler`): raster binding 2 (fragment) / RT binding 5 (all stages). `eUpdateAfterBind` pool flag is set; `ePartiallyBound` is NOT set. Pools + descriptor sets are fully rebuilt on every dirty update.
+Pools + descriptor sets are rebuilt only when `scene_manager::update()` sees `any_dirty` (a manager actually re-uploaded its SSBO / rebuilt TLAS); camera-only updates (`need_camera_update`) never touch descriptors.
 
 ### Dual Rendering
-`scene_manager` toggles raster/RT at runtime (`use_ray_tracing` checkbox in "场景设置"). Both share model/material/light SSBOs and the `R16G16B16A16_SFLOAT` render output. Note: `scene_manager::update()` updates BOTH render paths on every dirty frame (raster mode still rebuilds TLAS/descriptors).
+`scene_manager` toggles raster/RT at runtime (`use_ray_tracing` checkbox in "场景设置"). Both share model/material/light SSBOs and the `R16G16B16A16_SFLOAT` render output. Note: `scene_manager::update()` gates manager updates and descriptor rebuilds on per-manager dirty flags (see Manager Architecture); camera/view changes only reset the RT accumulation. `resize()` rebuilds `render_output` and resizes only the *active* renderer (via `active_render->resize`), then calls `need_update()` so descriptors are rebuilt against the new image view. There is no `use_ray_tracing` member: the constructor calls `set_use_ray_tracing(true)` (default RT) which binds `active_render`, force-resizes and `need_update()`, then `resize()` applies the real size. `set_use_ray_tracing(bool)` (UI checkbox) rebinds `active_render`, force-resizes (renderers skip no-op when width/height are unchanged) and forces a full update. `recreate_pipeline()` recompiles only the active renderer shaders (F5 hot reload).
 
 ### F5 Hot-Reload
-`scene_manager::handle(GLFW_KEY_F5)` retires the active render into the recycle bin, then constructs a replacement (recompiles shaders; `shader_compiler` skips unchanged sources via SHA-256 + `.spv` cache). Old render retired BEFORE the new one is constructed; compile failure → `std::terminate` (Known Issues #3).
+`scene_manager::handle(GLFW_KEY_F5)` now only recompiles the *active* renderer pipeline: `active_render->recreate_pipeline()` (multiplexed through the `manager_render` facade, so no `use_ray_tracing` member is needed) then `active_render->update()` rebuilds descriptors (pipeline layout may change with shader bindings). Old pipeline/SBT are retired into the recycle bin before recreation. Compile failure still propagates (`std::terminate` via uncaught exception, Known Issues #3).
 
 ### Save Image QFOT
 `vulkan_common::download_image` (3 CBs: graphics release → transfer copy → graphics re-acquire/restore layout), then CPU OCIO `apply_on_image` + EXR/PNG write via OpenImageIO.
 
 ### RenderDoc Frame Capture (Debug)
-Debug build: `scene->update()` runs before `ui->update()`; at frame end `need_capture = scene->get_need_update()`. If dirty, next frame begins `StartFrameCapture` before updates and ends after render/save. Captures saved to `resources\captures\`; failed captures are discarded. Release: UI+scene update same frame, no capture.
+Debug build: `ui->update()` runs before `scene->update()` (same order as release). Same-frame capture: after UI updates but before scene consumes the dirty state, `scene->get_need_update()` decides to capture the *current* frame (skipped while the `first_frame` flag is set (RenderDoc cannot start on the very first frame, avoiding init/upload pressure)). `StartFrameCapture` runs before `scene->update()`, so the upload commands submitted inside it (staging copies / barriers / TLAS builds via `vulkan_common::upload_buffer` / `upload_image`) are included in the capture. Capture ends after render/save. Captures saved to `resources\captures\`; failed captures are discarded. Release: no capture.
 
 ### Type Erasure
 `ui_base` = `pro::facade_builder`-based interface (P0779R0). `ui_manager` stores `std::vector<pro::proxy<ui_base>>` for polymorphic dispatch (ui_camera, ui_light, ui_node, ui_record).
@@ -134,7 +134,7 @@ Debug build: `scene->update()` runs before `ui->update()`; at frame end `need_ca
 ## Data Flow (per frame)
 
 ```
-glfwPollEvents() → [debug: maybe begin_capture]
+glfwPollEvents() → [debug: UI update → if scene dirty, begin_capture] → scene->update()
   → scene->update()  (dirty-gated: managers retire+reupload SSBOs, rebuild TLAS/draw commands; render.update() rebuilds descriptors)
   → ui->update()     (ImGui NewFrame + panels + Render)
   → ui_wait    = ui->render()     (MSAA resolve → submit, signals timeline)
@@ -193,9 +193,9 @@ Features:
 
 ## Known Issues & TODOs
 
-Verified 2026-08-08 against the local working tree (CMake migration and scene_light refactor included).
+Verified 2026-08-08 against the local working tree (CMake migration and scene_light refactor included). Re-scanned 2026-08-12 after commits `ca79139` (dirty-gating + TLAS refit) and `4c2e58c` (model filters) were code-reviewed; findings 14-23 below.
 
-1. **RT push constants 152 > 128 bytes** (`scene_raytracing_render.h:46-53`): exceeds spec-guaranteed minimum; no `maxPushConstantsSize` query. Fix: pack into UBO or gate device selection.
+1. **RT push constants 144 > 128 bytes** (`scene_raytracing_render.h:48-55`): `2×mat4 + 3×u32` = 144B (measured `sizeof`, earlier docs said 152) — exceeds spec-guaranteed minimum; no `maxPushConstantsSize` query. Fix: pack into UBO or gate device selection.
 
 2. ~~Rasterization lacks texture_index guard~~ (FIXED 2026-08-09: `rasterization.slang` now guards both `material_index` and `texture_index`). Remaining: `ePartiallyBound` is still not enabled on the descriptor layout, so unfilled bindless slots remain technically undefined.
 
@@ -203,21 +203,51 @@ Verified 2026-08-08 against the local working tree (CMake migration and scene_li
 
 4. **OCIO GPU composite binding-order mismatch**: pipeline layout is `[scene, ui, sampler, UBO, texture pairs...]`, but `vulkan_application::bind_image()` appends descriptor infos in order `[scene, ui, sampler, texture pairs..., UBO]`. Descriptor writes use array order as binding index, so everything from binding 3 on is shifted (UBO written into a sampled-image slot and vice versa). `replace_and_compile` injection and LUT/UBO uploads are implemented, but the GPU transform is effectively broken; validation errors are likely. The debug callback prints errors/warnings but does not filter them.
 
-5. **Empty-container null descriptor writes**: managers retire SSBO/TLAS unconditionally but re-upload only when non-empty; renderers write descriptors unconditionally. Deleting all lights (or having no models) writes empty buffers → latent validation errors since `nullDescriptor` is not enabled.
+5. ~~**Empty-container null descriptor writes**~~ (PARTIALLY FIXED 2026-08-12, see #15): the model path is fixed (empty scene keeps a valid TLAS + 1-entry dummy model SSBO + renderer skip/clear), but the material/light managers still retire their SSBOs when everything is deleted, so deleting all materials or all lights still writes null buffers. `nullDescriptor` is not enabled — in the current vulkan-headers it only exists under `VK_KHR_robustness2`, so enabling it means adding that extension + feature.
 
 6. **ImGui multi-viewport validation false positive** (imgui 1.92.8): secondary viewport swapchains present without acquire → `UNASSIGNED-non-acquired-swapchain-image-used`. The debug callback currently does NOT filter this (previous docs claiming a filter are stale).
 
-7. **save_image layout correctness** (`scene_manager.cpp`): TODO — layout transitions should happen on the target queue after QFOT, not during release.
+7. ~~**save_image layout correctness**~~ (FIXED — verified 2026-08-12): `vulkan_common::download_image` performs all layout transitions on the acquire side (transfer CB → `eTransferSrcOptimal`, graphics re-acquire → old layout); release barriers keep `old_layout → old_layout` with `eNone/eNone`. No TODO remains in `scene_manager.cpp`.
 
 8. **BLAS/TLAS build queue**: builds use the graphics queue; TODO comments note compute queue (TLAS build requires VK_QUEUE_COMPUTE_BIT-capable queue).
 
-9. **Both render paths update every dirty frame**: raster mode still rebuilds TLAS/descriptors. Gate on `use_ray_tracing`.
+9. ~~Both render paths update every dirty frame~~ (FIXED 2026-08-10): managers self-track `is_dirty`; camera-only changes (`need_camera_update`) skip manager updates, TLAS rebuild and descriptor rebuilds entirely.
 
-10. **Descriptor pools/sets fully rebuilt on every dirty update** (both paths): dragging UI sliders recreates pools each frame.
+10. ~~Descriptor pools/sets fully rebuilt on every dirty update~~ (FIXED 2026-08-10): renderers rebuild descriptors only when managers report actual work (`any_dirty`); view-only changes never touch descriptors.
 
-11. **CMake / MSVC flags**: `CMakeLists.txt` does not set `/utf-8` (sources are BOM-less UTF-8 with Chinese literals). Existing `out/build` scripts had `/utf-8 /W4 /permissive-`. x86/Linux/macOS presets exist but are unmaintained.
+11. ~~CMake / MSVC flags~~ (FIXED 2026-08-11): `CMakeLists.txt` now sets `add_compile_options(/utf-8)` under `if(WIN32)`. Remaining: x86/Linux/macOS presets exist but are unmaintained.
 
 12. ~~Legacy/unused shaders & code duplication~~ (RESOLVED 2026-08-09): `scene_skybox`/`scene_brdflut`/`scene_cubemap` remain unused but now reuse `common.slang`; `ray_tracing.slang` no longer duplicates helpers; `utils.slang` replaced by `common.slang` + `scene_data.slang`. Known issue #2 (texture_index guard) also fixed.
 
 
 13. **Docs/build migration**: the project moved to CMake (`.slnx`/`.vcxproj` deleted in the working tree, `vcpkg` added as a submodule). Docs were re-scanned and updated accordingly; vcpkg-configuration now points at the GitHub default registry (the old Gitee-mirror claim is stale).
+
+14. **TLAS refit scratch sizing** (FIXED 2026-08-12): the scratch buffer was sized only from `buildScratchSize` — `updateScratchSize` was never queried, so an `eUpdate`-mode refit could read past the scratch on drivers whose update-scratch demand exceeds build-scratch. Fix in `vulkan_acceleration_structure.cpp`: scratch sized `max(buildScratchSize, updateScratchSize)` — the update-mode size is queried after AS creation with the new AS as `srcAccelerationStructure`, only for updatable ASes (build flags contain `eAllowUpdate`). NOTE: an earlier review claimed `createFlags` also lacked `VK_ACCELERATION_STRUCTURE_CREATE_ALLOW_UPDATE_BIT_KHR` — this was refuted against the official registry (`vk.xml` 1.4.350): no such create flag exists; update legality is governed solely by the build flags (`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR` on the initial build, and update builds must match them — VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03759/03760), which the code already did.
+
+15. **Empty scene (delete all models) → null descriptors + trace against retired TLAS** (OPEN — proposed fix reverted by the author 2026-08-12): `update_tlas`'s empty branch retires the TLAS, `update_ssbo` skips re-upload when empty, and the RT renderer traces unconditionally → null AS + null SSBO descriptors (invalid without `nullDescriptor`) and trace against a retired AS. Not reachable while `ui_record` holds the board/pieces as `shared_ptr` (the models vector never empties in practice); latent if model removal ever clears it. Proposed fixes (all reverted): keep the last valid TLAS alive + renderer skip/clear + 1-entry dummy SSBO; alternatively enable `nullDescriptor` via `VK_KHR_robustness2`.
+
+16. **Inconsistent model filtering (`4c2e58c`)** (FIXED 2026-08-12): the `filter(expired && model_info != nullptr)` added to `update_draw_commands`/`update_ssbo` was unreachable (`update()` prunes expired weak_ptrs before these run) and broke the `models.size() == draw_commands.size() == ssbo.size()` invariant — `drawIndexedIndirect` uses the unfiltered `get_models_size()` as drawCount, so any filtered-out model would cause GPU-side OOB on both the indirect buffer and the SSBO; `update_tlas` was not filtered and would crash first (`get_blas_instance` derefs `model_info` unconditionally). Fix: unified prune in `update()` (drops expired OR null-`model_info` models, one lock per entry), per-consumer filters removed → all four consumers (meshes, TLAS, draw commands, SSBO) see the same list.
+
+17. **TLAS refit instance buffer: per-refit allocation kept** (author's 2026-08-12 design): instead of my proposed persistent-buffer fix (`vulkan_common::update_buffer` — graphics release → transfer write → graphics acquire, reverted), `update_tlas` now uses a per-update **local** `tlas_instance_buffer` (both branches), retired into the recycle bin after recording the build — the member was removed from the header. Lifetime is safe (retire captures the CPU counter after the upload submits; `release()` destroys only once the GPU counter passes it, i.e. after the build CB completes). Cost: VMA alloc + staging + QFOT churn per refit remains; only the scratch buffer is persistent — the "持久 scratch/instance 缓冲" doc claim was corrected accordingly. Remaining: `upload_buffer`'s acquire barrier sets `eShaderRead`, which does not cover the AS-build input read (`eAccelerationStructureReadKHR`); the build CB relies on the timeline-semaphore wait + driver tolerance (latent sync gap, works in practice — was fixed by the reverted `update_buffer`).
+
+18. **`is_dirty` cleared before the manager fold** (`scene_manager.cpp`): `update()` clears `is_dirty` before the manager proxy fold; an exception inside any manager update (e.g. VMA allocation failure in `upload_buffer`) leaves `is_dirty == false` with the fold aborted → failed uploads are never retried and later managers never run → permanently stale GPU state until the next UI `need_*_update()`. OPEN. Fix: clear `is_dirty` after the fold (or RAII guard).
+
+19. **Debug RenderDoc capture excludes UI uploads** (`window/window.cpp`): in debug builds `ui->update()` now runs before `begin_capture`, so UI-initiated GPU uploads (font atlases, material textures created in `ui_node`/`ui_record` → `upload_image`) are outside the captured frame — the same-frame capture intent documented in the Data Flow section is not met (playback shows the texture without its upload). OPEN.
+
+20. **`resize()` / `set_use_ray_tracing()` trigger a full scene re-upload** (`scene_manager.cpp`): both route through `need_update()`, which re-dirties all three managers → full vertex/index re-upload, BLAS rebuilds, TLAS refit and SSBO re-uploads on window resize or renderer toggle, although none of that data depends on window size or renderer choice. OPEN. Fix: the per-manager `need_*_update()` API already exists — route these through it (only the newly-active renderer's descriptors need rebuilding).
+
+21. **`ui_record::restore_board_state()` uses blanket `need_update()`** (`ui/ui_record.cpp`): every chess step, listbox selection, record load and initial resize re-dirties all three managers, defeating the selective dirty-gating introduced by `ca79139` — only the model manager's `is_show`/`model_matrix` actually changed. OPEN. Fix: call `need_model_update()` (the refit path already handles these).
+
+22. ~~**RT pieces share `custom_index = 2`**~~ (REFUTED 2026-08-12 — false positive): `ray_tracing.slang` indexes `models[InstanceId()]`, and per the SPIR-V/Vulkan spec `InstanceId` is the **index of the intersected instance in the instance array** (not `instanceCustomIndex`; that is `InstanceCustomIndexKHR`, which the compiled SPIR-V does not use). The TLAS instance array and the model SSBO are built from the same ordered `models` vector (`scene_model_manager.cpp:249-251` vs `:336-347`), so `models[InstanceId()]` addresses each piece's own entry — RT rendering is correct. `custom_index = 2u` (`ui_record.cpp:46`) is dead data. Residual risk: correctness depends on Slang mapping `InstanceIndex()` to the legacy `InstanceId` builtin — re-verify after a Slang upgrade (compile + disassemble, or check the BuiltIn enum is 6, not 5327).
+
+23. **`scene_model_manager::clear()` did not set `is_dirty`** (FIXED 2026-08-12): unlike `scene_light_manager::clear()` / `scene_material_manager::clear()`, a live `clear()` left the manager permanently not-dirty while renderers kept binding the retired buffers → use-after-free once the recycle bin frees them. `clear()` now sets `is_dirty = true`.
+
+24. **MIS weight for delta lights was < 1** (FIXED 2026-08-12): `ray_tracing.slang` computed `w_light = power_heuristic(pdf_light, pdf_brdf)` for directional/point/spot lights — all delta distributions (`ls.pdf = 1`), which BRDF importance sampling can never hit, so the correct NEE weight is exactly 1.0; the old value systematically darkened direct lighting (~9%+ on diffuse, worse on glossy/metallic). Fix: `w_light = 1.0f` (restore MIS if area lights are ever added).
+
+25. **Instance-level `eTriangleCullDisable` nullified ray-level back-face culling** (FIXED 2026-08-12): `scene_model::get_blas_instance` set `eTriangleCullDisable` on every instance, which (per spec) makes `RAY_FLAG_CULL_BACK_FACING_TRIANGLES` a no-op → primary and bounce rays did double-sided traversal (≈2× BVH cost, RT is the default renderer) and could hit back faces. Removed; translucent/transmission paths already disable culling at the ray level (`ray_tracing.slang` bounce ray).
+
+26. **Per-frame heap allocations in the composite path** (FIXED 2026-08-12): `vulkan_application::render` built temporary `std::vector`s for waited/signal infos every frame (3 mallocs/frame). Fix: single-element `add_waited_info`/`add_signal_info` overloads; `render` now takes the two `SemaphoreSubmitInfo`s by value. Remaining (accepted): the UI/scene/app `vkWaitSemaphores` triple-wait per frame — waits are a subset of each other on the same queue but protecting each renderer's own CB reuse; not worth restructuring.
+
+27. **UI numeric boundary bugs** (FIXED 2026-08-12): `ui_light.cpp` passed radian values to `SliderAngle`'s degree-based min/max → inverted `min > max` cone ranges; now `glm::degrees`-converted with `inner ≤ outer` constraint. `ui_node.cpp` allowed scaling to 0 → rank-deficient matrix made `glm::decompose` emit NaN into the model matrix uploaded to the GPU; `DragFloat3` now clamps scale to `[0.001, 1000]`.
+
+Note (2026-08-12): MSAA sample count (`vulkan_application::pick_msaa_sample_count`) intentionally picks the device's highest supported sample count (verified 8× on the development GPU) — a design choice, not an issue.

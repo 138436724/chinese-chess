@@ -1,6 +1,6 @@
 #pragma once
 
-#include "scene_camera.h"
+#include "scene_base.h"
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
@@ -26,6 +26,10 @@ public:
     void                                  handle(int _glfw_key);
 
     void need_update() noexcept;
+    void need_camera_update() noexcept;
+    void need_light_update() noexcept;
+    void need_material_update() noexcept;
+    void need_model_update() noexcept;
 
     void save_image();
 
@@ -34,7 +38,7 @@ public:
                  || std::same_as<T, scene_light>)
     [[nodiscard]] auto create(Args&&... args);
 
-    void set_use_ray_tracing(bool _use_ray_tracing) noexcept;
+    void set_use_ray_tracing(bool _use_ray_tracing);
 
     bool          get_need_update() const noexcept;
     scene_camera& get_active_camera() noexcept;
@@ -53,9 +57,8 @@ private:
 private:
     bool is_dirty = true;
 
-    bool                         use_ray_tracing = true;
-    uint32_t                     skybox_index    = std::numeric_limits<uint32_t>::max();
-    std::shared_ptr<scene_image> skybox_image    = nullptr;
+    uint32_t                     skybox_index = std::numeric_limits<uint32_t>::max();
+    std::shared_ptr<scene_image> skybox_image = nullptr;
 
     vulkan_application& app;
 
@@ -72,17 +75,20 @@ private:
     uint32_t                             current_frame = 0;
     std::vector<vk::SemaphoreSubmitInfo> waited_infos;
 
-    std::unique_ptr<scene_model_manager>    model_manager    = nullptr;
-    std::unique_ptr<scene_material_manager> material_manager = nullptr;
-    std::unique_ptr<scene_light_manager>    light_manager    = nullptr;
+    scene_light_manager                        light_manager;
+    scene_material_manager                     material_manager;
+    scene_model_manager                        model_manager;
+    std::vector<pro::proxy_view<manager_base>> managers;
 
     scene_camera      active_camera;
     vk::raii::Sampler image_sampler = nullptr;
 
-    const vk::Format                            color_format = vk::Format::eR16G16B16A16Sfloat;
-    vulkan_image                                render_output;
+    const vk::Format color_format = vk::Format::eR16G16B16A16Sfloat;
+    vulkan_image     render_output;
+
     std::unique_ptr<scene_rasterization_render> rasterization_render = nullptr;
     std::unique_ptr<scene_raytracing_render>    raytracing_render    = nullptr;
+    pro::proxy_view<manager_render>             active_render        = nullptr;
 };
 
 template <typename T, typename... Args>

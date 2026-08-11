@@ -89,9 +89,19 @@ void vulkan_commandbuffer::wait() const
     semaphore->wait(semaphore_value);
 }
 
+void vulkan_commandbuffer::add_waited_info(const vk::SemaphoreSubmitInfo& _submit_info)
+{
+    waited_info.push_back(_submit_info);
+}
+
 void vulkan_commandbuffer::add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)
 {
     waited_info.append_range(_submit_infos | std::views::as_rvalue);
+}
+
+void vulkan_commandbuffer::add_signal_info(const vk::SemaphoreSubmitInfo& _submit_info)
+{
+    signal_info.push_back(_submit_info);
 }
 
 void vulkan_commandbuffer::add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)

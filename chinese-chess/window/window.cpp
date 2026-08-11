@@ -87,28 +87,22 @@ void glfw_window::render()
 
         const auto start = std::chrono::high_resolution_clock::now();
 
+        ui->update();
+
 #ifndef NDEBUG
-        if (need_capture)
+        // Renderdoc cannot start with capture first frame, so skip the first frame
+        if (!first_frame && scene->get_need_update())
         {
             begin_capture = true;
             RENDERDOC_CAPTURE.begin_capture(*(app->get_instance()));
         }
 #endif  // !NDEBUG
 
-#ifndef NDEBUG
-        // only for renderdoc capture, ui update in the last frame then capture the next frame
         scene->update();
-        ui->update();
-        need_capture = scene->get_need_update();
-#else
-        // ui update and scene update in same frame
-        ui->update();
-        scene->update();
-#endif  // !NDEBUG
 
         auto ui_wait_info    = ui->render();
         auto scene_wait_info = scene->render();
-        app->render({std::move(ui_wait_info), std::move(scene_wait_info)});
+        app->render(ui_wait_info, scene_wait_info);
 
         if (need_save)
         {
@@ -122,6 +116,8 @@ void glfw_window::render()
             RENDERDOC_CAPTURE.end_capture(*(app->get_instance()));
             begin_capture = false;
         }
+
+        first_frame = false;
 #endif  // !NDEBUG
 
         const auto end      = std::chrono::high_resolution_clock::now();
@@ -163,7 +159,7 @@ void glfw_window::glfw_key_callback(GLFWwindow* _window, int _key, int _scancode
     static_cast<glfw_window*>(glfwGetWindowUserPointer(_window))->key_callback(_window, _key, _scancode, _action, _mods);
 }
 
-void glfw_window::resize_callback(GLFWwindow* _window, int _width, int _height)
+void glfw_window::resize_callback(GLFWwindow* /*_window*/, int _width, int _height)
 {
     if (_width > 0 && _height > 0)
     {
@@ -177,11 +173,11 @@ void glfw_window::resize_callback(GLFWwindow* _window, int _width, int _height)
     }
 }
 
-void glfw_window::cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) {}
+void glfw_window::cursor_position_callback(GLFWwindow* /*_window*/, double /*_xpos*/, double /*_ypos*/) {}
 
-void glfw_window::mouse_button_callback(GLFWwindow* _window, int _button, int _action, int _mods) {}
+void glfw_window::mouse_button_callback(GLFWwindow* /*_window*/, int /*_button*/, int /*_action*/, int /*_mods*/) {}
 
-void glfw_window::key_callback(GLFWwindow* _window, int _key, int, int _action, int)
+void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int, int _action, int)
 {
     if (_action == GLFW_PRESS || _action == GLFW_REPEAT)
     {

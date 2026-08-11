@@ -91,10 +91,22 @@ void ui_light::update()
                     modified |= ImGui::DragFloat3(LIGHT_DIRECTION.data(), glm::value_ptr(light_ptr->direction), 0.01f);
                     modified |= ImGui::DragFloat3(LIGHT_POSITION.data(), glm::value_ptr(light_ptr->position), 0.1f);
                     modified |= ImGui::DragFloat(LIGHT_RANGE.data(), &light_ptr->range, 0.1f, 0.1f, 1000.0f);
-                    modified |= ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_ptr->inner_cone_angle,
-                                                   glm::radians(1.0f), glm::radians(light_ptr->outer_cone_angle));
-                    modified |= ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_ptr->outer_cone_angle,
-                                                   glm::radians(light_ptr->inner_cone_angle), glm::radians(90.0f));
+                    if (ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_ptr->inner_cone_angle, 0.f, 90.f))
+                    {
+                        modified |= true;
+                        if (glm::degrees(light_ptr->inner_cone_angle) >= glm::degrees(light_ptr->outer_cone_angle))
+                        {
+                            light_ptr->inner_cone_angle = light_ptr->outer_cone_angle - 1.f;
+                        }
+                    }
+                    if (ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_ptr->outer_cone_angle, 0.f, 90.f))
+                    {
+                        modified |= true;
+                        if (glm::degrees(light_ptr->outer_cone_angle) <= glm::degrees(light_ptr->inner_cone_angle))
+                        {
+                            light_ptr->outer_cone_angle = light_ptr->inner_cone_angle + 1.f;
+                        }
+                    }
                     break;
                 default:
                     std::unreachable();
@@ -102,7 +114,7 @@ void ui_light::update()
 
             if (modified)
             {
-                manager.need_update();
+                manager.need_light_update();
             }
 
             if (ImGui::Button(DELETE_LIGHT.data()))
@@ -117,7 +129,7 @@ void ui_light::update()
     if (delete_index.has_value())
     {
         std::erase_if(lights, [&](const auto& p) { return p == lights.at(delete_index.value()); });
-        manager.need_update();
+        manager.need_light_update();
     }
 
     if (lights.empty())

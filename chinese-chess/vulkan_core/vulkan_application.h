@@ -31,7 +31,7 @@ public:
               vk::InstanceCreateFlags         _flags = {});
     void create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
     void resize(uint32_t _width, uint32_t _height);
-    void render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_infos);
+    void render(const vk::SemaphoreSubmitInfo& _ui_waited_info, const vk::SemaphoreSubmitInfo& _scene_waited_info);
     void wait() const;
 
     // frame

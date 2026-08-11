@@ -34,6 +34,11 @@ public:
         vk::DeviceOrHostAddressConstKHR _instances_data,
         uint32_t                        _queue);
 
+    void update_top_level_acceleration_structure(const vk::raii::CommandBuffer&  _commandbuffer,
+                                                 uint32_t                        _instances_size,
+                                                 vk::DeviceOrHostAddressConstKHR _instances_data,
+                                                 vk::DeviceAddress               _scratch_address);
+
     [[nodiscard]] const vk::raii::AccelerationStructureKHR& get_acceleration_structure() const noexcept;
     [[nodiscard]] vk::DeviceAddress                         get_address() const noexcept;
     [[nodiscard]] const vk::raii::Buffer&                   get_buffer() const noexcept;

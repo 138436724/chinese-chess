@@ -40,6 +40,7 @@ std::shared_ptr<scene_material> scene_material_manager::create()
 {
     auto material = std::make_shared<scene_material>();
     materials.emplace_back(material);
+    is_dirty = true;
     return material;
 }
 
@@ -111,6 +112,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
     images.emplace_back(image);
     images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(image));
+    is_dirty = true;
     return image;
 }
 
@@ -157,25 +159,41 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
     images.emplace_back(image);
     images_cache.emplace(_image_path, std::weak_ptr<scene_image>(image));
+    is_dirty = true;
     return image;
 }
 
-void scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    std::erase_if(materials, [](const auto& p) static { return p.expired(); });
+    if (std::erase_if(materials, [](const auto& p) static { return p.expired(); }) != 0)
+    {
+        is_dirty = true;
+    }
 
     auto iter = std::ranges::partition(images, [](const auto& sp) static { return sp.use_count() == 1; });
-    std::vector<std::shared_ptr<scene_image>> retire_images;
-    retire_images.reserve(std::distance(images.begin(), iter.begin()));
-    std::ranges::move(images.begin(), iter.begin(), std::back_inserter(retire_images));
-    recycle_bin.retire(std::move(retire_images), "scene material manager unused images.");
-    images.erase(images.begin(), iter.begin());
+    if (const auto removed_image_count = std::distance(images.begin(), iter.begin()); removed_image_count != 0)
+    {
+        std::vector<std::shared_ptr<scene_image>> retire_images;
+        retire_images.reserve(removed_image_count);
+        std::ranges::move(images.begin(), iter.begin(), std::back_inserter(retire_images));
+        recycle_bin.retire(std::move(retire_images), "scene material manager unused images.");
+        images.erase(images.begin(), iter.begin());
+
+        is_dirty = true;
+    }
 
     std::erase_if(images_cache, [](const auto& p) static { return p.second.expired(); });
 
-    recycle_bin.retire(std::move(ssbo), "scene material manager old ssbo.");
+    if (!is_dirty)
+    {
+        return false;
+    }
 
+    recycle_bin.retire(std::move(ssbo), "scene material manager old ssbo.");
     update_ssbo(_waited_infos);
+    is_dirty = false;
+
+    return true;
 }
 
 void scene_material_manager::clear()
@@ -184,6 +202,12 @@ void scene_material_manager::clear()
     recycle_bin.retire(std::move(images), "scene material manager clear images.");
     images_cache.clear();
     recycle_bin.retire(std::move(ssbo), "scene material manager clear ssbo.");
+    is_dirty = true;
+}
+
+void scene_material_manager::need_update() noexcept
+{
+    is_dirty = true;
 }
 
 const vulkan_buffer& scene_material_manager::get_ssbo_buffer() const noexcept

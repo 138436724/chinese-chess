@@ -28,8 +28,11 @@ public:
     ~scene_model_manager() = default;
 
     [[nodiscard]] std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
-    void                                       update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void                                       clear();
+
+    [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void               clear();
+
+    void need_update() noexcept;
 
     [[nodiscard]] size_t                               get_models_size() const noexcept;
     [[nodiscard]] const vulkan_buffer&                 get_vertices_buffer() const noexcept;
@@ -54,6 +57,8 @@ private:
     const vulkan_queue&             transfer_queue;
     scene_material_manager&         material_manager;
 
+    bool is_dirty = true;
+
     std::vector<std::weak_ptr<scene_model>>                                     models;
     std::vector<std::weak_ptr<model_information>>                               meshes;        // submit to gpu in order
     std::unordered_map<std::filesystem::path, std::weak_ptr<model_information>> models_cache;  // no need order
@@ -61,8 +66,11 @@ private:
     vulkan_buffer vertices_buffer;
     vulkan_buffer indices_buffer;
 
+    size_t                        tlas_instance_count = 0;
+    vulkan_buffer                 tlas_scratch_buffer;
     vulkan_acceleration_structure tlas;
-    vulkan_buffer                 draw_commands;
+
+    vulkan_buffer draw_commands;
 
     vulkan_buffer ssbo;
 };

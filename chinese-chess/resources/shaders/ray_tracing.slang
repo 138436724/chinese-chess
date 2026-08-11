@@ -14,7 +14,7 @@ import lighting;
 
 // ---- 恒定环境光（Ambient）----
 // 保证完全阴影区域也有基础可见度；数值越小阴影越黑，越大整体越平
-static const float AMBIENT_LIGHT = 0.25f; // 环境光强度（相对漫反射亮度）
+static const float AMBIENT_LIGHT = 0.25f;  // 环境光强度（相对漫反射亮度）
 
 // ---- 高度雾参数（可调） ----
 static const float  FOG_DENSITY   = 0.005f;                      // 基础雾密度
@@ -24,8 +24,8 @@ static const float3 FOG_SUN_COLOR = float3(1.0f, 0.95f, 0.8f);   // 太阳散射
 static const float3 FOG_SUN_DIR   = float3(0.3f, 0.6f, 0.7f);    // 太阳方向
 
 // ---- 玉石/半透明透射参数（可调） ----
-static const float PIECE_THICKNESS           = 0.04f;  // 棋子厚度（Beer-Lambert 固定厚度）
-static const float JADE_BASE_ABSORPTION     = 12.0f;  // 玉石底吸收系数：T = exp(-density × thickness)；调大 = 更不透
+static const float PIECE_THICKNESS         = 0.04f;  // 棋子厚度（Beer-Lambert 固定厚度）
+static const float JADE_BASE_ABSORPTION    = 12.0f;  // 玉石底吸收系数：T = exp(-density × thickness)；调大 = 更不透
 static const float JADE_ENGRAVE_ABSORPTION = 30.0f;  // 刻字区额外吸收（按 alpha 贴图权重叠加，刻痕更暗更实）
 
 [[vk::push_constant]]
@@ -161,10 +161,10 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
 
     if(now_material.texture_index != 0xFFFFFFFFu)
     {
-      Sampler2D now_texture = samplers[now_material.texture_index];
-      float     weight      = now_texture.SampleLevel(uv, 0.f).x;
-      material_color        = lerp(now_material.background_color, now_material.foreground_color, weight);
-      payload.texture_weight = weight; // 记录刻字权重，供透射分支调制吸收
+      Sampler2D now_texture  = samplers[now_material.texture_index];
+      float     weight       = now_texture.SampleLevel(uv, 0.f).x;
+      material_color         = lerp(now_material.background_color, now_material.foreground_color, weight);
+      payload.texture_weight = weight;  // 记录刻字权重，供透射分支调制吸收
     }
     else
     {
@@ -213,11 +213,9 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
     float3 diffuse  = (float3(1.0f) - kS) * (1.0f - material_metallic) * material_color * INV_PI;
     float3 specular = evaluate_ggx(F0, clamped_roughness, world_normal, V, ls.direction);
 
-    // MIS 权重：delta 光源 pdf=1，BRDF pdf 极小 → w_light ≈ 1
-    float pdf_light      = ls.pdf;
-    float pdf_brdf_light = pdf_lambertian(world_normal, ls.direction) * (1.f - material_metallic)
-                           + pdf_ggx(world_normal, V, ls.direction, clamped_roughness) * material_metallic;
-    float w_light        = power_heuristic(pdf_light, pdf_brdf_light);
+    // MIS 权重：directional/point/spot 均为 delta 光源（pdf=1），BRDF 重要性采样命中
+    // delta 光源的概率恒为 0，NEE 是唯一采样策略 → w_light 恒为 1（对非 delta 光源需恢复 MIS）
+    float w_light = 1.0f;
 
     float3 contribution = ls.color * (diffuse + specular) * NdotL * w_light;
 
@@ -291,9 +289,9 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
       bounce_direction            = T;
       payload.inside_transmissive = !payload.inside_transmissive;
       // 仅进入时应用 Beer-Lambert 吸收；刻字区（texture_weight 高）吸收更强，呈现玉石刻痕
-      float absorption_density = JADE_BASE_ABSORPTION + JADE_ENGRAVE_ABSORPTION * payload.texture_weight;
-      float3 absorption       = is_entry ? exp(-absorption_density * PIECE_THICKNESS).xxx : float3(1.f);
-      lobe_value        = (1.f - F_interface) * absorption;
+      float  absorption_density = JADE_BASE_ABSORPTION + JADE_ENGRAVE_ABSORPTION * payload.texture_weight;
+      float3 absorption         = is_entry ? exp(-absorption_density * PIECE_THICKNESS).xxx : float3(1.f);
+      lobe_value                = (1.f - F_interface) * absorption;
     }
   }
   else if(r < trans_prob + specular_prob)

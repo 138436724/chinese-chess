@@ -52,15 +52,31 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
 
 void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
 {
+    if (width == _width && height == _height)
+    {
+        return;
+    }
+
     width  = _width;
     height = _height;
 }
 
-void scene_raytracing_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+void scene_raytracing_render::update()
 {
-    // reset path tracing accumulation
     frame_index = 0;
     update_descriptor();
+}
+
+void scene_raytracing_render::recreate()
+{
+    recycle_bin.retire(std::move(pipeline), "old ray tracing pipeline on reload.");
+    recycle_bin.retire(std::move(sbt), "old ray tracing sbt on reload.");
+    create_pipeline_and_sbt();
+}
+
+void scene_raytracing_render::reset_accumulation() noexcept
+{
+    frame_index = 0;
 }
 
 void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)

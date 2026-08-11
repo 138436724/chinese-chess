@@ -71,12 +71,12 @@ void ui_node::update_material()
         {
             if (ImGui::ColorEdit3(MATERIAL_BACKGROUND_COLOR.data(), glm::value_ptr(material_ptr->background_color)))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::ColorEdit3(MATERIAL_FOREGROUND_COLOR.data(), glm::value_ptr(material_ptr->foreground_color)))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (!textures.empty())
@@ -115,33 +115,33 @@ void ui_node::update_material()
                     }
                     material_ptr->alpha_map = manager.create<scene_image>(file_path, false);
                     textures.emplace(material_ptr->alpha_map, file_path);
-                    manager.need_update();
+                    manager.need_material_update();
                 }
             }
 
             if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.f, 1.f))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::DragFloat(MATERIAL_METALLIC.data(), &material_ptr->metallic, 0.01f, 0.f, 1.f))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::DragFloat(MATERIAL_OPACITY.data(), &material_ptr->opacity, 0.01f, 0.f, 1.f))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::DragFloat(MATERIAL_IOR.data(), &material_ptr->ior, 0.01f, 1.f, 3.f))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::DragFloat(MATERIAL_TRANSMISSION.data(), &material_ptr->transmission, 0.01f, 0.f, 1.f))
             {
-                manager.need_update();
+                manager.need_material_update();
             }
 
             if (ImGui::Button(DELETE_MATERIAL.data()))
@@ -156,7 +156,7 @@ void ui_node::update_material()
     if (delete_index.has_value())
     {
         std::erase_if(materials, [&](const auto& p) { return p == materials.at(delete_index.value()); });
-        manager.need_update();
+        manager.need_material_update();
     }
 
     if (materials.empty())
@@ -208,7 +208,7 @@ void ui_node::update_model()
         {
             if (ImGui::Checkbox(SHOW_MODEL.data(), &model_ptr->is_show))
             {
-                manager.need_update();
+                manager.need_model_update();
             }
 
             glm::vec3 translate, scale, skew;
@@ -222,7 +222,7 @@ void ui_node::update_model()
                 bool modified = false;
                 modified |= ImGui::DragFloat3(MODEL_TRANSLATION.data(), glm::value_ptr(translate), 0.1f);
                 modified |= ImGui::DragFloat3(MODEL_ROTATION.data(), glm::value_ptr(euler_degrees));
-                modified |= ImGui::DragFloat3(MODEL_SCALING.data(), glm::value_ptr(scale), 0.1f);
+                modified |= ImGui::DragFloat3(MODEL_SCALING.data(), glm::value_ptr(scale), 0.1f, 0.001f, 10000.0f);
 
                 if (modified)
                 {
@@ -235,7 +235,7 @@ void ui_node::update_model()
 
                     model_ptr->model_matrix = T * R * S;
                     ;
-                    manager.need_update();
+                    manager.need_model_update();
                 }
             }
 
@@ -256,7 +256,7 @@ void ui_node::update_model()
                                  static_cast<int>(all_material_index_string.size())))
                 {
                     model_ptr->material = materials.at(material_index);
-                    manager.need_update();
+                    manager.need_model_update();
                 }
             }
 
@@ -272,7 +272,7 @@ void ui_node::update_model()
     if (delete_index.has_value())
     {
         std::erase_if(models, [&](const auto& p) { return p == models.at(delete_index.value()); });
-        manager.need_update();
+        manager.need_model_update();
     }
 
     if (models.empty())

@@ -38,9 +38,9 @@
 | **棋谱回放** | ICU4C 自动检测 GB2312/UTF-8 编码，正则解析中文记谱法（含前/中/后与中文数字），逐步播放对局（W/A 上一步，S/D 下一步） |
 | **ImGui 控制面板** | 场景设置窗口包含相机、灯光、材质/物体、棋谱 4 个面板（docking + 多视口） |
 | **截图保存** | 支持 EXR（HDR）和 PNG（LDR）格式，按 **C** 键保存当前帧（仅场景，不含 UI） |
-| **热重载** | 按 **F5** 重建当前渲染管线并重新编译着色器；file_watcher 以 SHA-256 哈希判定文件是否修改，未修改则直接使用 .spv 缓存 |
+| **热重载** | 按 **F5** 仅重新编译当前激活渲染器的 pipeline（多态分发，无需记录当前路径）；file_watcher 以 SHA-256 哈希判定文件是否修改，未修改则直接使用 .spv 缓存 |
 | **字体渲染** | FreeType 逐字栅格化生成字形图集；资源含 LXGW WenKai GB（3 字重）、LXGW WenKai Mono GB（3 字重）、思源黑体（7 字重）、华文粗楷 |
-| **RenderDoc 帧捕获** | Debug 构建集成 RenderDoc（v1.7.0 API）：UI 操作使场景变脏后，下一帧自动开始/结束捕获 |
+| **RenderDoc 帧捕获** | Debug 构建集成 RenderDoc（v1.7.0 API）：UI 操作使场景变脏后，本帧（更新生效帧）自动开始/结束捕获 |
 
 ### 🎨 渲染特性
 
@@ -54,7 +54,7 @@
 | **阴影光线** | Any-Hit Shader + `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` + `SKIP_CLOSEST_HIT` + 背面剔除 |
 | **HDR 环境贴图** | 等距矩形投影 HDR 天空（默认 `干裂地面.hdr`）；未绑定贴图时回退默认天空色 |
 | **ACES 2.0 色彩管理** | OpenColorIO：CPU 截图色彩变换 + GPU 合成 Pass 运行时注入（存在绑定序缺陷，见[已知问题](#已知问题)） |
-| **Bindless 描述符** | 最多 1024 个纹理的运行时描述符数组（两条渲染路径共用） |
+**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。描述符仅在 scene_manager 聚合到 any_dirty（manager 实际重传 SSBO/重建 TLAS）时重建。
 
 ### ⚙️ 工程特性
 
@@ -67,7 +67,7 @@
 | **资源状态追踪** | 每个 `vulkan_buffer`/`vulkan_image` 跟踪当前 Stage / Access / Layout / Queue，用于自动生成正确的 Pipeline Barrier |
 | **智能队列选择** | C++23 `cartesian_product` 穷举（图形、计算、传输、呈现）队列族组合，专用传输队列 10× 加分，最大化独立队列族数量 |
 | **两步初始化** | `vulkan_application` 分离 Instance 创建（`init`）与 Device/Swapchain 创建（`create`） |
-| **管理器架构** | scene_model_manager 统一持有顶点/索引缓冲、BLAS/TLAS、间接绘制命令与模型 SSBO；材质/灯光管理器持有各自 SSBO |
+| **管理器架构** | scene_model_manager 统一持有顶点/索引缓冲、BLAS/TLAS、间接绘制命令与模型 SSBO；材质/灯光管理器持有各自 SSBO；各 manager 自查单一 is_dirty（create 与真删除时置脏、update 消费并返回是否执行），scene_manager 聚合 any_dirty 决定重建描述符或仅重置累积 |
 | **工具单例** | shader_compiler / file_watcher / renderdoc_capture 为单例；其余工具为命名空间函数 |
 
 ---
@@ -151,7 +151,7 @@ GLFW_INCLUDE_VULKAN
 GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 ```
 
-> 注意：源文件为无 BOM 的 UTF-8（含中文注释与字面量），而当前 `CMakeLists.txt` 未显式添加 `/utf-8`。在非 UTF-8 系统区域下构建请补充 `target_compile_options(chinese-chess PRIVATE /utf-8)`（旧的 .vcxproj 与现有 out/build 构建脚本中均包含 `/utf-8 /W4 /permissive-`）。
+> 注意：源文件为无 BOM 的 UTF-8（含中文注释与字面量），`CMakeLists.txt` 已在 `if(WIN32)` 下通过 `add_compile_options(/utf-8)` 显式设置，非 UTF-8 系统区域下构建无需额外补充。
 
 ---
 
@@ -164,7 +164,7 @@ GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 | **W/A** | 棋谱上一步 |
 | **S/D** | 棋谱下一步 |
 | **C** | 保存当前帧截图 |
-| **F5** | 热重载：重新编译着色器并重建当前渲染管线（若着色器编译失败会直接终止程序，见[已知问题](#已知问题)） |
+| **F5** | 热重载：仅重新编译着色器并重建当前激活渲染器的 pipeline（若编译失败会直接终止程序，见[已知问题](#已知问题)） |
 | **ImGui 面板** | 场景设置窗口控制相机、灯光、材质/物体、棋谱参数（相机无鼠标轨道控制，通过面板数值调整） |
 
 ### 渲染模式切换
@@ -178,7 +178,7 @@ GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 Debug 构建会自动集成 RenderDoc：
 1. 确保系统已安装 RenderDoc（`renderdoc.dll` 在进程 DLL 搜索路径中）
 2. 在 UI 中进行任意操作（修改材质、移动光源等）使场景数据变脏
-3. 程序在**下一帧**自动开始并结束 RenderDoc 捕获
+3. UI 操作使场景变脏后，程序在**本帧**自动开始并结束 RenderDoc 捕获（跳过首帧：`first_frame` 为 true 时不捕获（RenderDoc 无法在首帧开始捕获）；UI 更新后、scene 消费前调用 `StartFrameCapture`，因此 `scene->update()` 里的 upload 命令也在捕获内）
 4. 捕获文件保存在 `resources/captures/`（`_capture_N.rdc`）
 
 ### 棋谱回放
@@ -273,13 +273,12 @@ chinese-chess/
   glfwPollEvents()
 
   [Debug 构建]:
+    ui->update()             → ImGui NewFrame + 面板更新（UI 操作使场景置脏）+ ImGui::Render
+    if !first_frame && scene->get_need_update()  // UI 置脏？本帧捕获（跳过首帧，scene->update() 的 upload 也在捕获内）
     scene->update()          → 脏检查：上传模型/材质/灯光 SSBO，重建 TLAS + 间接绘制命令 + 描述符
-    ui->update()             → ImGui NewFrame + 面板更新 + ImGui::Render
-    need_capture = scene->get_need_update()  // UI 使场景变脏？下一帧开始 RenderDoc 捕获
   [Release 构建]:
-    ui->update()             → 同帧更新（无 RenderDoc 捕获逻辑）
+    ui->update()             → 同帧更新
     scene->update()
-
   ui->render()               → UI MSAA 渲染 → resolve → submit（返回时间线信号量）
   scene->render()            → 光栅化或光追渲染 → submit（返回时间线信号量）
   app->render({ui, scene})   → 回收站 release
@@ -311,7 +310,7 @@ chinese-chess/
 
 **队列所有权转移（upload_image / download_image）**：上传为三段式——传输队列 release（仅转移所有权，不改变布局，纯传输队列无 shader 阶段）→ 图形队列 acquire 并转换到 `eShaderReadOnlyOptimal`。下载为五段式——图形 release → 传输队列转换到 `eTransferSrcOptimal` 并拷贝到 staging → 图形队列 re-acquire 并恢复原布局。
 
-**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。
+**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。描述符仅在 scene_manager 聚合到 any_dirty（manager 实际重传 SSBO/重建 TLAS）时重建。
 
 **UI/场景分层合成**：应用层的 Blend Pass（`blend_image.slang`）通过全屏三角形将场景渲染输出和 UI 渲染输出进行 Alpha 混合；`ocio_conversion()` 函数体在编译期被 OCIO 生成代码替换（`USE_OCIO=true`）。
 
@@ -430,13 +429,13 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 
 ### 性能 / 待办
 
-- 每次场景脏更新都销毁并重建描述符池与全部描述符集（两条渲染路径皆然），拖动 UI 滑条时每帧发生；
-- `scene_manager::update()` 无条件更新两条渲染路径——光栅化模式下仍每帧全量重建 TLAS（建议按 `use_ray_tracing` 门控）；
+- ~~每次场景脏更新都销毁并重建描述符池与全部描述符集~~（已修复 2026-08-10：仅当 manager 实际执行更新（any_dirty）时才重建，视图变化不触碰描述符）；
+- ~~`scene_manager::update()` 无条件更新两条渲染路径~~（已修复 2026-08-10：各 manager 自查脏状态，相机/视图变化仅重置光追累积）；
 - 管理器更新时无条件 retire 并重建 SSBO/TLAS/间接绘制缓冲（仅当对应集合非空时才重新上传）；
-- BLAS/TLAS 构建计划迁移到计算队列（源码 TODO；TLAS 构建需要 VK_QUEUE_COMPUTE_BIT）；
+- BLAS/TLAS 构建计划迁移到计算队列（源码 TODO；TLAS 构建需要 VK_QUEUE_COMPUTE_BIT）；TLAS 已在实例数量不变时走 refit（eUpdate），仅增删模型才完全重建；
 - `save_image` 中布局转换应在所有权转移后在目标队列执行（源码 TODO）；
 - **遗留/未使用着色器**：scene_skybox.slang / scene_brdflut.slang / scene_cubemap.slang 未被 C++ 引用（保留待复用）；已消除重复：ray_tracing.slang 不再本地定义工具函数，三个遗留模块与全部入口着色器统一 import common / scene_data / lighting；
-- `CMakeLists.txt` 未显式设置 `/utf-8`（源文件为无 BOM UTF-8），非 UTF-8 系统区域下构建需自行补充（见[构建](#构建)）；
+- ~~`CMakeLists.txt` 未显式设置 `/utf-8`~~（已修复 2026-08-11：`if(WIN32)` 下已添加 `add_compile_options(/utf-8)`）；
 - CMakePresets 中的 x86 与 Linux/macOS 预设未维护，仅 Windows x64 经过测试。
 
 ---
@@ -451,6 +450,9 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 2026-06  重写提升可维护性；纠正矩阵乘法顺序；UI 与场景管理封装；多光源处理；灯光/摄像机 UI 封装；高光计算；物体与材质封装（proxy4 取代虚函数）；VMA 管理存储；HDR 天空采样；智能队列选择与独立命令池；时间线信号量取代栅栏并添加回收站
 2026-07  物理设备/逻辑设备封装；彻底分离传输与图像队列（时间线信号量同步，不再直接等待命令完成）；拆分单独的时间线信号量与回收站；特定条件触发 RenderDoc 抓帧；modelmanager 统一构建 TLAS 与间接绘制命令；尽量移除 u8string
 2026-08  （工作区未提交）CMake 迁移：CMakeLists.txt + CMakePresets.json 取代 .slnx/.vcxproj；新增 vcpkg 子模块；scene_light 由 std::variant 重构为扁平结构体；着色器全量重写（common/scene_data 模块化、去重、修复布局与 texture_index 守卫）；半透明玉石棋子（白玉/青玉 + 刻字吸收 + 材质面板透射参数）；恒定环境光；std::expected 改造（model_loader/shader_compiler/oci_helper/find_supported_format，失败携带具体原因与 Slang 诊断）；重新扫描并更新 README/CLAUDE 文档
+2026-08-10  细粒度更新：各 manager 自查 is_dirty，create 与真删除时置脏、update 消费并返回是否执行；scene_manager 聚合 any_dirty 决定重建描述符或仅重置累积；UI 经 need_update / need_camera_update / need_material_update / need_model_update / need_light_update 路由
+2026-08-10  TLAS 增量优化：实例数量不变时仅 refit（eUpdate 模式，持久 scratch/instance 缓冲），增删模型才完全重建
+2026-08-12  F5 热重载优化：仅重新编译当前激活渲染器的 pipeline（recreate_pipeline，多态分发，删除 use_ray_tracing 成员与 refresh_active_render）；resize 仅走热路径渲染器 + 渲染器宽高守卫；set_use_ray_tracing 承担绑定+force resize+描述符重建
 ```
 
 ---

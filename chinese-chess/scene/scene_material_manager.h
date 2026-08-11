@@ -31,8 +31,11 @@ public:
     [[nodiscard]] std::shared_ptr<scene_image>    create(const std::filesystem::path&          _image_path,
                                                          bool                                  _is_hdr,
                                                          std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void                                          update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void                                          clear();
+
+    [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void               clear();
+
+    void need_update() noexcept;
 
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
@@ -49,6 +52,8 @@ private:
     vulkan_semaphore&           semaphore;
     const vulkan_queue&         graphic_queue;
     const vulkan_queue&         transfer_queue;
+
+    bool is_dirty = true;
 
     std::vector<std::weak_ptr<scene_material>>                            materials;
     std::vector<std::shared_ptr<scene_image>>                             images;  // need order

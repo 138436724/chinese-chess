@@ -35,8 +35,10 @@ public:
     ~scene_raytracing_render() = default;
 
     void resize(uint32_t _width, uint32_t _height);
-    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update();
     void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index);
+    void recreate();
+    void reset_accumulation() noexcept;
 
 private:
     void create_pipeline_and_sbt();

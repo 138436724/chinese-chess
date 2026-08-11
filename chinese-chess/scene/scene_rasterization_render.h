@@ -35,8 +35,10 @@ public:
     ~scene_rasterization_render() = default;
 
     void resize(uint32_t _width, uint32_t _height);
-    void update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update();
     void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index);
+    void recreate();
+    void reset_accumulation() noexcept;
 
 private:
     void create_pipeline(vk::Format _color_format);
@@ -64,9 +66,11 @@ private:
     const vk::raii::Sampler&      image_sampler;
     vulkan_image&                 render_output;
 
-    uint32_t                             width         = 0;
-    uint32_t                             height        = 0;
-    uint32_t                             current_frame = 0;
+    uint32_t         width         = 0;
+    uint32_t         height        = 0;
+    uint32_t         current_frame = 0;
+    const vk::Format color_format  = vk::Format::eUndefined;
+
     vulkan_image                         color_image;
     vulkan_image                         depth_image;
     vulkan_pipeline                      pipeline;

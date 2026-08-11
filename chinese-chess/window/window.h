@@ -41,7 +41,7 @@ private:
 
 #ifndef NDEBUG
     // for renderdoc capture
-    bool need_capture  = false;
+    bool first_frame   = true;
     bool begin_capture = false;
 #endif  // !NDEBUG
 };

@@ -25,7 +25,9 @@ public:
     void submit(bool _immediately);
     void wait() const;
 
+    void add_waited_info(const vk::SemaphoreSubmitInfo& _submit_info);
     void add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos);
+    void add_signal_info(const vk::SemaphoreSubmitInfo& _submit_info);
     void add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos);
 
     [[nodiscard]] vk::SemaphoreSubmitInfo        get_submit_info() const noexcept;

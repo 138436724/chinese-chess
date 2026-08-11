@@ -64,7 +64,7 @@ void vulkan_application::resize(uint32_t _width, uint32_t _height)
     swapchain.recreate(*physical_device, *device, _width, _height);
 }
 
-void vulkan_application::render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_infos)
+void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, const vk::SemaphoreSubmitInfo& _scene_waited_info)
 {
     recycle_bin.release();
 
@@ -77,9 +77,10 @@ void vulkan_application::render(std::vector<vk::SemaphoreSubmitInfo>&& _waited_i
         return;
     }
 
-    commandbuffer.add_waited_info(std::move(_waited_infos));
-    commandbuffer.add_waited_info({swapchain.get_waited_info()});
-    commandbuffer.add_signal_info({swapchain.get_signal_info()});
+    commandbuffer.add_waited_info(_ui_waited_info);
+    commandbuffer.add_waited_info(_scene_waited_info);
+    commandbuffer.add_waited_info(swapchain.get_waited_info());
+    commandbuffer.add_signal_info(swapchain.get_signal_info());
 
     const auto scene_barrier =
         vk::ImageMemoryBarrier2(bind_scene_image->get_stage(), bind_scene_image->get_access(),

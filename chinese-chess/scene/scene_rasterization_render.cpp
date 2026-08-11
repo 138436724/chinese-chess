@@ -36,12 +36,18 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     , light_manager(_light_manager)
     , image_sampler(_image_sampler)
     , render_output(_render_output)
+    , color_format(_color_format)
 {
-    create_pipeline(_color_format);
+    create_pipeline(color_format);
 }
 
 void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
 {
+    if (width == _width && height == _height)
+    {
+        return;
+    }
+
     width                        = _width;
     height                       = _height;
     const std::array queue_array = {graphic_queue.get_index()};
@@ -68,12 +74,12 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                        vk::ClearDepthStencilValue(1.f, 0), "rasterization_depth");
 }
 
-void scene_rasterization_render::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+void scene_rasterization_render::update()
 {
     update_descriptor();
 }
 
-void scene_rasterization_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
+void scene_rasterization_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t /*_skybox_index*/)
 {
     const auto render_output_barrier =
         vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
@@ -146,6 +152,14 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
 
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
+
+void scene_rasterization_render::recreate()
+{
+    recycle_bin.retire(std::move(pipeline), "old rasterization pipeline on reload.");
+    create_pipeline(color_format);
+}
+
+void scene_rasterization_render::reset_accumulation() noexcept {}
 
 void scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {

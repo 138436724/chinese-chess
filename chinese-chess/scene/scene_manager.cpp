@@ -15,6 +15,9 @@
 
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
+    , light_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
+    , material_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
+    , model_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, compute_queue, transfer_queue, material_manager)
 {
     semaphore.create(*app.get_device());
     recycle_bin.create(&semaphore);
@@ -23,15 +26,9 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     compute_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eCompute));
     transfer_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eTransfer));
 
-
-    material_manager = std::make_unique<scene_material_manager>(app.get_allocator(), *app.get_device(), recycle_bin,
-                                                                semaphore, graphic_queue, transfer_queue);
-    model_manager    = std::make_unique<scene_model_manager>(app.get_allocator(), *app.get_physical_device(),
-                                                             *app.get_device(), recycle_bin, semaphore, graphic_queue,
-                                                             compute_queue, transfer_queue, *material_manager);
-    light_manager    = std::make_unique<scene_light_manager>(app.get_allocator(), *app.get_device(), recycle_bin,
-                                                             semaphore, graphic_queue, transfer_queue);
-
+    managers.emplace_back(pro::make_proxy_view<manager_base>(material_manager));
+    managers.emplace_back(pro::make_proxy_view<manager_base>(model_manager));
+    managers.emplace_back(pro::make_proxy_view<manager_base>(light_manager));
 
     // create sampler
     const vk::PhysicalDeviceProperties properties = (*app.get_physical_device()).getProperties();
@@ -58,19 +55,20 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
 
     rasterization_render = std::make_unique<scene_rasterization_render>(
         app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, compute_queue,
-        transfer_queue, *model_manager, *material_manager, *light_manager, image_sampler, render_output, color_format);
+        transfer_queue, model_manager, material_manager, light_manager, image_sampler, render_output, color_format);
 
     raytracing_render = std::make_unique<scene_raytracing_render>(
         app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
-        compute_queue, transfer_queue, *model_manager, *material_manager, *light_manager, image_sampler, render_output);
+        compute_queue, transfer_queue, model_manager, material_manager, light_manager, image_sampler, render_output);
+
+    // default use raytracing
+    active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
 
     resize(_width, _height);
 }
 
 void scene_manager::resize(uint32_t _width, uint32_t _height)
 {
-    is_dirty = true;
-
     width  = _width;
     height = _height;
 
@@ -88,8 +86,8 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
                          vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
-    rasterization_render->resize(width, height);
-    raytracing_render->resize(width, height);
+    active_render->resize(width, height);
+    need_update();
 }
 
 void scene_manager::update()
@@ -101,14 +99,19 @@ void scene_manager::update()
 
     is_dirty = false;
 
-    material_manager->update(waited_infos);
-    model_manager->update(waited_infos);
-    light_manager->update(waited_infos);
+    bool any_dirty = std::ranges::fold_left(managers, false,
+                                            [this](bool b, auto& manager) { return manager->update(waited_infos) || b; });
 
-    skybox_index = material_manager->get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
+    if (any_dirty)
+    {
+        active_render->update();
+    }
+    else
+    {
+        active_render->reset_accumulation();
+    }
 
-    rasterization_render->update(waited_infos);
-    raytracing_render->update(waited_infos);
+    skybox_index = material_manager.get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
 }
 
 vk::SemaphoreSubmitInfo scene_manager::render()
@@ -120,14 +123,7 @@ vk::SemaphoreSubmitInfo scene_manager::render()
 
     commandbuffer.add_waited_info(std::move(waited_infos));  // waited_infos clear here
 
-    if (!use_ray_tracing)
-    {
-        rasterization_render->render(active_camera, *commandbuffer, skybox_index);
-    }
-    else
-    {
-        raytracing_render->render(active_camera, *commandbuffer, skybox_index);
-    }
+    active_render->render(active_camera, *commandbuffer, skybox_index);
 
     commandbuffer.end_record();
     commandbuffer.submit(false);
@@ -139,9 +135,7 @@ vk::SemaphoreSubmitInfo scene_manager::render()
 
 void scene_manager::destroy()
 {
-    material_manager->clear();
-    model_manager->clear();
-    light_manager->clear();
+    std::ranges::for_each(managers, [](auto& manager) { manager->clear(); });
 }
 
 void scene_manager::handle(int _glfw_key)
@@ -149,29 +143,8 @@ void scene_manager::handle(int _glfw_key)
     switch (_glfw_key)
     {
         case GLFW_KEY_F5:
-            if (use_ray_tracing)
-            {
-                recycle_bin.retire(raytracing_render, "old ray tracing in hot reload.");
-
-                raytracing_render =
-                    std::make_unique<scene_raytracing_render>(app.get_allocator(), *app.get_physical_device(),
-                                                              *app.get_device(), recycle_bin, semaphore, graphic_queue,
-                                                              compute_queue, transfer_queue, *model_manager, *material_manager,
-                                                              *light_manager, image_sampler, render_output);
-                raytracing_render->resize(width, height);
-                raytracing_render->update(waited_infos);
-            }
-            else
-            {
-                recycle_bin.retire(rasterization_render, "old rasterization in hot reload.");
-
-                rasterization_render = std::make_unique<scene_rasterization_render>(
-                    app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore,
-                    graphic_queue, compute_queue, transfer_queue, *model_manager, *material_manager, *light_manager,
-                    image_sampler, render_output, color_format);
-                rasterization_render->resize(width, height);
-                rasterization_render->update(waited_infos);
-            }
+            active_render->recreate();
+            active_render->update();
             break;
         default:
             break;
@@ -181,6 +154,32 @@ void scene_manager::handle(int _glfw_key)
 void scene_manager::need_update() noexcept
 {
     is_dirty = true;
+    light_manager.need_update();
+    material_manager.need_update();
+    model_manager.need_update();
+}
+
+void scene_manager::need_camera_update() noexcept
+{
+    is_dirty = true;
+}
+
+void scene_manager::need_light_update() noexcept
+{
+    is_dirty = true;
+    light_manager.need_update();
+}
+
+void scene_manager::need_material_update() noexcept
+{
+    is_dirty = true;
+    material_manager.need_update();
+}
+
+void scene_manager::need_model_update() noexcept
+{
+    is_dirty = true;
+    model_manager.need_update();
 }
 
 void scene_manager::save_image()
@@ -226,10 +225,20 @@ void scene_manager::save_image()
     }
 }
 
-void scene_manager::set_use_ray_tracing(bool _use_ray_tracing) noexcept
+void scene_manager::set_use_ray_tracing(bool _use_ray_tracing)
 {
-    is_dirty        = true;
-    use_ray_tracing = _use_ray_tracing;
+    if (_use_ray_tracing)
+    {
+        active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
+    }
+    else
+    {
+        active_render = pro::make_proxy_view<manager_render>(*rasterization_render);
+    }
+
+    // force resize and update
+    active_render->resize(width, height);
+    need_update();
 }
 
 bool scene_manager::get_need_update() const noexcept
@@ -249,17 +258,17 @@ vulkan_image& scene_manager::get_render_image() noexcept
 
 std::shared_ptr<scene_light> scene_manager::create(std::type_identity<scene_light>)
 {
-    return light_manager->create();
+    return light_manager.create();
 }
 
 std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name)
 {
-    return model_manager->create(_model_name);
+    return model_manager.create(_model_name);
 }
 
 std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>)
 {
-    return material_manager->create();
+    return material_manager.create();
 }
 
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
@@ -267,10 +276,10 @@ std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_imag
                                                    uint32_t                     _font_size,
                                                    const std::wstring&          _characters)
 {
-    return material_manager->create(_font_path, _font_size, _characters, waited_infos);
+    return material_manager.create(_font_path, _font_size, _characters, waited_infos);
 }
 
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr)
 {
-    return material_manager->create(_image_path, _is_hdr, waited_infos);
+    return material_manager.create(_image_path, _is_hdr, waited_infos);
 }

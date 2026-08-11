@@ -37,22 +37,41 @@ std::shared_ptr<scene_light> scene_light_manager::create()
 {
     auto light = std::make_shared<scene_light>();
     lights.push_back(light);
+    is_dirty = true;
     return light;
 }
 
-void scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
-    std::erase_if(lights, [](const auto& p) static { return p.expired(); });
+    if (std::erase_if(lights, [](const auto& p) static { return p.expired(); }) != 0)
+    {
+        is_dirty = true;
+    }
+
+    if (!is_dirty)
+    {
+        return false;
+    }
 
     recycle_bin.retire(std::move(ssbo), "scene light manager old ssbo.");
 
     update_ssbo(_waited_infos);
+
+    is_dirty = false;
+
+    return true;
 }
 
 void scene_light_manager::clear() noexcept
 {
     lights.clear();
     recycle_bin.retire(std::move(ssbo), "scene light manager clear ssbo.");
+    is_dirty = true;
+}
+
+void scene_light_manager::need_update() noexcept
+{
+    is_dirty = true;
 }
 
 const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
