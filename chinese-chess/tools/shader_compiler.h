@@ -35,10 +35,6 @@ private:
     shader_compiler(shader_compiler&&)                 = delete;
     shader_compiler& operator=(shader_compiler&&)      = delete;
 
-    [[nodiscard]] static inline std::string get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept;
-    static void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept;
-    void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Slang::ComPtr<slang::IComponentType>& _composed_program) const;
-
     std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_to_slang_module(const slang::SessionDesc& _session_desc,
                                                                                   const std::string& _shader_string,
                                                                                   bool               _as_shader_name,
@@ -54,6 +50,4 @@ private:
     std::array<slang::CompilerOptionEntry, 4> options;
     slang::TargetDesc                         target_desc;
     slang::SessionDesc                        session_desc;
-
-    mutable int global_counter = 0;
 };

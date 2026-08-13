@@ -5,6 +5,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 
+namespace {
 constexpr std::string_view LIGHT_MANAGER     = "灯光管理";
 constexpr std::string_view LIGHT_TYPE        = "灯光类型";
 constexpr std::string_view DIRECTIONAL_LIGHT = "平行光";
@@ -20,6 +21,7 @@ constexpr std::string_view LIGHT_POSITION    = "灯光位置";
 constexpr std::string_view LIGHT_RANGE       = "灯光范围";
 constexpr std::string_view LIGHT_INNER_CONE  = "内锥角";
 constexpr std::string_view LIGHT_OUTER_CONE  = "外锥角";
+}  // namespace
 
 
 ui_light::ui_light(scene_manager& _manager)

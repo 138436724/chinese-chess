@@ -10,6 +10,7 @@
 #include <format>
 #include <ranges>
 
+namespace {
 struct model_data  // std430 layout
 {
     alignas(16) glm::mat4 model_matrix          = glm::mat4(1.f);
@@ -17,6 +18,7 @@ struct model_data  // std430 layout
     alignas(8) vk::DeviceAddress vertex_address = 0;
     alignas(8) vk::DeviceAddress index_address  = 0;
 };
+}  // namespace
 
 scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _allocator,
                                          const vk::raii::PhysicalDevice& _physical_device,

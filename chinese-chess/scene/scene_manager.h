@@ -10,6 +10,7 @@
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
+#include "vulkan_core/vulkan_sampler.h"
 
 class vulkan_application;
 
@@ -52,7 +53,10 @@ private:
                                                          const std::filesystem::path& _font_path,
                                                          uint32_t                     _font_size,
                                                          const std::wstring&          _characters);
-    [[nodiscard]] std::shared_ptr<scene_image> create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr);
+    [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
+                                                         const std::filesystem::path& _image_path,
+                                                         bool                         _is_hdr,
+                                                         sampler_type                 _type);
 
 private:
     bool is_dirty = true;
@@ -80,8 +84,7 @@ private:
     scene_model_manager                        model_manager;
     std::vector<pro::proxy_view<manager_base>> managers;
 
-    scene_camera      active_camera;
-    vk::raii::Sampler image_sampler = nullptr;
+    scene_camera active_camera;
 
     const vk::Format color_format = vk::Format::eR16G16B16A16Sfloat;
     vulkan_image     render_output;

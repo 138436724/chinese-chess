@@ -4,7 +4,8 @@
 #include <fstream>
 #include <ranges>
 
-std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number) noexcept
+namespace {
+[[nodiscard]] std::pair<uint8_t, uint8_t> move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number) noexcept
 {
     std::pair<uint8_t, uint8_t> new_position = std::make_pair(_now_x, _now_y);
 
@@ -74,6 +75,7 @@ std::pair<uint8_t, uint8_t> record_loader::move_piece(PIECE_TYPE _piece_type, ui
 
     return new_position;
 }
+}  // namespace
 
 std::vector<all_board_state> record_loader::load_records(const std::filesystem::path& _record_path)
 {

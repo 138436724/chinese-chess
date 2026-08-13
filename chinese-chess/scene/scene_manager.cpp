@@ -16,7 +16,7 @@
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
     , light_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
-    , material_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
+    , material_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
     , model_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, compute_queue, transfer_queue, material_manager)
 {
     semaphore.create(*app.get_device());
@@ -30,16 +30,6 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     managers.emplace_back(pro::make_proxy_view<manager_base>(model_manager));
     managers.emplace_back(pro::make_proxy_view<manager_base>(light_manager));
 
-    // create sampler
-    const vk::PhysicalDeviceProperties properties = (*app.get_physical_device()).getProperties();
-    const vk::SamplerCreateInfo sampler_info({}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-                                             vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
-                                             vk::SamplerAddressMode::eClampToBorder, 0.f, vk::True,
-                                             properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways,
-                                             0.f, 1.f, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-    image_sampler = vk::raii::Sampler(*app.get_device(), sampler_info);
-
-
     active_camera.set_position(glm::vec3(0.f, 0.f, 0.f));
     active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));
     active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
@@ -51,15 +41,17 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
-    skybox_image = create(std::type_identity<scene_image>{}, std::filesystem::path(TEXTURES_PATH) / u8"干裂地面.hdr", true);
+    skybox_image = create(std::type_identity<scene_image>{}, std::filesystem::path(TEXTURES_PATH) / u8"干裂地面.hdr",
+                          true, sampler_type::sky_box);
 
     rasterization_render = std::make_unique<scene_rasterization_render>(
-        app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, compute_queue,
-        transfer_queue, model_manager, material_manager, light_manager, image_sampler, render_output, color_format);
-
-    raytracing_render = std::make_unique<scene_raytracing_render>(
         app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
-        compute_queue, transfer_queue, model_manager, material_manager, light_manager, image_sampler, render_output);
+        compute_queue, transfer_queue, model_manager, material_manager, light_manager, render_output, color_format);
+
+    raytracing_render =
+        std::make_unique<scene_raytracing_render>(app.get_allocator(), *app.get_physical_device(), *app.get_device(),
+                                                  recycle_bin, semaphore, graphic_queue, compute_queue, transfer_queue,
+                                                  model_manager, material_manager, light_manager, render_output);
 
     // default use raytracing
     active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
@@ -200,7 +192,7 @@ void scene_manager::save_image()
 
     std::string save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
 
-    static const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
+    const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
 
     const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
     if (vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format))
@@ -279,7 +271,10 @@ std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_imag
     return material_manager.create(_font_path, _font_size, _characters, waited_infos);
 }
 
-std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>, const std::filesystem::path& _image_path, bool _is_hdr)
+std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
+                                                   const std::filesystem::path& _image_path,
+                                                   bool                         _is_hdr,
+                                                   sampler_type                 _type)
 {
-    return material_manager.create(_image_path, _is_hdr, waited_infos);
+    return material_manager.create(_image_path, _is_hdr, _type, waited_infos);
 }

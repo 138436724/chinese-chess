@@ -4,8 +4,44 @@
 #include <openssl/evp.h>
 #include <ranges>
 
+namespace {
 constexpr std::string_view hash_file_name    = "resources\\file_watch_cache.hash";
 constexpr std::string_view file_cache_header = "file_cache_header";
+
+[[nodiscard]] std::string generate_file_hash(const std::filesystem::path& _file_path)
+{
+    std::ifstream file(_file_path, std::ios::binary);
+
+    if (!file.is_open())
+    {
+        return "";
+    }
+
+    EVP_MD_CTX* sha256 = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(sha256, EVP_sha256(), nullptr);
+
+    char buffer[4096];
+    while (true)
+    {
+        file.read(buffer, 4096);
+        EVP_DigestUpdate(sha256, buffer, file.gcount());
+        if (file.eof())
+        {
+            break;
+        }
+    }
+
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int  hash_len;
+    EVP_DigestFinal_ex(sha256, hash, &hash_len);
+    EVP_MD_CTX_free(sha256);
+    file.close();
+
+    return std::views::iota(0u, hash_len)
+           | std::views::transform([&](unsigned int i) { return std::format("{:02X}", hash[i]); }) | std::views::join
+           | std::ranges::to<std::string>();
+}
+}  // namespace
 
 file_watcher file_watcher::watcher;
 
@@ -66,40 +102,6 @@ file_watcher::~file_watcher()
     }
 
     file_cache.close();
-}
-
-std::string file_watcher::generate_file_hash(const std::filesystem::path& _file_path) const
-{
-    std::ifstream file(_file_path, std::ios::binary);
-
-    if (!file.is_open())
-    {
-        return "";
-    }
-
-    EVP_MD_CTX* sha256 = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(sha256, EVP_sha256(), nullptr);
-
-    char buffer[4096];
-    while (true)
-    {
-        file.read(buffer, 4096);
-        EVP_DigestUpdate(sha256, buffer, file.gcount());
-        if (file.eof())
-        {
-            break;
-        }
-    }
-
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int  hash_len;
-    EVP_DigestFinal_ex(sha256, hash, &hash_len);
-    EVP_MD_CTX_free(sha256);
-    file.close();
-
-    return std::views::iota(0u, hash_len)
-           | std::views::transform([&](unsigned int i) { return std::format("{:02X}", hash[i]); }) | std::views::join
-           | std::ranges::to<std::string>();
 }
 
 bool file_watcher::is_file_modified(const std::filesystem::path& _file_path)

@@ -10,8 +10,6 @@ struct RENDERDOC_API_1_7_0;
 class renderdoc_capture
 {
 public:
-    [[nodiscard]] bool is_available() const noexcept;
-
     // Begin capturing API calls on the given Vulkan instance/window.
     void begin_capture(VkInstance _vk_instance, HWND _hwnd = nullptr);
 

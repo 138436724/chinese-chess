@@ -13,9 +13,11 @@
 #include <imgui_impl_vulkan.h>
 
 
+namespace {
 constexpr std::string_view SCENE_SETTING   = "场景设置";
 constexpr std::string_view SCENE_MANAGER   = "场景管理";
 constexpr std::string_view USE_RAY_TRACING = "使用光线追踪";
+}  // namespace
 
 
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)

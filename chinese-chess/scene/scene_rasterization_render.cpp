@@ -20,7 +20,6 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
                                                        const scene_model_manager&      _model_manager,
                                                        const scene_material_manager&   _material_manager,
                                                        const scene_light_manager&      _light_manager,
-                                                       const vk::raii::Sampler&        _image_sampler,
                                                        vulkan_image&                   _render_output,
                                                        vk::Format                      _color_format)
     : allocator(_allocator)
@@ -34,7 +33,6 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     , model_manager(_model_manager)
     , material_manager(_material_manager)
     , light_manager(_light_manager)
-    , image_sampler(_image_sampler)
     , render_output(_render_output)
     , color_format(_color_format)
 {
@@ -225,9 +223,8 @@ void scene_rasterization_render::update_descriptor()
         write_sets.emplace_back(
             vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageBuffer, {}, material_buffer_info));
 
-        const std::array sampler = {*image_sampler};
-        const auto       material_sets =
-            material_manager.get_descriptor_info(sampler) | std::views::enumerate
+        const auto material_sets =
+            material_manager.get_descriptor_info() | std::views::enumerate
             | std::views::transform([&descriptor_set](const auto& _pair) {
                   const auto& [index, image_info] = _pair;
                   return vk::WriteDescriptorSet(descriptor_set, 2, static_cast<uint32_t>(index),

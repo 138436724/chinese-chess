@@ -10,6 +10,7 @@
 #endif  // _WIN32
 
 
+namespace {
 constexpr std::string_view MATERIAL_MANAGER          = "材质管理";
 constexpr std::string_view ADD_MATERIAL              = "添加材质";
 constexpr std::string_view MATERIAL                  = "材质";
@@ -34,6 +35,7 @@ constexpr std::string_view MODEL_ROTATION    = "旋转";
 constexpr std::string_view MODEL_SCALING     = "缩放";
 constexpr std::string_view DELETE_MODEL      = "删除物体";
 constexpr std::string_view NO_MODEL          = "无物体";
+}  // namespace
 
 
 ui_node::ui_node(scene_manager& _manager) noexcept
@@ -113,7 +115,7 @@ void ui_node::update_material()
                     {
                         std::erase_if(textures, [&](const auto& pair) { return pair.first == material_ptr->alpha_map; });
                     }
-                    material_ptr->alpha_map = manager.create<scene_image>(file_path, false);
+                    material_ptr->alpha_map = manager.create<scene_image>(file_path, false, sampler_type::font);
                     textures.emplace(material_ptr->alpha_map, file_path);
                     manager.need_material_update();
                 }

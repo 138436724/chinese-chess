@@ -10,7 +10,11 @@
 
 shader_compiler shader_compiler::compiler;
 
-std::string shader_compiler::get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
+namespace {
+
+int global_counter = 0;
+
+[[nodiscard]] std::string get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
 {
     if (_diagnostic_blob == nullptr)
     {
@@ -20,7 +24,7 @@ std::string shader_compiler::get_diagnostics(const Slang::ComPtr<slang::IBlob>& 
 }
 
 #ifndef NDEBUG
-void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
+void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
 {
     if (_diagnostic_blob != nullptr)
     {
@@ -28,9 +32,7 @@ void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _dia
     }
 }
 
-void shader_compiler::print_entrypoint_hashes(int                                         _entrypoint_count,
-                                              int                                         _target_count,
-                                              const Slang::ComPtr<slang::IComponentType>& _composed_program) const
+void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Slang::ComPtr<slang::IComponentType>& _composed_program)
 {
     std::ranges::for_each(std::views::iota(0, _target_count), [&](int target_index) {
         std::ranges::for_each(std::views::iota(0, _entrypoint_count), [&](int entrypoint_index) {
@@ -49,9 +51,10 @@ void shader_compiler::print_entrypoint_hashes(int                               
     });
 }
 #else
-void shader_compiler::diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
-void shader_compiler::print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) const {}
+void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
+void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) {}
 #endif  // !NDEBUG
+}  // namespace
 
 shader_compiler::shader_compiler()
 {

@@ -6,6 +6,7 @@
 
 #include <ranges>
 
+namespace {
 struct light_data
 {
     alignas(16) glm::vec3 color        = glm::vec3(1.f);
@@ -17,6 +18,7 @@ struct light_data
     alignas(16) float inner_cone_angle = glm::radians(15.f);
     float outer_cone_angle             = glm::radians(30.f);
 };
+}  // namespace
 
 scene_light_manager::scene_light_manager(const vma::raii::Allocator& _allocator,
                                          const vk::raii::Device&     _device,

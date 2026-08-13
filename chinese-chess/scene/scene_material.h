@@ -1,10 +1,15 @@
 #pragma once
 
 #include "vulkan_core/vulkan_image.h"
+#include "vulkan_core/vulkan_sampler.h"
 
 #include <glm/glm.hpp>
 
-using scene_image = vulkan_image;
+struct scene_image
+{
+    vulkan_image image;
+    sampler_type type = sampler_type::diffuse;
+};
 
 struct scene_material
 {

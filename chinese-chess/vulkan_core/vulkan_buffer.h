@@ -18,7 +18,6 @@ public:
                 const vk::BufferCreateInfo& _buffer_info,
                 vma::MemoryUsage            _usage,
                 const std::string&          _name = "");
-    void clear() noexcept;
 
     void flush() const;
     void invalidate() const;

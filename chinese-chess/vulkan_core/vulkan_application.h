@@ -9,6 +9,7 @@
 #include "vulkan_pipeline.h"
 #include "vulkan_queue.h"
 #include "vulkan_recycle_bin.h"
+#include "vulkan_sampler.h"
 #include "vulkan_semaphore.h"
 #include "vulkan_swapchain.h"
 
@@ -55,13 +56,6 @@ private:
     void pick_msaa_sample_count() const noexcept;
     void pick_depth_format() const;
 
-#ifndef NDEBUG
-    static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT      _severity,
-                                                           vk::DebugUtilsMessageTypeFlagsEXT             _type,
-                                                           const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
-                                                           void*);
-#endif  // !NDEBUG
-
     std::vector<const char*> required_instance_layers;
     std::vector<const char*> required_instance_extensions;
 
@@ -91,7 +85,7 @@ private:
     std::vector<vulkan_image>      ocio_images;
     std::vector<vk::raii::Sampler> ocio_samplers;
 
-    vulkan_image*     bind_scene_image = nullptr;
-    vulkan_image*     bind_ui_image    = nullptr;
-    vk::raii::Sampler image_sampler    = nullptr;
+    vulkan_image*  bind_scene_image = nullptr;
+    vulkan_image*  bind_ui_image    = nullptr;
+    vulkan_sampler image_sampler;
 };

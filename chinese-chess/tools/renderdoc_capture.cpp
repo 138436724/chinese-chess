@@ -4,8 +4,10 @@
 
 #include <string>
 
+namespace {
 constexpr std::string_view RENDERDOC_DLL = "renderdoc.dll";
 constexpr std::string_view CAPTURES_PATH = "resources\\captures\\";
+}  // namespace
 
 renderdoc_capture renderdoc_capture::capture;
 
@@ -34,11 +36,6 @@ renderdoc_capture::renderdoc_capture()
 
     // Set a default capture file path so captures go to a known location.
     m_api->SetCaptureFilePathTemplate(CAPTURES_PATH.data());
-}
-
-bool renderdoc_capture::is_available() const noexcept
-{
-    return m_api != nullptr;
 }
 
 void renderdoc_capture::begin_capture(VkInstance _vk_instance, HWND _hwnd)

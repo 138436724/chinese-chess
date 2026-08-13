@@ -10,6 +10,7 @@
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
+namespace {
 enum class stage_indices : uint32_t
 {
     ray_gen,
@@ -19,6 +20,7 @@ enum class stage_indices : uint32_t
     anyhit_shadow,
     shader_group_max_count
 };
+}  // namespace
 
 scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&     _allocator,
                                                  const vk::raii::PhysicalDevice& _physical_device,
@@ -31,7 +33,6 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
                                                  const scene_model_manager&      _model_manager,
                                                  const scene_material_manager&   _material_manager,
                                                  const scene_light_manager&      _light_manager,
-                                                 const vk::raii::Sampler&        _image_sampler,
                                                  vulkan_image&                   _render_output)
     : allocator(_allocator)
     , physical_device(_physical_device)
@@ -44,7 +45,6 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     , model_manager(_model_manager)
     , material_manager(_material_manager)
     , light_manager(_light_manager)
-    , image_sampler(_image_sampler)
     , render_output(_render_output)
 {
     create_pipeline_and_sbt();
@@ -247,9 +247,8 @@ void scene_raytracing_render::update_descriptor()
         const vk::DescriptorBufferInfo light_buffer_info(light_manager.get_ssbo_buffer().get_buffer(), 0, vk::WholeSize);
         write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 4, {}, vk::DescriptorType::eStorageBuffer, {}, light_buffer_info));
 
-        const std::array sampler = {*image_sampler};
-        const auto       material_sets =
-            material_manager.get_descriptor_info(sampler) | std::views::enumerate
+        const auto material_sets =
+            material_manager.get_descriptor_info() | std::views::enumerate
             | std::views::transform([&descriptor_set](const auto& _pair) {
                   const auto& [index, image_info] = _pair;
                   return vk::WriteDescriptorSet(descriptor_set, 5, static_cast<uint32_t>(index),

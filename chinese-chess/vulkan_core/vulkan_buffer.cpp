@@ -70,12 +70,6 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
 #endif  // !NDEBUG
 }
 
-void vulkan_buffer::clear() noexcept
-{
-    buffer_address = nullptr;
-    buffer.clear();
-}
-
 void vulkan_buffer::flush() const
 {
     buffer.getAllocation().flush(0, VK_WHOLE_SIZE);

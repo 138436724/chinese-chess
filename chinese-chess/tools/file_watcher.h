@@ -9,7 +9,6 @@
 class file_watcher
 {
 public:
-    [[nodiscard]] std::string          generate_file_hash(const std::filesystem::path& _file_path) const;
     [[nodiscard]] bool                 is_file_modified(const std::filesystem::path& _file_path);
     [[nodiscard]] static file_watcher& get_file_watcher() noexcept;
 

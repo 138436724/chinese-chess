@@ -27,8 +27,6 @@ private:
     void prev_step() noexcept;
     void next_step() noexcept;
 
-    [[nodiscard]] static glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept;
-
 private:
     uint32_t width  = 0;
     uint32_t height = 0;

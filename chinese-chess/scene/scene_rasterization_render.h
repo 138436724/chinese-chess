@@ -29,7 +29,6 @@ public:
                                const scene_model_manager&      _model_manager,
                                const scene_material_manager&   _material_manager,
                                const scene_light_manager&      _light_manager,
-                               const vk::raii::Sampler&        _image_sampler,
                                vulkan_image&                   _render_output,
                                vk::Format                      _color_format);
     ~scene_rasterization_render() = default;
@@ -63,7 +62,6 @@ private:
     const scene_model_manager&    model_manager;
     const scene_material_manager& material_manager;
     const scene_light_manager&    light_manager;
-    const vk::raii::Sampler&      image_sampler;
     vulkan_image&                 render_output;
 
     uint32_t         width         = 0;

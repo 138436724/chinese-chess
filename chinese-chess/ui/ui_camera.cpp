@@ -5,6 +5,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 
+namespace {
 constexpr std::string_view CAMERA_SETTING        = "摄像机设置";
 constexpr std::string_view CAMERA_TYPE           = "摄像机类型";
 constexpr std::string_view ORTHOGRAPHIC_CAMERA   = "正交投影";
@@ -16,6 +17,7 @@ constexpr std::string_view LEFT_RIGHT_BOTTOM_TOP = "左右下上";
 constexpr std::string_view FOV                   = "视场角";
 constexpr std::string_view ASPECT                = "宽高比";
 constexpr std::string_view NEAR_FAR              = "近平面和远平面";
+}  // namespace
 
 
 ui_camera::ui_camera(scene_manager& _manager) noexcept

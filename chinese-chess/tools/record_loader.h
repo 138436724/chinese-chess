@@ -135,7 +135,6 @@ template <typename string_class>
     return all_records;
 }
 
-[[nodiscard]] std::pair<uint8_t, uint8_t> move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number) noexcept;
 [[nodiscard]] std::vector<all_board_state> load_records(const std::filesystem::path& _record_path);
 [[nodiscard]] constexpr all_board_state    get_init_all_board() noexcept
 {

@@ -12,6 +12,23 @@
 #include <ranges>
 #include <unordered_set>
 
+namespace {
+#ifndef NDEBUG
+VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT      _severity,
+                                                vk::DebugUtilsMessageTypeFlagsEXT             _type,
+                                                const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
+                                                void*)
+{
+    if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
+    {
+        std::println("{}: {} {} {}\n", vk::to_string(_type), _callback_data->messageIdNumber,
+                     _callback_data->pMessageIdName, _callback_data->pMessage);
+    }
+    return vk::False;
+}
+#endif  // !NDEBUG
+}  // namespace
+
 void vulkan_application::init(const std::vector<const char*>& _instance_layers,
                               const std::vector<const char*>& _instance_extensions,
                               vk::InstanceCreateFlags         _flags)
@@ -50,13 +67,7 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
     create_pipeline();
 
     // create sampler
-    const vk::PhysicalDeviceProperties properties = (*physical_device).getProperties();
-    const vk::SamplerCreateInfo sampler_info({}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-                                             vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
-                                             vk::SamplerAddressMode::eClampToBorder, 0.f, vk::True,
-                                             properties.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways,
-                                             0.f, 1.f, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-    image_sampler = vk::raii::Sampler(*device, sampler_info);
+    image_sampler.create(*physical_device, *device, sampler_type::screen);
 }
 
 void vulkan_application::resize(uint32_t _width, uint32_t _height)
@@ -184,7 +195,7 @@ void vulkan_application::bind_image(vulkan_image& _scene_image, vulkan_image& _u
 
     auto sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
                              | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                                   return vk::DescriptorImageInfo(image_sampler, nullptr, vk::ImageLayout::eUndefined);
+                                   return vk::DescriptorImageInfo(image_sampler.get_sampler(), nullptr, vk::ImageLayout::eUndefined);
                                })
                              | std::ranges::to<std::vector>();
     descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(sampler_pool_info));
@@ -619,18 +630,3 @@ void vulkan_application::pick_depth_format() const
 
     vulkan_common::DEPTH_FORMAT = *depth_format;
 }
-
-#ifndef NDEBUG
-VKAPI_ATTR vk::Bool32 VKAPI_CALL vulkan_application::debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT _severity,
-                                                                    vk::DebugUtilsMessageTypeFlagsEXT        _type,
-                                                                    const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
-                                                                    void*)
-{
-    if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
-    {
-        std::println("{}: {} {} {}\n", vk::to_string(_type), _callback_data->messageIdNumber,
-                     _callback_data->pMessageIdName, _callback_data->pMessage);
-    }
-    return vk::False;
-}
-#endif  // !NDEBUG

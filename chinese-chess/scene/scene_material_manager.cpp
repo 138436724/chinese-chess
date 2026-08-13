@@ -9,6 +9,7 @@
 #include <ranges>
 #include <vulkan/utility/vk_format_utils.h>
 
+namespace {
 struct material_data
 {
     alignas(16) glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
@@ -20,20 +21,26 @@ struct material_data
     float ior                              = 1.5f;
     float transmission                     = 0.0f;
 };
+}  // namespace
 
-scene_material_manager::scene_material_manager(const vma::raii::Allocator& _allocator,
-                                               const vk::raii::Device&     _device,
-                                               vulkan_recycle_bin&         _recycle_bin,
-                                               vulkan_semaphore&           _semaphore,
-                                               const vulkan_queue&         _graphic_queue,
-                                               const vulkan_queue&         _transfer_queue) noexcept
+scene_material_manager::scene_material_manager(const vma::raii::Allocator&     _allocator,
+                                               const vk::raii::PhysicalDevice& _physical_device,
+                                               const vk::raii::Device&         _device,
+                                               vulkan_recycle_bin&             _recycle_bin,
+                                               vulkan_semaphore&               _semaphore,
+                                               const vulkan_queue&             _graphic_queue,
+                                               const vulkan_queue&             _transfer_queue)
     : allocator(_allocator)
+    , physical_device(_physical_device)
     , device(_device)
     , recycle_bin(_recycle_bin)
     , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
 {
+    diffuse_sampler.create(_physical_device, _device, sampler_type::diffuse);
+    font_sampler.create(_physical_device, _device, sampler_type::font);
+    skybox_sampler.create(_physical_device, _device, sampler_type::sky_box);
 }
 
 std::shared_ptr<scene_material> scene_material_manager::create()
@@ -64,6 +71,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
     // load font and transition to image
     const auto image = std::make_shared<scene_image>();
+    image->type      = sampler_type::font;
 
     std::vector<character_info> fonts_info              = font_loader::load_font(_font_path, _font_size, _characters);
     uint32_t                    max_bearing_height_up   = 0;
@@ -108,7 +116,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
                                                         transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
                                                         vk::Format::eR8Unorm, vk::Extent3D(all_width, all_height, 1),
-                                                        *image, font_data, copy_infos, "font-atlas"));
+                                                        image->image, font_data, copy_infos, "font-atlas"));
 
     images.emplace_back(image);
     images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(image));
@@ -118,6 +126,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
 std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path&          _image_path,
                                                             bool                                  _is_hdr,
+                                                            sampler_type                          _type,
                                                             std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
     // find in cache
@@ -131,6 +140,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     }
 
     const auto image = std::make_shared<scene_image>();
+    image->type      = _type;
 
     if (_is_hdr)
     {
@@ -140,7 +150,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
         _waited_infos.push_back(vulkan_common::upload_image(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
-            vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), *image,
+            vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), image->image,
             std::span(reinterpret_cast<const uint8_t*>(image_data.buffer.data()),
                       image_data.buffer.size() * sizeof(image_data.buffer.front())),
             {}, "material_texture"));
@@ -154,7 +164,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
                                                             transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
                                                             image_format, vk::Extent3D(image_data.width, image_data.height, 1),
-                                                            *image, image_data.buffer, {}, "material_texture"));
+                                                            image->image, image_data.buffer, {}, "material_texture"));
     }
 
     images.emplace_back(image);
@@ -253,27 +263,25 @@ std::optional<uint32_t> scene_material_manager::get_texture_index(const std::wea
     }
 }
 
-std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info(const std::span<const vk::Sampler> _samplers) const
+const vk::raii::Sampler& scene_material_manager::get_sampler(sampler_type _type) const noexcept
 {
-    if (_samplers.size() == 1)
+    switch (_type)
     {
-        return images | std::views::transform([&](const auto& image) {
-                   return vk::DescriptorImageInfo(_samplers.front(), image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-               })
-               | std::ranges::to<std::vector>();
+        case sampler_type::font:
+            return font_sampler.get_sampler();
+        case sampler_type::sky_box:
+            return skybox_sampler.get_sampler();
+        default:  // diffuse/color/normal/roughness/metallic 配置相同，共用 diffuse
+            return diffuse_sampler.get_sampler();
     }
-    else if (_samplers.size() == materials.size())
-    {
-        return std::views::zip(_samplers, images) | std::views::transform([&](const auto& _pair) {
-                   const auto& [sampler, image] = _pair;
-                   return vk::DescriptorImageInfo(sampler, image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-               })
-               | std::ranges::to<std::vector>();
-    }
-    else
-    {
-        throw std::runtime_error("Must match size and generate!");
-    }
+}
+
+std::vector<vk::DescriptorImageInfo> scene_material_manager::get_descriptor_info() const
+{
+    return images | std::views::transform([this](const auto& sp) {
+               return vk::DescriptorImageInfo(get_sampler(sp->type), sp->image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
+           })
+           | std::ranges::to<std::vector>();
 }
 
 void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
