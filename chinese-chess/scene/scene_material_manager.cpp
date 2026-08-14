@@ -54,12 +54,15 @@ std::shared_ptr<scene_material> scene_material_manager::create()
 std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path&          _font_path,
                                                             uint32_t                              _font_size,
                                                             const std::wstring&                   _characters,
-                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
+                                                            uint32_t                              _padding)
 {
     // find in cache
     if (auto iter = std::ranges::find_if(images_cache,
                                          [&](const auto& s) {
-                                             return s.first == _font_path / std::to_wstring(_font_size) / _characters;
+                                             return s.first
+                                                    == _font_path / std::to_wstring(_font_size) / _characters
+                                                           / std::to_wstring(_padding);
                                          });
         iter != images_cache.end())
     {
@@ -82,13 +85,13 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     {
         max_bearing_height_up   = std::max(max_bearing_height_up, _font_info.bearing_height);
         max_bearing_height_down = std::max(max_bearing_height_down, _font_info.height - _font_info.bearing_height);
-        all_width += _font_info.advance;
+        all_width += _font_info.advance + 2 * _padding;
 
         // transfer only queue need bufferOffset has to be a multiple of 4, or need VK_KHR_maintenance11
         _font_info.buffer.resize(vulkan_common::align_up(_font_info.buffer.size(), 4), 0);
         all_size += _font_info.buffer.size();
     }
-    const uint32_t all_height = max_bearing_height_up + max_bearing_height_down;
+    const uint32_t all_height = max_bearing_height_up + max_bearing_height_down + 2 * _padding;
 
     // merge the font image data
     size_t                            buffer_offset = 0;
@@ -105,11 +108,11 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
         copy_infos.emplace_back(vk::BufferImageCopy2(
             buffer_offset, _font_info.width, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1),
-            vk::Offset3D(width_offset + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height, 0),
+            vk::Offset3D(width_offset + _font_info.bearing_width, max_bearing_height_up - _font_info.bearing_height + _padding, 0),
             vk::Extent3D(_font_info.width, _font_info.height, 1)));
 
         buffer_offset += _font_info.buffer.size();
-        width_offset += _font_info.advance;
+        width_offset += _font_info.advance + 2 * _padding;
     }
 
     // create image and upload
@@ -119,7 +122,8 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
                                                         image->image, font_data, copy_infos, "font-atlas"));
 
     images.emplace_back(image);
-    images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters, std::weak_ptr<scene_image>(image));
+    images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters / std::to_wstring(_padding),
+                         std::weak_ptr<scene_image>(image));
     is_dirty = true;
     return image;
 }

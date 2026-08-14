@@ -263,12 +263,12 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
     if (tlas_instance_count != 0 && instances.size() == tlas_instance_count)
     {
         vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info({vulkan_common::upload_buffer(
+        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
-            "tlas_instance")});
+            "tlas_instance"));
 
         tlas.update_top_level_acceleration_structure(*commandbuffer, static_cast<uint32_t>(instances.size()),
                                                      tlas_instance_buffer.get_buffer_address().deviceAddress,
@@ -282,12 +282,12 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
         recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
 
         vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info({vulkan_common::upload_buffer(
+        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
-            "tlas_instance")});
+            "tlas_instance"));
 
         tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(
             physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),

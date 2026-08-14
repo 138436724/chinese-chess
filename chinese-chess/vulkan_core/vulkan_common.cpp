@@ -9,6 +9,7 @@
 #include <vulkan/utility/vk_format_utils.h>
 
 // 转换布局需要转移所有权之后，在新队列转换布局，不能交出所有权的时候转换布局
+// 交出的时候需要pipeline stage和access flag需要为eNone
 vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&    _allocator,
                                                      const vk::raii::Device&        _device,
                                                      vulkan_recycle_bin&            _recycle_bin,
@@ -83,7 +84,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
                                                &_graphic_queue, &_semaphore)
                       .front());
     graphic_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    graphic_commandbuffer.add_waited_info({transfer_commandbuffer.get_submit_info()});
+    graphic_commandbuffer.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to graphic read
     const auto ssbo_graphic_barrier =
@@ -124,25 +125,64 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                     const std::span<const vk::BufferImageCopy2> _copy_info,
                                                     const std::string&                          _image_name) noexcept
 {
-    const std::array queue_array = {_transfer_queue.get_index()};
 
     // create image
+    const std::array image_queue_array = {_graphic_queue.get_index()};
     vk::ImageCreateInfo image_info({}, _image_type, _image_format, _image_extent, 1, 1, vk::SampleCountFlagBits::e1,
                                    vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
-                                   vk::SharingMode::eExclusive, queue_array);
+                                   vk::SharingMode::eExclusive, image_queue_array);
     vk::ImageViewCreateInfo view_info({}, {}, _image_view_type, _image_format, {},
                                       vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     _image.create(_allocator, _device, image_info, view_info, vma::MemoryUsage::eGpuOnly,
                   vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), _image_name);
 
     // create staging buffer
-    vulkan_buffer staging_buffer;
+    const std::array buffer_queue_array = {_transfer_queue.get_index()};
+    vulkan_buffer    staging_buffer;
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, _data.size(), vk::BufferUsageFlagBits::eTransferSrc,
-                                               vk::SharingMode::eExclusive, queue_array),
+                                               vk::SharingMode::eExclusive, buffer_queue_array),
                           vma::MemoryUsage::eCpuToGpu, std::format("Staging{}", _image_name));
     memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
     staging_buffer.flush();
+
+
+    // begin a graphic commandbuffer
+    vulkan_commandbuffer graphic_commandbuffer =
+        std::move(vulkan_commandbuffer::create(_device,
+                                               vk::CommandBufferAllocateInfo(_graphic_queue.get_command_pool(),
+                                                                             vk::CommandBufferLevel::ePrimary, 1),
+                                               &_graphic_queue, &_semaphore)
+                      .front());
+    graphic_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+    // create barrier to transfer layout for clear
+    const auto image_graphic_begin_barrier =
+        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eTransfer,
+                                vk::AccessFlagBits2::eTransferWrite, _image.get_layout(),
+                                vk::ImageLayout::eTransferDstOptimal, _image.get_queue(), _image.get_queue(),
+                                _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    _image.set_info(image_graphic_begin_barrier);
+    const std::array graphic_begin_barrier = {image_graphic_begin_barrier};
+    (*graphic_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, graphic_begin_barrier));
+
+    (*graphic_commandbuffer)
+        .clearColorImage(_image.get_image(), _image.get_layout(), _image.get_clear_value().color,
+                         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+
+    // create barrier to give the ownership
+    const auto image_graphic_end_barrier =
+        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eNone,
+                                vk::AccessFlagBits2::eNone, _image.get_layout(), _image.get_layout(),
+                                _image.get_queue(), _transfer_queue.get_index(), _image.get_image(),
+                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    _image.set_info(image_graphic_end_barrier);
+    const std::array graphic_end_barrier = {image_graphic_end_barrier};
+    (*graphic_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, graphic_end_barrier));
+
+    // end and submit the graphic commandbuffer
+    graphic_commandbuffer.end_record();
+    graphic_commandbuffer.submit(false);
 
 
     // begin a transfer commandbuffer
@@ -153,17 +193,17 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                &_transfer_queue, &_semaphore)
                       .front());
     transfer_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    transfer_commandbuffer.add_waited_info(graphic_commandbuffer.get_submit_info());
 
     // create barrier to transfer write
     const auto image_begin_barrier =
         vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eTransfer,
                                 vk::AccessFlagBits2::eTransferWrite, _image.get_layout(),
-                                vk::ImageLayout::eTransferDstOptimal, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored,
+                                vk::ImageLayout::eTransferDstOptimal, _graphic_queue.get_index(), _image.get_queue(),
                                 _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     _image.set_info(image_begin_barrier);
     const std::array begin_barrier = {image_begin_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
-
 
     // copy data to image
     if (_copy_info.empty())
@@ -196,36 +236,37 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
 
 
     // begin a graphic commandbuffer and add wait for transfer commandbuffer
-    vulkan_commandbuffer graphic_commandbuffer =
+    vulkan_commandbuffer graphic_commandbuffer2 =
         std::move(vulkan_commandbuffer::create(_device,
                                                vk::CommandBufferAllocateInfo(_graphic_queue.get_command_pool(),
                                                                              vk::CommandBufferLevel::ePrimary, 1),
                                                &_graphic_queue, &_semaphore)
                       .front());
-    graphic_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    graphic_commandbuffer.add_waited_info({transfer_commandbuffer.get_submit_info()});
+    graphic_commandbuffer2.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    graphic_commandbuffer2.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to get the ownership and transition layout for sampler
-    const auto image_graphic_barrier =
+    const auto image_graphic_barrier2 =
         vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(),
                                 vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
                                     | vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                 vk::AccessFlagBits2::eShaderRead, _image.get_layout(),
                                 vk::ImageLayout::eShaderReadOnlyOptimal, _transfer_queue.get_index(), _image.get_queue(),
                                 _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_graphic_barrier);
-    const std::array graphic_barrier = {image_graphic_barrier};
-    (*graphic_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, graphic_barrier));
+    _image.set_info(image_graphic_barrier2);
+    const std::array graphic_barrier2 = {image_graphic_barrier2};
+    (*graphic_commandbuffer2).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, graphic_barrier2));
 
     // end and submit the graphic commandbuffer
-    graphic_commandbuffer.end_record();
-    graphic_commandbuffer.submit(false);
+    graphic_commandbuffer2.end_record();
+    graphic_commandbuffer2.submit(false);
 
-    const auto submit_info = graphic_commandbuffer.get_submit_info();
+    const auto submit_info = graphic_commandbuffer2.get_submit_info();
 
     _recycle_bin.retire(std::move(staging_buffer), "upload image staging buffer.");
-    _recycle_bin.retire(std::move(transfer_commandbuffer), "upload image transfer commandbuffer.");
     _recycle_bin.retire(std::move(graphic_commandbuffer), "upload image graphic commandbuffer.");
+    _recycle_bin.retire(std::move(transfer_commandbuffer), "upload image transfer commandbuffer.");
+    _recycle_bin.retire(std::move(graphic_commandbuffer2), "upload image graphic commandbuffer.");
 
     return submit_info;
 }
@@ -285,7 +326,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                &_transfer_queue, &_semaphore)
                       .front());
     transfer_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    transfer_commandbuffer.add_waited_info({graphic_commandbuffer.get_submit_info()});
+    transfer_commandbuffer.add_waited_info(graphic_commandbuffer.get_submit_info());
 
     // create barrier to transfer write and get the ownership
     const auto image_begin_barrier =
@@ -326,7 +367,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                &_graphic_queue, &_semaphore)
                       .front());
     graphic_commandbuffer2.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    graphic_commandbuffer2.add_waited_info({transfer_commandbuffer.get_submit_info()});
+    graphic_commandbuffer2.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to get the ownership and transition layout for sampler
     const auto image_graphic_barrier2 =

@@ -14,11 +14,14 @@
 
 
 namespace {
+
 constexpr std::string_view RECORDS_MANAGER = "棋局管理";
 constexpr std::string_view RECORDS_LIST    = "棋谱列表";
 constexpr std::string_view LOAD_RECORDS    = "加载棋谱";
 constexpr std::string_view LAST_STEP       = "上一步";
 constexpr std::string_view NEXT_STEP       = "下一步";
+
+constexpr uint32_t board_font_padding = 2;
 
 [[nodiscard]] glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
 {
@@ -94,44 +97,47 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
     width  = _width;
     height = _height;
 
-    chess_board->material->alpha_map = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                                                   static_cast<uint32_t>(height / 9.0 * 2), L"楚河汉界");
+    chess_board->material->alpha_map =
+        manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
+                                    static_cast<uint32_t>(height / 9.0 * 2), L"楚河汉界", board_font_padding);
 
-    std::ranges::for_each(
-        std::views::zip(std::wstring_view(L"帥仕相傌俥炮兵"), std::u16string_view(u"帥仕相傌俥炮兵")), [this](const auto& _pair) {
-            const auto& [chw, chu]           = _pair;
-            auto piece_material              = manager.create<scene_material>();
-            piece_material->background_color = glm::vec3(0.95f, 0.92f, 0.85f);
-            piece_material->foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
-            piece_material->roughness        = 0.3f;
-            piece_material->opacity          = 0.8f;
-            piece_material->ior              = 1.5f;
-            piece_material->transmission     = 1.0f;
+    std::ranges::for_each(std::views::zip(std::wstring_view(L"帥仕相傌俥炮兵"), std::u16string_view(u"帥仕相傌俥炮兵")),
+                          [this](const auto& _pair) {
+                              const auto& [chw, chu]           = _pair;
+                              auto piece_material              = manager.create<scene_material>();
+                              piece_material->background_color = glm::vec3(0.95f, 0.92f, 0.85f);
+                              piece_material->foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
+                              piece_material->roughness        = 0.3f;
+                              piece_material->opacity          = 0.8f;
+                              piece_material->ior              = 1.5f;
+                              piece_material->transmission     = 1.0f;
 
-            auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                                           static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
-            piece_material->alpha_map = piece_image;
+                              auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
+                                                                             static_cast<uint32_t>(height / 9.0 * 2),
+                                                                             std::wstring(1, chw), board_font_padding);
+                              piece_material->alpha_map = piece_image;
 
-            red_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
-        });
+                              red_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
+                          });
 
-    std::ranges::for_each(
-        std::views::zip(std::wstring_view(L"將士象馬車砲卒"), std::u16string_view(u"將士象馬車砲卒")), [this](const auto& _pair) {
-            const auto& [chw, chu]           = _pair;
-            auto piece_material              = manager.create<scene_material>();
-            piece_material->background_color = glm::vec3(0.15f, 0.45f, 0.32f);
-            piece_material->foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
-            piece_material->roughness        = 0.3f;
-            piece_material->opacity          = 0.8f;
-            piece_material->ior              = 1.5f;
-            piece_material->transmission     = 1.0f;
+    std::ranges::for_each(std::views::zip(std::wstring_view(L"將士象馬車砲卒"), std::u16string_view(u"將士象馬車砲卒")),
+                          [this](const auto& _pair) {
+                              const auto& [chw, chu]           = _pair;
+                              auto piece_material              = manager.create<scene_material>();
+                              piece_material->background_color = glm::vec3(0.15f, 0.45f, 0.32f);
+                              piece_material->foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
+                              piece_material->roughness        = 0.3f;
+                              piece_material->opacity          = 0.8f;
+                              piece_material->ior              = 1.5f;
+                              piece_material->transmission     = 1.0f;
 
-            auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                                           static_cast<uint32_t>(height / 9.0 * 2), std::wstring(1, chw));
-            piece_material->alpha_map = piece_image;
+                              auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
+                                                                             static_cast<uint32_t>(height / 9.0 * 2),
+                                                                             std::wstring(1, chw), board_font_padding);
+                              piece_material->alpha_map = piece_image;
 
-            black_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
-        });
+                              black_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
+                          });
 
     // init
     restore_board_state(0);

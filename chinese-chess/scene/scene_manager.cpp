@@ -266,9 +266,10 @@ std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_m
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
                                                    const std::filesystem::path& _font_path,
                                                    uint32_t                     _font_size,
-                                                   const std::wstring&          _characters)
+                                                   const std::wstring&          _characters,
+                                                   uint32_t                     _padding)
 {
-    return material_manager.create(_font_path, _font_size, _characters, waited_infos);
+    return material_manager.create(_font_path, _font_size, _characters, waited_infos, _padding);
 }
 
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,

@@ -52,7 +52,8 @@ private:
     [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
                                                          const std::filesystem::path& _font_path,
                                                          uint32_t                     _font_size,
-                                                         const std::wstring&          _characters);
+                                                         const std::wstring&          _characters,
+                                                         uint32_t                     _padding);
     [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
                                                          const std::filesystem::path& _image_path,
                                                          bool                         _is_hdr,

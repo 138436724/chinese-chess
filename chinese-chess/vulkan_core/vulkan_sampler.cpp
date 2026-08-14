@@ -34,7 +34,7 @@ constexpr sampler_settings get_sampler_settings(sampler_type _type)
                     vk::LodClampNone};
         case sampler_type::font:
             // 字体图集为单层 mip（min/maxLod 锁定 0），clamp 防止字形边缘渗色
-            return {vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge, false, 0.f, 0.f};
+            return {vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToBorder, false, 0.f, 0.f};
         case sampler_type::sky_box:
             // HDR 天空盒 clamp 避免接缝伪影
             return {vk::Filter::eLinear,

@@ -432,10 +432,10 @@ void vulkan_application::create_pipeline()
         {
             const std::vector<uint8_t> buffer = ocio_helper::get_uniform_buffer_data(shader_desc);
 
-            commandbuffer.add_waited_info({vulkan_common::upload_buffer(
+            commandbuffer.add_waited_info(vulkan_common::upload_buffer(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, ocio_ubo,
                 vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer,
-                buffer, "ocio_ubo")});
+                buffer, "ocio_ubo"));
 
             bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eUniformBuffer,
                                                                  1, vk::ShaderStageFlagBits::eFragment, nullptr));
@@ -494,10 +494,10 @@ void vulkan_application::create_pipeline()
             }
 
             vulkan_image image;
-            commandbuffer.add_waited_info({vulkan_common::upload_image(
+            commandbuffer.add_waited_info(vulkan_common::upload_image(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, image_type, image_view_type,
                 format, vk::Extent3D(width, height, 1), image,
-                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())), {})});
+                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())), {}));
             ocio_images.push_back(std::move(image));
 
             vk::SamplerCreateInfo sampler_info(
@@ -552,11 +552,11 @@ void vulkan_application::create_pipeline()
             }
 
             vulkan_image image;
-            commandbuffer.add_waited_info({vulkan_common::upload_image(
+            commandbuffer.add_waited_info(vulkan_common::upload_image(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e3D,
                 vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), image,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
-                {}, "ocio_lut")});
+                {}, "ocio_lut"));
             ocio_images.push_back(std::move(image));
 
             vk::SamplerCreateInfo sampler_info(
