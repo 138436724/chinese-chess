@@ -1,17 +1,17 @@
 #pragma once
 
 #include "ui_base.h"
-#include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 #include "vulkan_core/vulkan_semaphore.h"
 
 #include <GLFW/glfw3.h>
-#include <imgui.h>
 
 class vulkan_application;
 class scene_manager;
+class vulkan_commandbuffer;
+struct ImDrawData;
 
 class ui_manager
 {

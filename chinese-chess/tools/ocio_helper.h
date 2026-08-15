@@ -8,10 +8,14 @@
 #include <Imath/half.h>
 #include <OpenColorIO/OpenColorIO.h>
 #include <OpenColorIO/OpenColorTypes.h>
+#include <concepts>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <span>
+#include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #ifdef _MSC_VER
@@ -35,7 +39,7 @@ template <typename T>
     requires(std::same_as<T, uint8_t> || std::same_as<T, uint16_t> || std::same_as<T, half> || std::same_as<T, float>)
 inline void apply_on_image(const std::filesystem::path& _ocio_path, uint32_t _width, uint32_t _height, std::span<T> _data)
 {
-    const auto config = OCIO::Config::CreateFromFile(_ocio_path.string().c_str());
+    const auto config = OCIO::Config::CreateFromFile(_ocio_path.generic_string().c_str());
 
     const char* const display = config->getDefaultDisplay();
     const char* const view    = config->getDefaultView(display);

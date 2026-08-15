@@ -1,13 +1,16 @@
 #include "record_loader.h"
 
 #include <algorithm>
+#include <format>
 #include <fstream>
+#include <limits>
 #include <ranges>
+#include <utility>
 
 namespace {
 [[nodiscard]] std::pair<uint8_t, uint8_t> move_piece(PIECE_TYPE _piece_type, uint8_t _now_x, uint8_t _now_y, UChar _move_direction, uint8_t _number) noexcept
 {
-    std::pair<uint8_t, uint8_t> new_position = std::make_pair(_now_x, _now_y);
+    std::pair new_position{_now_x, _now_y};
 
     switch (_piece_type)
     {
@@ -18,13 +21,13 @@ namespace {
             switch (_move_direction)
             {
                 case u'进':
-                    new_position = std::make_pair(_now_x, _now_y + _number);
+                    new_position = {_now_x, _now_y + _number};
                     break;
                 case u'退':
-                    new_position = std::make_pair(_now_x, _now_y - _number);
+                    new_position = {_now_x, _now_y - _number};
                     break;
                 case u'平':
-                    new_position = std::make_pair(_number, _now_y);
+                    new_position = {_number, _now_y};
                     break;
                 default:
                     break;
@@ -34,10 +37,10 @@ namespace {
             switch (_move_direction)
             {
                 case u'进':
-                    new_position = std::make_pair(_number, _now_y + 1);
+                    new_position = {_number, _now_y + 1};
                     break;
                 case u'退':
-                    new_position = std::make_pair(_number, _now_y - 1);
+                    new_position = {_number, _now_y - 1};
                     break;
                 default:
                     break;
@@ -47,10 +50,10 @@ namespace {
             switch (_move_direction)
             {
                 case u'进':
-                    new_position = std::make_pair(_number, _now_y + 2);
+                    new_position = {_number, _now_y + 2};
                     break;
                 case u'退':
-                    new_position = std::make_pair(_number, _now_y - 2);
+                    new_position = {_number, _now_y - 2};
                     break;
                 default:
                     break;
@@ -60,10 +63,10 @@ namespace {
             switch (_move_direction)
             {
                 case u'进':
-                    new_position = std::make_pair(_number, _now_y + 3 - std::abs(_now_x - _number));
+                    new_position = {_number, _now_y + 3 - std::abs(_now_x - _number)};
                     break;
                 case u'退':
-                    new_position = std::make_pair(_number, _now_y - 3 + std::abs(_now_x - _number));
+                    new_position = {_number, _now_y - 3 + std::abs(_now_x - _number)};
                     break;
                 default:
                     break;
@@ -77,7 +80,7 @@ namespace {
 }
 }  // namespace
 
-std::vector<all_board_state> record_loader::load_records(const std::filesystem::path& _record_path)
+std::expected<std::vector<all_board_state>, std::string> record_loader::load_records(const std::filesystem::path& _record_path)
 {
     // get file encoding and read file
     const auto encoding = string_helper::get_file_encoding<std::string>(_record_path);
@@ -86,7 +89,7 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     const std::string content((std::istreambuf_iterator<char>(in_file)), std::istreambuf_iterator<char>());
     in_file.close();
 
-    icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
+    const icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
 
 
     // regex
@@ -98,7 +101,7 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     const auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, error));
     if (error.isFailure())
     {
-        throw std::runtime_error("Failed to compile regex pattern!");
+        return std::unexpected(std::format("Failed to compile regex pattern: {}", error.errorName()));
     }
 
 
@@ -109,10 +112,10 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
     const auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, error));
     while (matcher->find(error))
     {
-        icu::UnicodeString match = matcher->group(0, error);
+        const icu::UnicodeString match = matcher->group(0, error);
 
         icu::UnicodeString result;
-        for (auto& ch : match)
+        for (const auto& ch : match)
         {
             if (!u_isWhitespace(ch))
             {
@@ -122,17 +125,18 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
 
         if (result.length() != 4)
         {
-            throw std::runtime_error("Not a valid chess record file.");
+            return std::unexpected(std::format("Record {} line {} length != 4.", _record_path.generic_string(),
+                                               the_board_state.size() + 1));
         }
 
         if (is_player_red == is_arabic_digit(result[3]))
         {
-            throw std::runtime_error("Not a valid chess record file.");
+            return std::unexpected(std::format("Ambiguous piece order in record file."));
         }
 
         if (!is_piece_type(result[0]) && !is_piece_type(result[1]))
         {
-            throw std::runtime_error("Not a valid chess record file.");
+            return std::unexpected(std::format("Unknown piece type in record file."));
         }
 
         all_board_state now_board = get_init_all_board();
@@ -187,19 +191,16 @@ std::vector<all_board_state> record_loader::load_records(const std::filesystem::
             }
         }
 
-        auto now_pieces = now_board.at(static_cast<size_t>(now_color))
-                          | std::views::filter([&](const auto& _piece) { return _piece.piece_type == now_type; })
-                          | std::views::filter([&](const auto& _piece) {
-                                return _piece.x == now_x || now_x == std::numeric_limits<uint8_t>::max();
-                            })
-                          | std::views::filter([&](const auto& _piece) {
-                                return _piece.y == now_y || now_y == std::numeric_limits<uint8_t>::max();
-                            });
+        auto now_pieces = now_board.at(static_cast<size_t>(now_color)) | std::views::filter([&](const auto& _piece) {
+                              return _piece.piece_type == now_type
+                                     && (_piece.x == now_x || now_x == std::numeric_limits<uint8_t>::max())
+                                     && (_piece.y == now_y || now_y == std::numeric_limits<uint8_t>::max());
+                          });
 
 
         if (std::ranges::distance(now_pieces) != 1)
         {
-            throw std::runtime_error("Not a valid chess record file.");
+            return std::unexpected(std::format("Ambiguous piece position in record file."));
         }
 
         auto& now_piece           = now_pieces.front();

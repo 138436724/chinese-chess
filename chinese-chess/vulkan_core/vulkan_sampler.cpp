@@ -15,7 +15,7 @@ struct sampler_settings
     float                  max_lod;
 };
 
-constexpr sampler_settings get_sampler_settings(sampler_type _type)
+constexpr sampler_settings get_sampler_settings(sampler_type _type) noexcept
 {
     switch (_type)
     {

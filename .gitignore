@@ -440,6 +440,7 @@ out/
 *.hash
 *.exr
 *.png
+*.ktx2
 
 # blender files
 *.blend

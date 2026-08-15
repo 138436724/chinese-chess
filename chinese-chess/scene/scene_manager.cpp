@@ -1,17 +1,21 @@
 #include "scene_manager.h"
 
+#include "scene_rasterization_render.h"
+#include "scene_raytracing_render.h"
 #include "tools/image_helper.h"
 #include "tools/ocio_helper.h"
-#include "tools/shader_compiler.h"
-#include "tools/string_helper.h"
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_common.h"
 
 #include <GLFW/glfw3.h>
+#include <array>
+#include <chrono>
+#include <print>
 #include <ranges>
 #include <string>
-#include <unordered_set>
 #include <vulkan/utility/vk_format_utils.h>
+
+scene_manager::~scene_manager() = default;
 
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
@@ -41,8 +45,8 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
-    skybox_image = create(std::type_identity<scene_image>{}, std::filesystem::path(TEXTURES_PATH) / u8"干裂地面.hdr",
-                          true, sampler_type::sky_box);
+    skybox_image = create(std::type_identity<scene_image>{},
+                          std::filesystem::path(TEXTURES_PATH) / u8"cracked ground.hdr", true, sampler_type::sky_box);
 
     rasterization_render = std::make_unique<scene_rasterization_render>(
         app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
@@ -89,10 +93,9 @@ void scene_manager::update()
         return;
     }
 
-    is_dirty = false;
-
-    bool any_dirty = std::ranges::fold_left(managers, false,
-                                            [this](bool b, auto& manager) { return manager->update(waited_infos) || b; });
+    const bool any_dirty = std::ranges::fold_left(managers, false, [this](bool b, auto& manager) {
+        return manager->update(waited_infos) || b;
+    });
 
     if (any_dirty)
     {
@@ -104,6 +107,8 @@ void scene_manager::update()
     }
 
     skybox_index = material_manager.get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
+
+    is_dirty = false;
 }
 
 vk::SemaphoreSubmitInfo scene_manager::render()
@@ -137,6 +142,13 @@ void scene_manager::handle(int _glfw_key)
         case GLFW_KEY_F5:
             active_render->recreate();
             active_render->update();
+            break;
+        case GLFW_KEY_F6:
+            if (material_manager.reload_textures(waited_infos))
+            {
+                need_material_update();
+                need_model_update();
+            }
             break;
         default:
             break;
@@ -190,26 +202,32 @@ void scene_manager::save_image()
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
-    std::string save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
+    std::filesystem::path save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
 
     const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
 
     const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
     if (vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format))
     {
-        save_path += ".exr";
+        save_path.replace_extension(".exr");
         std::vector<half> image_data(static_cast<half*>(staging_buffer.get_buffer_address().hostAddress),
                                      static_cast<half*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
         ocio_helper::apply_on_image<half>(ocio_config_path, image_width, image_height, image_data);
-        image_helper::write_image<half>(save_path, image_width, image_height, image_data);
+        if (auto result = image_helper::write_image<half>(save_path, image_width, image_height, image_data); !result)
+        {
+            std::println(std::cerr, "write image{} failed: {}", save_path.generic_string(), result.error());
+        }
     }
     else if (vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format))
     {
-        save_path += ".png";
+        save_path.replace_extension(".png");
         std::vector<uint8_t> image_data(static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress),
                                         static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
         ocio_helper::apply_on_image<uint8_t>(ocio_config_path, image_width, image_height, image_data);
-        image_helper::write_image<uint8_t>(save_path, image_width, image_height, image_data);
+        if (auto result = image_helper::write_image<uint8_t>(save_path, image_width, image_height, image_data); !result)
+        {
+            std::println(std::cerr, "write_image{} failed: {}", save_path.generic_string(), result.error());
+        }
     }
     else
     {
@@ -266,7 +284,7 @@ std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_m
 std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
                                                    const std::filesystem::path& _font_path,
                                                    uint32_t                     _font_size,
-                                                   const std::wstring&          _characters,
+                                                   std::wstring_view            _characters,
                                                    uint32_t                     _padding)
 {
     return material_manager.create(_font_path, _font_size, _characters, waited_infos, _padding);

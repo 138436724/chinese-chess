@@ -1,16 +1,17 @@
 #include "ocio_helper.h"
 
 #include "shader_compiler.h"
-#include "string_helper.h"
 
 #include <algorithm>
+#include <cstring>
+#include <fstream>
 #include <ranges>
 
 OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem::path& _ocio_path)
 {
     const auto ocio_function_name = std::string(OCIO_FUNCTION_NAME);
 
-    const auto config = OCIO::Config::CreateFromFile(_ocio_path.string().c_str());
+    const auto config = OCIO::Config::CreateFromFile(_ocio_path.generic_string().c_str());
 
     const char* const display = config->getDefaultDisplay();
     const char* const view    = config->getDefaultView(display);
@@ -52,7 +53,7 @@ std::expected<std::vector<char>, std::string> ocio_helper::replace_and_compile(c
     shader_file.close();
 
     const std::string final_string = original_string | std::views::split('\n') | std::views::transform([&](const auto& _line) {
-                                         std::string s(_line.begin(), _line.end());
+                                         const std::string s(_line.begin(), _line.end());
                                          if (s.contains(ocio_function_name)) [[unlikely]]
                                          {
                                              return shader_string;
@@ -76,18 +77,18 @@ std::vector<uint8_t> ocio_helper::get_uniform_buffer_data(const OCIO::GpuShaderD
         if (uniform_data.m_getDouble)
         {
             const float val = static_cast<float>(uniform_data.m_getDouble());
-            memcpy(dest, &val, sizeof(float));
+            std::memcpy(dest, &val, sizeof(float));
         }
         else if (uniform_data.m_getBool)
         {
             const int val = uniform_data.m_getBool() ? 1 : 0;
-            memcpy(dest, &val, sizeof(int));
+            std::memcpy(dest, &val, sizeof(int));
         }
         else if (uniform_data.m_getFloat3)
         {
             // vec3 in std140: write 3 floats (12 bytes), padded to 16 bytes
             const auto vals = uniform_data.m_getFloat3();
-            memcpy(dest, vals.data(), 3 * sizeof(float));
+            std::memcpy(dest, vals.data(), 3 * sizeof(float));
         }
         else if (uniform_data.m_vectorFloat.m_getSize && uniform_data.m_vectorFloat.m_getVector)
         {
@@ -96,7 +97,7 @@ std::vector<uint8_t> ocio_helper::get_uniform_buffer_data(const OCIO::GpuShaderD
             const size_t       count = uniform_data.m_vectorFloat.m_getSize();
             for (size_t j = 0; j < count; ++j)
             {
-                memcpy(dest + j * 16, &vals[j], sizeof(float));
+                std::memcpy(dest + j * 16, &vals[j], sizeof(float));
             }
         }
         else if (uniform_data.m_vectorInt.m_getSize && uniform_data.m_vectorInt.m_getVector)
@@ -106,7 +107,7 @@ std::vector<uint8_t> ocio_helper::get_uniform_buffer_data(const OCIO::GpuShaderD
             const size_t     count = uniform_data.m_vectorInt.m_getSize();
             for (size_t j = 0; j < count; ++j)
             {
-                memcpy(dest + j * 16, &vals[j], sizeof(int));
+                std::memcpy(dest + j * 16, &vals[j], sizeof(int));
             }
         }
     });

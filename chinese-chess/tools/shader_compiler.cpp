@@ -54,6 +54,52 @@ void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Sla
 void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
 void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) {}
 #endif  // !NDEBUG
+
+std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session,
+                                                                            Slang::ComPtr<slang::IBlob>& _diagnostics_blob,
+                                                                            Slang::ComPtr<slang::IModule>& _slang_module,
+                                                                            const std::vector<std::string_view>& _entry_name)
+{
+    std::vector<slang::IComponentType*> component_types;
+    for (const auto& entry_name : _entry_name)
+    {
+        Slang::ComPtr<slang::IEntryPoint> entry_point;
+        _slang_module->findEntryPointByName(entry_name.data(), entry_point.writeRef());
+        if (!entry_point)
+        {
+            return std::unexpected(std::format("Entry point \"{}\" not found in shader", entry_name));
+        }
+        component_types.emplace_back(entry_point);
+    }
+
+    Slang::ComPtr<slang::IBlob>          spirv_code;
+    Slang::ComPtr<slang::IComponentType> composed_program;
+    auto result = _session->createCompositeComponentType(component_types.data(), component_types.size(),
+                                                         composed_program.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
+    if (!SLANG_SUCCEEDED(result))
+    {
+        return std::unexpected(get_diagnostics(_diagnostics_blob));
+    }
+
+    Slang::ComPtr<slang::IComponentType> linked_program;
+    result = composed_program->link(linked_program.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
+    if (!SLANG_SUCCEEDED(result))
+    {
+        return std::unexpected(get_diagnostics(_diagnostics_blob));
+    }
+
+    result = linked_program->getTargetCode(0, spirv_code.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
+    if (!SLANG_SUCCEEDED(result))
+    {
+        return std::unexpected(get_diagnostics(_diagnostics_blob));
+    }
+    print_entrypoint_hashes(static_cast<int>(_entry_name.size()), 1, composed_program);
+
+    return spirv_code;
+}
 }  // namespace
 
 shader_compiler::shader_compiler()
@@ -100,7 +146,7 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
 
     if ((!std::filesystem::exists(_shader_path) || !FILE_WATCHER.is_file_modified(_shader_path)) && std::filesystem::exists(spirv_path))
     {
-        std::ifstream in_file(spirv_path.generic_string(), std::ios::ate | std::ios::binary);
+        std::ifstream in_file(spirv_path, std::ios::ate | std::ios::binary);
 
         if (in_file.is_open())
         {
@@ -122,10 +168,10 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
     auto spirv_code = slang_to_slang_module(desc, _shader_path.stem().generic_string(), true, _entry_name);
     if (!spirv_code)
     {
-        return std::unexpected(std::format("Failed to compile shader {}: {}", _shader_path.string(), spirv_code.error()));
+        return std::unexpected(std::format("Failed to compile shader {}: {}", _shader_path.generic_string(), spirv_code.error()));
     }
 
-    std::ofstream out_file(spirv_path.generic_string(), std::ios::out | std::ios::binary);
+    std::ofstream out_file(spirv_path, std::ios::out | std::ios::binary);
     out_file.write(reinterpret_cast<const char*>((*spirv_code)->getBufferPointer()), (*spirv_code)->getBufferSize());
     out_file.close();
 
@@ -182,53 +228,6 @@ std::expected<Slang::ComPtr<slang::IBlob>, std::string> shader_compiler::slang_t
     }
 
     return slang_module_to_spv(session, diagnostics_blob, slang_module, _entry_name);
-}
-
-std::expected<Slang::ComPtr<slang::IBlob>, std::string> shader_compiler::slang_module_to_spv(
-    Slang::ComPtr<slang::ISession>&      _session,
-    Slang::ComPtr<slang::IBlob>&         _diagnostics_blob,
-    Slang::ComPtr<slang::IModule>&       _slang_module,
-    const std::vector<std::string_view>& _entry_name) const
-{
-    std::vector<slang::IComponentType*> component_types;
-    for (const auto& entry_name : _entry_name)
-    {
-        Slang::ComPtr<slang::IEntryPoint> entry_point;
-        _slang_module->findEntryPointByName(entry_name.data(), entry_point.writeRef());
-        if (!entry_point)
-        {
-            return std::unexpected(std::format("Entry point \"{}\" not found in shader", entry_name));
-        }
-        component_types.emplace_back(entry_point);
-    }
-
-    Slang::ComPtr<slang::IBlob>          spirv_code;
-    Slang::ComPtr<slang::IComponentType> composed_program;
-    auto result = _session->createCompositeComponentType(component_types.data(), component_types.size(),
-                                                         composed_program.writeRef(), _diagnostics_blob.writeRef());
-    diagnose_if_needed(_diagnostics_blob);
-    if (!SLANG_SUCCEEDED(result))
-    {
-        return std::unexpected(get_diagnostics(_diagnostics_blob));
-    }
-
-    Slang::ComPtr<slang::IComponentType> linked_program;
-    result = composed_program->link(linked_program.writeRef(), _diagnostics_blob.writeRef());
-    diagnose_if_needed(_diagnostics_blob);
-    if (!SLANG_SUCCEEDED(result))
-    {
-        return std::unexpected(get_diagnostics(_diagnostics_blob));
-    }
-
-    result = linked_program->getTargetCode(0, spirv_code.writeRef(), _diagnostics_blob.writeRef());
-    diagnose_if_needed(_diagnostics_blob);
-    if (!SLANG_SUCCEEDED(result))
-    {
-        return std::unexpected(get_diagnostics(_diagnostics_blob));
-    }
-    print_entrypoint_hashes(static_cast<int>(_entry_name.size()), 1, composed_program);
-
-    return spirv_code;
 }
 
 shader_compiler& shader_compiler::get_shader_compiler() noexcept

@@ -1,5 +1,7 @@
 #include "window.h"
 
+#include <cstdlib>
+
 int main()
 {
     glfw_window w;

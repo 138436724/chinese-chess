@@ -14,20 +14,20 @@ renderdoc_capture renderdoc_capture::capture;
 renderdoc_capture::renderdoc_capture()
 {
     // RenderDoc injects renderdoc.dll into the process. Try to locate it.
-    HMODULE mod = GetModuleHandleA(RENDERDOC_DLL.data());
+    const HMODULE mod = GetModuleHandleA(RENDERDOC_DLL.data());
     if (!mod)
     {
         return;
     }
 
-    pRENDERDOC_GetAPI RENDERDOC_GetAPI = reinterpret_cast<pRENDERDOC_GetAPI>(GetProcAddress(mod, "RENDERDOC_GetAPI"));
+    const pRENDERDOC_GetAPI RENDERDOC_GetAPI = reinterpret_cast<pRENDERDOC_GetAPI>(GetProcAddress(mod, "RENDERDOC_GetAPI"));
     if (!RENDERDOC_GetAPI)
     {
         return;
     }
 
     // Request the latest API version. RenderDoc may return a newer version if backward-compatible.
-    int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, reinterpret_cast<void**>(&m_api));
+    const int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, reinterpret_cast<void**>(&m_api));
     if (ret != 1 || !m_api)
     {
         m_api = nullptr;
@@ -68,7 +68,7 @@ void renderdoc_capture::end_capture(VkInstance _vk_instance, HWND _hwnd)
     void*      device_ptr = RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(_vk_instance);
     const HWND wnd        = _hwnd ? _hwnd : m_hwnd;
 
-    uint32_t result = m_api->EndFrameCapture(device_ptr, reinterpret_cast<RENDERDOC_WindowHandle>(wnd));
+    const uint32_t result = m_api->EndFrameCapture(device_ptr, reinterpret_cast<RENDERDOC_WindowHandle>(wnd));
 
     // Discard failed captures so they don't clutter the capture list.
     if (result != 1)

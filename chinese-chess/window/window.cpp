@@ -10,6 +10,10 @@
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
+#include <chrono>
+#include <format>
+#include <stdexcept>
+#include <vector>
 
 glfw_window::glfw_window()
 {
@@ -100,8 +104,8 @@ void glfw_window::render()
 
         scene->update();
 
-        auto ui_wait_info    = ui->render();
-        auto scene_wait_info = scene->render();
+        const auto ui_wait_info    = ui->render();
+        const auto scene_wait_info = scene->render();
         app->render(ui_wait_info, scene_wait_info);
 
         if (need_save)
@@ -129,8 +133,9 @@ void glfw_window::render()
 
         if (title_timer >= update_interval)
         {
-            auto result = std::format_to(window_title.data(), "Chinese Chess {} fps", static_cast<float>(title_frames) / title_timer);
-            *result = '\0';
+            const auto result = std::format_to_n(window_title.data(), window_title.size() - 1, "Chinese Chess {} fps",
+                                                 static_cast<float>(title_frames) / title_timer);
+            *result.out       = '\0';
             glfwSetWindowTitle(window, window_title.data());
 
             title_timer  = 0.f;
@@ -173,9 +178,13 @@ void glfw_window::resize_callback(GLFWwindow* /*_window*/, int _width, int _heig
     }
 }
 
-void glfw_window::cursor_position_callback(GLFWwindow* /*_window*/, double /*_xpos*/, double /*_ypos*/) {}
+void glfw_window::cursor_position_callback(GLFWwindow* /*_window*/, double /*_xpos*/, double /*_ypos*/) const noexcept
+{
+}
 
-void glfw_window::mouse_button_callback(GLFWwindow* /*_window*/, int /*_button*/, int /*_action*/, int /*_mods*/) {}
+void glfw_window::mouse_button_callback(GLFWwindow* /*_window*/, int /*_button*/, int /*_action*/, int /*_mods*/) const noexcept
+{
+}
 
 void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int, int _action, int)
 {

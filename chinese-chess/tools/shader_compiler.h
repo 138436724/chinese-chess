@@ -6,6 +6,7 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #define SHADER_COMPILER shader_compiler::get_shader_compiler()
@@ -35,14 +36,11 @@ private:
     shader_compiler(shader_compiler&&)                 = delete;
     shader_compiler& operator=(shader_compiler&&)      = delete;
 
-    std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_to_slang_module(const slang::SessionDesc& _session_desc,
-                                                                                  const std::string& _shader_string,
-                                                                                  bool               _as_shader_name,
-                                                                                  const std::vector<std::string_view>& _entry_name) const;
-    std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session,
-                                                                                Slang::ComPtr<slang::IBlob>& _diagnostics_blob,
-                                                                                Slang::ComPtr<slang::IModule>& _slang_module,
-                                                                                const std::vector<std::string_view>& _entry_name) const;
+    [[nodiscard]] std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_to_slang_module(
+        const slang::SessionDesc&            _session_desc,
+        const std::string&                   _shader_string,
+        bool                                 _as_shader_name,
+        const std::vector<std::string_view>& _entry_name) const;
 
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;

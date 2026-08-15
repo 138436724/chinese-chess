@@ -1,5 +1,7 @@
 #include "vulkan_semaphore.h"
 
+#include <limits>
+
 void vulkan_semaphore::create(const vk::raii::Device& _device)
 {
     vk::StructureChain<vk::SemaphoreCreateInfo, vk::SemaphoreTypeCreateInfo> create_info(

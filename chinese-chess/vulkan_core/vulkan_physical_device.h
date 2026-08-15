@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <bitset>
+#include <concepts>
 #include <ranges>
+#include <span>
+#include <stdexcept>
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_physical_device

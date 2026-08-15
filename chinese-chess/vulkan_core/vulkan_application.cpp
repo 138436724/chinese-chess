@@ -5,12 +5,10 @@
 #include "vulkan_common.h"
 
 #include <algorithm>
-#include <bitset>
 #include <expected>
 #include <format>
 #include <print>
 #include <ranges>
-#include <unordered_set>
 
 namespace {
 #ifndef NDEBUG
@@ -177,56 +175,38 @@ void vulkan_application::bind_image(vulkan_image& _scene_image, vulkan_image& _u
     // descriptor
     descriptor.clear_descriptor_info();
 
-    auto scene_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-                           | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                                 return vk::DescriptorImageInfo(nullptr, bind_scene_image->get_imageview(),
-                                                                vk::ImageLayout::eShaderReadOnlyOptimal);
-                             })
-                           | std::ranges::to<std::vector>();
+    std::vector<DescriptorBufferOrImageInfo> scene_pool_info(
+        vulkan_common::MAX_FRAMES_IN_FLIGHT,
+        vk::DescriptorImageInfo(nullptr, bind_scene_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal));
     descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, std::move(scene_pool_info));
 
-    auto ui_pool_info =
-        std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-        | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-              return vk::DescriptorImageInfo(nullptr, bind_ui_image->get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-          })
-        | std::ranges::to<std::vector>();
+    std::vector<DescriptorBufferOrImageInfo> ui_pool_info(vulkan_common::MAX_FRAMES_IN_FLIGHT,
+                                                          vk::DescriptorImageInfo(nullptr, bind_ui_image->get_imageview(),
+                                                                                  vk::ImageLayout::eShaderReadOnlyOptimal));
     descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, std::move(ui_pool_info));
 
-    auto sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-                             | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                                   return vk::DescriptorImageInfo(image_sampler.get_sampler(), nullptr, vk::ImageLayout::eUndefined);
-                               })
-                             | std::ranges::to<std::vector>();
+    std::vector<DescriptorBufferOrImageInfo> sampler_pool_info(vulkan_common::MAX_FRAMES_IN_FLIGHT,
+                                                               vk::DescriptorImageInfo(image_sampler.get_sampler(), nullptr,
+                                                                                       vk::ImageLayout::eUndefined));
     descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(sampler_pool_info));
 
     std::ranges::for_each(std::views::zip(ocio_images, ocio_samplers), [&](const auto& _binding) {
         const auto& [ocio_image, ocio_sampler] = _binding;
 
-        auto image_pool_info =
-            std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-            | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                  return vk::DescriptorImageInfo(nullptr, ocio_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal);
-              })
-            | std::ranges::to<std::vector>();
+        std::vector<DescriptorBufferOrImageInfo> image_pool_info(
+            vulkan_common::MAX_FRAMES_IN_FLIGHT,
+            vk::DescriptorImageInfo(nullptr, ocio_image.get_imageview(), vk::ImageLayout::eShaderReadOnlyOptimal));
         descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, std::move(image_pool_info));
 
-
-        auto ocio_sampler_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-                                      | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                                            return vk::DescriptorImageInfo(ocio_sampler, nullptr, vk::ImageLayout::eUndefined);
-                                        })
-                                      | std::ranges::to<std::vector>();
+        std::vector<DescriptorBufferOrImageInfo> ocio_sampler_pool_info(
+            vulkan_common::MAX_FRAMES_IN_FLIGHT, vk::DescriptorImageInfo(ocio_sampler, nullptr, vk::ImageLayout::eUndefined));
         descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(ocio_sampler_pool_info));
     });
 
     if (ocio_ubo.get_buffer_address().deviceAddress)
     {
-        auto ubo_pool_info = std::views::iota(0u, vulkan_common::MAX_FRAMES_IN_FLIGHT)
-                             | std::views::transform([&](const auto&) -> DescriptorBufferOrImageInfo {
-                                   return vk::DescriptorBufferInfo(ocio_ubo.get_buffer(), 0, vk::WholeSize);
-                               })
-                             | std::ranges::to<std::vector>();
+        std::vector<DescriptorBufferOrImageInfo> ubo_pool_info(vulkan_common::MAX_FRAMES_IN_FLIGHT,
+                                                               vk::DescriptorBufferInfo(ocio_ubo.get_buffer(), 0, vk::WholeSize));
         descriptor.add_descriptor_info(vk::DescriptorType::eUniformBuffer, std::move(ubo_pool_info));
     }
 
@@ -469,11 +449,11 @@ void vulkan_application::create_pipeline()
                 throw std::runtime_error("Missing texture values");
             }
 
-            height                            = height > 0 ? height : 1;
-            vk::ImageType     image_type      = (height == 1) ? vk::ImageType::e1D : vk::ImageType::e2D;
-            vk::ImageViewType image_view_type = (height == 1) ? vk::ImageViewType::e1D : vk::ImageViewType::e2D;
-            vk::Format format = (channel == OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ? vk::Format::eR32Sfloat :
-                                                                                        vk::Format::eR32G32B32A32Sfloat;
+            height                                  = height > 0 ? height : 1;
+            const vk::ImageType     image_type      = (height == 1) ? vk::ImageType::e1D : vk::ImageType::e2D;
+            const vk::ImageViewType image_view_type = (height == 1) ? vk::ImageViewType::e1D : vk::ImageViewType::e2D;
+            const vk::Format format = (channel == OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ? vk::Format::eR32Sfloat :
+                                                                                              vk::Format::eR32G32B32A32Sfloat;
 
             std::vector<float> rgba_values;
             if (channel == OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL)
@@ -497,10 +477,11 @@ void vulkan_application::create_pipeline()
             commandbuffer.add_waited_info(vulkan_common::upload_image(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, image_type, image_view_type,
                 format, vk::Extent3D(width, height, 1), image,
-                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())), {}));
+                std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
+                "ocio_lut"));
             ocio_images.push_back(std::move(image));
 
-            vk::SamplerCreateInfo sampler_info(
+            const vk::SamplerCreateInfo sampler_info(
                 {}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
                 (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
                 vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge,
@@ -556,10 +537,10 @@ void vulkan_application::create_pipeline()
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e3D,
                 vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), image,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
-                {}, "ocio_lut"));
+                "ocio_lut"));
             ocio_images.push_back(std::move(image));
 
-            vk::SamplerCreateInfo sampler_info(
+            const vk::SamplerCreateInfo sampler_info(
                 {}, (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
                 (interpolation == OCIO::INTERP_NEAREST ? vk::Filter::eNearest : vk::Filter::eLinear),
                 vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge,

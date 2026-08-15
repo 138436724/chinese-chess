@@ -1,11 +1,11 @@
 #pragma once
 
-#include "scene_light.h"
 #include "vulkan_core/vulkan_buffer.h"
 
 #include <memory>
 #include <vector>
 
+struct scene_light;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;

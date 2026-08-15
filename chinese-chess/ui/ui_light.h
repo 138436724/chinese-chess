@@ -1,11 +1,9 @@
 #pragma once
 
-#include "scene/scene_light.h"
-
-#include <imgui.h>
 #include <memory>
 #include <vector>
 
+struct scene_light;
 class scene_manager;
 
 class ui_light

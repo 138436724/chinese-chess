@@ -1,6 +1,9 @@
 #include "file_watcher.h"
 
+#include <expected>
+#include <format>
 #include <fstream>
+#include <memory>
 #include <openssl/evp.h>
 #include <ranges>
 
@@ -8,37 +11,41 @@ namespace {
 constexpr std::string_view hash_file_name    = "resources\\file_watch_cache.hash";
 constexpr std::string_view file_cache_header = "file_cache_header";
 
-[[nodiscard]] std::string generate_file_hash(const std::filesystem::path& _file_path)
+[[nodiscard]] std::expected<std::string, std::string> generate_file_hash(const std::filesystem::path& _file_path)
 {
     std::ifstream file(_file_path, std::ios::binary);
 
     if (!file.is_open())
     {
-        return "";
+        return std::unexpected(std::format("Failed to read file {}.", _file_path.generic_string()));
     }
 
-    EVP_MD_CTX* sha256 = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(sha256, EVP_sha256(), nullptr);
+    EVP_MD_CTX* raw_sha256 = EVP_MD_CTX_new();
+    if (!raw_sha256)
+    {
+        return std::unexpected("Failed to new EVP_MD_CTX.");
+    }
 
-    char buffer[4096];
+    const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> sha256(raw_sha256, EVP_MD_CTX_free);
+    EVP_DigestInit_ex(sha256.get(), EVP_sha256(), nullptr);
+
+    std::array<char, 4096> buffer{};
     while (true)
     {
-        file.read(buffer, 4096);
-        EVP_DigestUpdate(sha256, buffer, file.gcount());
+        file.read(buffer.data(), buffer.size());
+        EVP_DigestUpdate(sha256.get(), buffer.data(), file.gcount());
         if (file.eof())
         {
             break;
         }
     }
 
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int  hash_len;
-    EVP_DigestFinal_ex(sha256, hash, &hash_len);
-    EVP_MD_CTX_free(sha256);
-    file.close();
+    std::array<unsigned char, EVP_MAX_MD_SIZE> hash{};
+    unsigned int                               hash_len;
+    EVP_DigestFinal_ex(sha256.get(), hash.data(), &hash_len);
 
-    return std::views::iota(0u, hash_len)
-           | std::views::transform([&](unsigned int i) { return std::format("{:02X}", hash[i]); }) | std::views::join
+    return hash | std::views::take(hash_len)
+           | std::views::transform([](const auto& _c) static { return std::format("{:02X}", _c); }) | std::views::join
            | std::ranges::to<std::string>();
 }
 }  // namespace
@@ -109,15 +116,17 @@ bool file_watcher::is_file_modified(const std::filesystem::path& _file_path)
     const auto        file_hash = generate_file_hash(_file_path);
     const std::string file_path = _file_path.generic_string();
 
-    auto it          = file_watch_cache.find(file_path);
-    bool is_modified = (it == file_watch_cache.end()) || (it->second != file_hash);
-
-    if (is_modified)
+    if (file_hash)
     {
-        file_watch_cache.insert_or_assign(file_path, file_hash);
+        if (auto iter = file_watch_cache.find(file_path); iter != file_watch_cache.end() && iter->second == *file_hash) [[likely]]
+        {
+            return false;
+        }
+
+        file_watch_cache.insert_or_assign(file_path, *file_hash);
     }
 
-    return is_modified;
+    return true;
 }
 
 file_watcher& file_watcher::get_file_watcher() noexcept

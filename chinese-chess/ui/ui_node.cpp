@@ -1,9 +1,14 @@
 #include "ui_node.h"
 
 #include "scene/scene_manager.h"
+#include "scene/scene_material.h"
+#include "scene/scene_model.h"
 
+#include <format>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
+#include <imgui.h>
+#include <iterator>
 #include <ranges>
 #ifdef _WIN32
 #include <commdlg.h>
@@ -63,13 +68,17 @@ void ui_node::update_material()
     }
 
     std::optional<size_t> delete_index = std::nullopt;
+    std::string           header_label;
     for (size_t i = 0; i < materials.size(); ++i)
     {
         ImGui::PushID(static_cast<int>(i));
 
         auto& material_ptr = materials.at(i);
 
-        if (ImGui::CollapsingHeader(std::format("{} {}", MATERIAL.data(), i).c_str(), ImGuiTreeNodeFlags_None))
+        header_label.clear();
+        std::format_to(std::back_inserter(header_label), "{} {}", MATERIAL, i);
+
+        if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
         {
             if (ImGui::ColorEdit3(MATERIAL_BACKGROUND_COLOR.data(), glm::value_ptr(material_ptr->background_color)))
             {
@@ -83,7 +92,7 @@ void ui_node::update_material()
 
             if (!textures.empty())
             {
-                ImGui::Text(textures.at(material_ptr->alpha_map).generic_string().c_str());
+                ImGui::TextUnformatted(textures.at(material_ptr->alpha_map).generic_string().c_str());
                 ImGui::SameLine();
             }
 
@@ -157,7 +166,7 @@ void ui_node::update_material()
 
     if (delete_index.has_value())
     {
-        std::erase_if(materials, [&](const auto& p) { return p == materials.at(delete_index.value()); });
+        materials.erase(materials.begin() + static_cast<std::ptrdiff_t>(*delete_index));
         manager.need_material_update();
     }
 
@@ -200,13 +209,17 @@ void ui_node::update_model()
     }
 
     std::optional<size_t> delete_index = std::nullopt;
+    std::string           header_label;
     for (size_t i = 0; i < models.size(); ++i)
     {
         ImGui::PushID(static_cast<int>(i));
 
         auto& model_ptr = models.at(i);
 
-        if (ImGui::CollapsingHeader(std::format("{} {}", MODEL.data(), i).c_str(), ImGuiTreeNodeFlags_None))
+        header_label.clear();
+        std::format_to(std::back_inserter(header_label), "{} {}", MODEL, i);
+
+        if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
         {
             if (ImGui::Checkbox(SHOW_MODEL.data(), &model_ptr->is_show))
             {
@@ -243,19 +256,16 @@ void ui_node::update_model()
 
             if (!materials.empty())
             {
-                const auto all_material_index = std::views::iota(0u, materials.size())
-                                                | std::views::transform([this](const auto index) {
-                                                      return std::format("{} {}", MATERIAL.data(), index);
-                                                  })
-                                                | std::ranges::to<std::vector>();
-
-                const auto all_material_index_string =
-                    all_material_index | std::views::transform([](const auto& s) static { return s.c_str(); })
-                    | std::ranges::to<std::vector>();
+                std::string all_material_items;
+                for (size_t j = 0; j < materials.size(); ++j)
+                {
+                    std::format_to(std::back_inserter(all_material_items), "{} {}", MATERIAL, j);
+                    all_material_items.push_back('\0');
+                }
+                all_material_items.push_back('\0');
 
                 int material_index = get_material_index(model_ptr->material).value_or(-1);
-                if (ImGui::Combo(MATERIAL_INDEX.data(), &material_index, all_material_index_string.data(),
-                                 static_cast<int>(all_material_index_string.size())))
+                if (ImGui::Combo(MATERIAL_INDEX.data(), &material_index, all_material_items.c_str()))
                 {
                     model_ptr->material = materials.at(material_index);
                     manager.need_model_update();
@@ -273,7 +283,7 @@ void ui_node::update_model()
 
     if (delete_index.has_value())
     {
-        std::erase_if(models, [&](const auto& p) { return p == models.at(delete_index.value()); });
+        models.erase(models.begin() + static_cast<std::ptrdiff_t>(*delete_index));
         manager.need_model_update();
     }
 

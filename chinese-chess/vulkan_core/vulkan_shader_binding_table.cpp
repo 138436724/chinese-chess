@@ -1,6 +1,5 @@
 #include "vulkan_shader_binding_table.h"
 
-#include "vulkan_commandbuffer.h"
 #include "vulkan_common.h"
 
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
@@ -106,7 +105,9 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     // Copy handles for all groups
     const std::array offsets = {raygen_offset, miss_primary_offset, miss_shadow_offset, hit_primary_offset, hit_shadow_offset};
     for (auto [group_index, offset] : offsets | std::views::enumerate | std::views::take(_group_count))
-        memcpy(buffer_address + offset, shader_handles.data() + group_index * handle_size, handle_size);
+    {
+        std::memcpy(buffer_address + offset, shader_handles.data() + group_index * handle_size, handle_size);
+    }
 
     staging_buffer.flush();
 

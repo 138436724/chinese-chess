@@ -1,6 +1,6 @@
 #pragma once
 
-#include "scene_model.h"
+#include "vulkan_core/vulkan_acceleration_structure.h"
 #include "vulkan_core/vulkan_buffer.h"
 
 #include <filesystem>
@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+struct scene_model;
+struct model_information;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;

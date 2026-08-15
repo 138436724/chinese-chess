@@ -1,5 +1,7 @@
 #include "vulkan_image.h"
 
+#include <bit>
+
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
     : format(std::exchange(_other.format, {}))
     , extent(std::exchange(_other.extent, {}))
@@ -63,9 +65,9 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
 
 #ifndef NDEBUG
     _device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(
-        image.objectType, reinterpret_cast<uint64_t>(static_cast<VkImage>(*image)), std::format("Image{}", _name).c_str()));
+        image.objectType, std::bit_cast<uint64_t>(static_cast<VkImage>(*image)), std::format("Image{}", _name).c_str()));
     _device.setDebugUtilsObjectNameEXT(
-        vk::DebugUtilsObjectNameInfoEXT(imageview.objectType, reinterpret_cast<uint64_t>(static_cast<VkImageView>(*imageview)),
+        vk::DebugUtilsObjectNameInfoEXT(imageview.objectType, std::bit_cast<uint64_t>(static_cast<VkImageView>(*imageview)),
                                         std::format("ImageView{}", _name).c_str()));
 #else
     (void)_name;

@@ -1,0 +1,22 @@
+{
+  "name": "ktx",
+  "version-semver": "5.0.0-rc1",
+  "description": [
+    "The Khronos KTX library and tools (vcpkg overlay: 5.0.0-rc1 with UASTC HDR support).",
+    "Functions for writing and reading KTX files, and instantiating OpenGL®, OpenGL ES™️ and Vulkan® textures from them."
+  ],
+  "homepage": "https://github.com/KhronosGroup/KTX-Software",
+  "license": "Apache-2.0",
+  "supports": "arm64 | x64 | !windows",
+  "dependencies": [
+    "opengl-registry",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

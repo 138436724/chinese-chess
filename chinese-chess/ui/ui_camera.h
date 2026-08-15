@@ -3,7 +3,6 @@
 #include "scene/scene_camera.h"
 
 #include <glm/glm.hpp>
-#include <imgui.h>
 
 class scene_manager;
 

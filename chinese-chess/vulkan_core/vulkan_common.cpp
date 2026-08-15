@@ -56,7 +56,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, begin_barrier, {}));
 
     // copy data to buffer
-    memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
+    std::memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
     staging_buffer.flush();
 
     vulkan_buffer::copy_buffer_to_buffer(*transfer_commandbuffer, staging_buffer.get_buffer(), _buffer.get_buffer(),
@@ -110,27 +110,27 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     return submit_info;
 }
 
-vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator&                 _allocator,
-                                                    const vk::raii::Device&                     _device,
-                                                    vulkan_recycle_bin&                         _recycle_bin,
-                                                    vulkan_semaphore&                           _semaphore,
-                                                    const vulkan_queue&                         _graphic_queue,
-                                                    const vulkan_queue&                         _transfer_queue,
-                                                    vk::ImageType                               _image_type,
-                                                    vk::ImageViewType                           _image_view_type,
-                                                    vk::Format                                  _image_format,
-                                                    const vk::Extent3D&                         _image_extent,
-                                                    vulkan_image&                               _image,
-                                                    const std::span<const uint8_t>              _data,
-                                                    const std::span<const vk::BufferImageCopy2> _copy_info,
-                                                    const std::string&                          _image_name) noexcept
+vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator&    _allocator,
+                                                    const vk::raii::Device&        _device,
+                                                    vulkan_recycle_bin&            _recycle_bin,
+                                                    vulkan_semaphore&              _semaphore,
+                                                    const vulkan_queue&            _graphic_queue,
+                                                    const vulkan_queue&            _transfer_queue,
+                                                    vk::ImageType                  _image_type,
+                                                    vk::ImageViewType              _image_view_type,
+                                                    vk::Format                     _image_format,
+                                                    const vk::Extent3D&            _image_extent,
+                                                    vulkan_image&                  _image,
+                                                    const std::span<const uint8_t> _data,
+                                                    const std::string&             _image_name) noexcept
 {
 
     // create image
-    const std::array image_queue_array = {_graphic_queue.get_index()};
-    vk::ImageCreateInfo image_info({}, _image_type, _image_format, _image_extent, 1, 1, vk::SampleCountFlagBits::e1,
-                                   vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
-                                   vk::SharingMode::eExclusive, image_queue_array);
+    const std::array          image_queue_array = {_graphic_queue.get_index()};
+    const vk::ImageCreateInfo image_info({}, _image_type, _image_format, _image_extent, 1, 1,
+                                         vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                                         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+                                         vk::SharingMode::eExclusive, image_queue_array);
     vk::ImageViewCreateInfo view_info({}, {}, _image_view_type, _image_format, {},
                                       vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     _image.create(_allocator, _device, image_info, view_info, vma::MemoryUsage::eGpuOnly,
@@ -143,7 +143,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                           vk::BufferCreateInfo({}, _data.size(), vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, buffer_queue_array),
                           vma::MemoryUsage::eCpuToGpu, std::format("Staging{}", _image_name));
-    memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
+    std::memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
     staging_buffer.flush();
 
 
@@ -166,9 +166,12 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     const std::array graphic_begin_barrier = {image_graphic_begin_barrier};
     (*graphic_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, graphic_begin_barrier));
 
-    (*graphic_commandbuffer)
-        .clearColorImage(_image.get_image(), _image.get_layout(), _image.get_clear_value().color,
-                         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    if (!vkuFormatIsCompressed(static_cast<VkFormat>(_image.get_format())))
+    {
+        (*graphic_commandbuffer)
+            .clearColorImage(_image.get_image(), _image.get_layout(), _image.get_clear_value().color,
+                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    }
 
     // create barrier to give the ownership
     const auto image_graphic_end_barrier =
@@ -206,19 +209,10 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
     // copy data to image
-    if (_copy_info.empty())
-    {
-        vulkan_buffer::copy_buffer_to_image(
-            *transfer_commandbuffer, staging_buffer.get_buffer(), _image.get_image(),
-            vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1),
-                                 vk::Offset3D(0, 0, 0), _image_extent));
-    }
-    else
-    {
-        std::ranges::for_each(_copy_info, [&](const auto& _info) {
-            vulkan_buffer::copy_buffer_to_image(*transfer_commandbuffer, staging_buffer.get_buffer(), _image.get_image(), _info);
-        });
-    }
+    vulkan_buffer::copy_buffer_to_image(
+        *transfer_commandbuffer, staging_buffer.get_buffer(), _image.get_image(),
+        vk::BufferImageCopy2(0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1),
+                             vk::Offset3D(0, 0, 0), _image_extent));
 
     // create barrier to end transfer and only transfer ownership to graphic
     const auto image_end_barrier =

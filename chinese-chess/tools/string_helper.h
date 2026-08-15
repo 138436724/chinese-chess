@@ -1,13 +1,19 @@
 #pragma once
 
+#include <concepts>
+#include <cstdint>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <ranges>
+#include <stdexcept>
+#include <string>
 #include <unicode/errorcode.h>
 #include <unicode/ucsdet.h>
 #include <unicode/unistr.h>
 #include <unicode/ustring.h>
+#include <vector>
 
 namespace string_helper {
 
@@ -56,7 +62,7 @@ template <typename new_string_class, typename old_string_class>
     {
         std::string s;
         s.resize(static_cast<size_t>(icu_string.length() * 4));
-        int32_t s_len = icu_string.extract(0, icu_string.length(), s.data(), static_cast<uint32_t>(s.size()), _encoding);
+        const int32_t s_len = icu_string.extract(0, icu_string.length(), s.data(), static_cast<uint32_t>(s.size()), _encoding);
         s.resize(static_cast<size_t>(s_len));
         return s;
     }
@@ -84,7 +90,7 @@ template <typename string_class>
              || std::same_as<string_class, std::wstring>)
 [[nodiscard]] inline string_class get_file_encoding(const std::filesystem::path& _file_path)
 {
-    std::ifstream in_file(_file_path.generic_string(), std::ios::ate | std::ios::binary);
+    std::ifstream in_file(_file_path, std::ios::ate | std::ios::binary);
     if (!in_file.is_open())
     {
         throw std::runtime_error("Cannot open file!");

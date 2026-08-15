@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -20,8 +21,8 @@ struct character_info
 
 namespace font_loader {
 
-[[nodiscard]] std::vector<character_info> load_font(const std::filesystem::path& _font_path,
-                                                    uint32_t                     _font_size,
-                                                    const std::wstring&          _characters);
+[[nodiscard]] std::expected<std::vector<character_info>, std::string> load_font(const std::filesystem::path& _font_path,
+                                                                                uint32_t                     _font_size,
+                                                                                std::wstring_view _characters);
 
 }  // namespace font_loader

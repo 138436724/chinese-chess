@@ -3,6 +3,7 @@
 #include "scene/scene_manager.h"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
 
 
 namespace {

@@ -1,7 +1,6 @@
 #include "vulkan_device.h"
 
 #include <ranges>
-#include <unordered_set>
 
 vulkan_device::vulkan_device(vulkan_device&& _other) noexcept
     : device(std::exchange(_other.device, nullptr))

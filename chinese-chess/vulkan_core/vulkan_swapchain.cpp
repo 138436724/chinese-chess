@@ -2,6 +2,8 @@
 
 #include "vulkan_common.h"
 
+#include <algorithm>
+#include <limits>
 #include <print>
 #include <vulkan/vulkan.hpp>
 
@@ -141,7 +143,7 @@ void vulkan_swapchain::present_image()
 {
     try
     {
-        vk::Result result = present_queue.get_queue().presentKHR(
+        const vk::Result result = present_queue.get_queue().presentKHR(
             vk::PresentInfoKHR(*(after_rendering.at(current_frame)), (*swapchain), current_index, {}));
         (void)result;  // vulkan will check result and throw exception
         return;

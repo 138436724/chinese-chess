@@ -25,12 +25,13 @@
     "shader-slang",
     "vulkan-headers",
     "vulkan-memory-allocator-hpp",
-    "vulkan-utility-libraries"
+    "vulkan-utility-libraries",
+    "ktx"
   ],
   "overrides": [
     {
       "name": "vulkan-memory-allocator",
-      "version": "3.3.0#0"
+      "version": "3.3.0"
     },
     {
       "name": "vulkan-memory-allocator-hpp",

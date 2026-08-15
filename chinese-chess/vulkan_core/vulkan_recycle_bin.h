@@ -5,6 +5,7 @@
 #include <deque>
 #include <functional>
 #include <print>
+#include <string>
 #include <utility>
 
 class vulkan_recycle_bin

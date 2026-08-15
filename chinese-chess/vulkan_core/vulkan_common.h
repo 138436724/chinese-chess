@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <expected>
 #include <format>
 #include <glm/gtc/matrix_transform.hpp>
@@ -7,6 +8,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <vector>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -28,7 +30,7 @@ inline constexpr bool                    USE_OCIO             = true;
                                                                                   vk::ImageTiling _tiling,
                                                                                   vk::FormatFeatureFlags _features) noexcept
 {
-    auto format_iter = std::ranges::find_if(_candidates, [&](const auto& format) {
+    const auto format_iter = std::ranges::find_if(_candidates, [&](const auto& format) {
         vk::FormatProperties props = _physical_device.getFormatProperties(format);
         return (_tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & _features) == _features)
                || (_tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & _features) == _features);
@@ -36,9 +38,9 @@ inline constexpr bool                    USE_OCIO             = true;
 
     if (format_iter == _candidates.end()) [[unlikely]]
     {
-        std::string result = _candidates
-                             | std::views::transform([](const auto& _format) { return vk::to_string(_format); })
-                             | std::views::join_with(',') | std::ranges::to<std::string>();
+        const std::string result = _candidates
+                                   | std::views::transform([](const auto& _format) { return vk::to_string(_format); })
+                                   | std::views::join_with(',') | std::ranges::to<std::string>();
         return std::unexpected(std::format("No supported format among candidates: {}", result));
     }
     return *format_iter;
@@ -49,11 +51,11 @@ inline constexpr bool                    USE_OCIO             = true;
     return ((value + alignment - 1) & ~(alignment - 1));
 }
 
-// VkTransformMatrixKHR is row-major 3x4, glm::mat4 is column-major; transpose before memcpy.
+// VkTransformMatrixKHR is row-major 3x4, glm::mat4 is column-major; transpose before std::memcpy.
 [[nodiscard]] inline auto glm_matrix_to_vulkan(const glm::mat4& m) noexcept
 {
     vk::TransformMatrixKHR t;
-    memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
+    std::memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
     return t;
 }
 
@@ -83,20 +85,19 @@ inline constexpr bool                    USE_OCIO             = true;
                                                     const std::span<const uint8_t> _data,
                                                     const std::string&             _buffer_name = "") noexcept;
 
-[[nodiscard]] vk::SemaphoreSubmitInfo upload_image(const vma::raii::Allocator&                 _allocator,
-                                                   const vk::raii::Device&                     _device,
-                                                   vulkan_recycle_bin&                         _recycle_bin,
-                                                   vulkan_semaphore&                           _semaphore,
-                                                   const vulkan_queue&                         _graphic_queue,
-                                                   const vulkan_queue&                         _transfer_queue,
-                                                   vk::ImageType                               _image_type,
-                                                   vk::ImageViewType                           _image_view_type,
-                                                   vk::Format                                  _image_format,
-                                                   const vk::Extent3D&                         _image_extent,
-                                                   vulkan_image&                               _image,
-                                                   const std::span<const uint8_t>              _data,
-                                                   const std::span<const vk::BufferImageCopy2> _copy_info,
-                                                   const std::string& _image_name = "") noexcept;
+[[nodiscard]] vk::SemaphoreSubmitInfo upload_image(const vma::raii::Allocator&    _allocator,
+                                                   const vk::raii::Device&        _device,
+                                                   vulkan_recycle_bin&            _recycle_bin,
+                                                   vulkan_semaphore&              _semaphore,
+                                                   const vulkan_queue&            _graphic_queue,
+                                                   const vulkan_queue&            _transfer_queue,
+                                                   vk::ImageType                  _image_type,
+                                                   vk::ImageViewType              _image_view_type,
+                                                   vk::Format                     _image_format,
+                                                   const vk::Extent3D&            _image_extent,
+                                                   vulkan_image&                  _image,
+                                                   const std::span<const uint8_t> _data,
+                                                   const std::string&             _image_name = "") noexcept;
 
 [[nodiscard]] vk::SemaphoreSubmitInfo download_image(const vma::raii::Allocator& _allocator,
                                                      const vk::raii::Device&     _device,

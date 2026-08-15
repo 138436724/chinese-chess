@@ -47,11 +47,11 @@ public:
 
 private:
     // use in `init` and `create`
-    void     create_instance(const std::vector<const char*>& _instance_layers,
-                             const std::vector<const char*>& _instance_extensions,
-                             vk::InstanceCreateFlags         _flags = {});
-    uint32_t create_physical_device_and_device(vk::SurfaceKHR _surface);
-    void     create_pipeline();
+    void                   create_instance(const std::vector<const char*>& _instance_layers,
+                                           const std::vector<const char*>& _instance_extensions,
+                                           vk::InstanceCreateFlags         _flags = {});
+    [[nodiscard]] uint32_t create_physical_device_and_device(vk::SurfaceKHR _surface);
+    void                   create_pipeline();
 
     void pick_msaa_sample_count() const noexcept;
     void pick_depth_format() const;

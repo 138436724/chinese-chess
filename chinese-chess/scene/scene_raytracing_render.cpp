@@ -1,5 +1,6 @@
 #include "scene_raytracing_render.h"
 
+#include "scene_camera.h"
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
@@ -9,6 +10,11 @@
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
+
+#include <array>
+#include <iterator>
+#include <ranges>
+#include <utility>
 
 namespace {
 enum class stage_indices : uint32_t
@@ -125,7 +131,7 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
 void scene_raytracing_render::create_pipeline_and_sbt()
 {
     // create pipeline
-    std::array bindings{
+    const std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eAll, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
@@ -148,7 +154,7 @@ void scene_raytracing_render::create_pipeline_and_sbt()
         device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
                                            reinterpret_cast<const uint32_t*>(spirv_code->data())));
 
-    std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
+    const std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, RAY_GEN_ENTRY_NAME.data()),
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, RAY_MISS_ENTRY_NAME.data()),
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule,
@@ -159,21 +165,20 @@ void scene_raytracing_render::create_pipeline_and_sbt()
                                           RAY_SHADOW_ANY_HIT_ENTRY_NAME.data()),
     };
 
-    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
+    const std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
         // Group 0: Ray generation (general)
-        vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral,
-                                               static_cast<uint32_t>(stage_indices::ray_gen)),
+        vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, std::to_underlying(stage_indices::ray_gen)),
         // Group 1: Primary miss (general)
-        vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, static_cast<uint32_t>(stage_indices::miss)),
+        vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, std::to_underlying(stage_indices::miss)),
         // Group 2: Shadow miss (general)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral,
-                                               static_cast<uint32_t>(stage_indices::miss_shadow)),
+                                               std::to_underlying(stage_indices::miss_shadow)),
         // Group 3: Primary hit group (triangles)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
-                                               vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::closest_hit)),
+                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::closest_hit)),
         // Group 4: Shadow hit group (triangles, any-hit only)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR,
-                                               vk::ShaderUnusedKHR, static_cast<uint32_t>(stage_indices::anyhit_shadow)),
+                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::anyhit_shadow)),
     };
 
     const auto props = physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
@@ -207,7 +212,7 @@ void scene_raytracing_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_sets), "ray tracing descriptor sets.");
     recycle_bin.retire(std::move(descriptor_pool), "ray tracing descriptor pool.");
 
-    std::array pool_size = {
+    const std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 3 * vulkan_common::MAX_FRAMES_IN_FLIGHT),

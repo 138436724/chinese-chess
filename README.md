@@ -12,8 +12,9 @@
 
 ## 构建
 
-- 平台：Windows x64 + Visual Studio 2022（v145+），CMake + Ninja（见 CMakePresets.json 的 x64-debug / x64-release 预设）
-- 依赖：vcpkg manifest 模式（本地 vcpkg 子模块）
+- 平台：Windows x64 + Visual Studio 2022（v143+），CMake（≥ 4.0）+ Ninja（见 CMakePresets.json 的 x64-debug / x64-release 预设）
+- 依赖：vcpkg manifest 模式（本地 vcpkg 子模块；`vcpkg-overlays/` 提供 ktx 5.0.0-rc1 UASTC HDR 覆盖端口）
+- 纹理：运行时在源文件旁生成 `.ktx2` sidecar（**UASTC 中间格式**，加载时按设备转码 BC6H/BC7 上传），字体图集同样压缩为单通道 BC4/EAC_R11；支持 **F6** 热重载
 - 详细说明见 [README_CN.md](README_CN.md)
 
 ## 快捷键
@@ -23,7 +24,8 @@
 | **W/A** | 棋谱上一步 |
 | **S/D** | 棋谱下一步 |
 | **C** | 保存当前帧截图（resources/captures/） |
-| **F5** | 热重载：重新编译着色器并重建当前渲染管线 |
+| **F5** | 热重载：仅重新编译当前激活渲染器的着色器与 pipeline（多态分发） |
+| **F6** | 热重载：刷新磁盘纹理（KTX2 压缩 + 重上传） |
 
 渲染结果如下：
 

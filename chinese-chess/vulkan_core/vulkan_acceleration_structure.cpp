@@ -37,7 +37,7 @@ vulkan_buffer vulkan_acceleration_structure::create_bottom_level_acceleration_st
                                                                                         vk::DeviceOrHostAddressConstKHR _index_data,
                                                                                         uint32_t _queue)
 {
-    vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data =
+    const vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data =
         vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex),
                                                           _vertex_count, vk::IndexType::eUint32, _index_data);
 
@@ -59,7 +59,7 @@ vulkan_buffer vulkan_acceleration_structure::create_top_level_acceleration_struc
                                                                                      vk::DeviceOrHostAddressConstKHR _instances_data,
                                                                                      uint32_t _queue)
 {
-    vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
+    const vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
 
     geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eInstances, geometry_instances, {});
 
@@ -77,7 +77,7 @@ void vulkan_acceleration_structure::update_top_level_acceleration_structure(cons
                                                                             vk::DeviceOrHostAddressConstKHR _instances_data,
                                                                             vk::DeviceAddress _scratch_address)
 {
-    vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
+    const vk::AccelerationStructureGeometryInstancesDataKHR geometry_instances({}, _instances_data);
 
     geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eInstances, geometry_instances, {});
 

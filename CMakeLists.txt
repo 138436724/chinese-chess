@@ -13,6 +13,7 @@ find_package(glm CONFIG REQUIRED)
 find_package(ICU COMPONENTS i18n io uc REQUIRED)
 find_package(VulkanHeaders CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
+find_package(Ktx CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED) # for OpenColorIO
 find_package(OpenColorIO CONFIG REQUIRED)
 find_package(OpenImageIO CONFIG REQUIRED)
@@ -60,6 +61,7 @@ target_link_libraries(chinese-chess PRIVATE
     ICU::i18n ICU::io ICU::uc
     Vulkan::Headers
     imgui::imgui
+    KTX::ktx
     yaml-cpp::yaml-cpp OpenColorIO::OpenColorIO
     OpenImageIO::OpenImageIO
     OpenSSL::SSL OpenSSL::Crypto

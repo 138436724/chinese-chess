@@ -1,8 +1,12 @@
 #include "ui_light.h"
 
+#include "scene/scene_light.h"
 #include "scene/scene_manager.h"
 
+#include <format>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
+#include <iterator>
 
 
 namespace {
@@ -52,23 +56,24 @@ void ui_light::update()
     }
 
     std::optional<size_t> delete_index = std::nullopt;
+    std::string           header_label;
     for (size_t i = 0; i < lights.size(); ++i)
     {
         ImGui::PushID(static_cast<int>(i));
 
         auto& light_ptr = lights.at(i);
 
-        std::string header_label;
+        header_label.clear();
         switch (light_ptr->active_type)
         {
             case light_type::directional:
-                header_label = std::format("{} {}", DIRECTIONAL_LIGHT.data(), i);
+                std::format_to(std::back_inserter(header_label), "{} {}", DIRECTIONAL_LIGHT, i);
                 break;
             case light_type::point:
-                header_label = std::format("{} {}", POINT_LIGHT.data(), i);
+                std::format_to(std::back_inserter(header_label), "{} {}", POINT_LIGHT, i);
                 break;
             case light_type::spot:
-                header_label = std::format("{} {}", SPOT_LIGHT.data(), i);
+                std::format_to(std::back_inserter(header_label), "{} {}", SPOT_LIGHT, i);
                 break;
             default:
                 std::unreachable();
@@ -130,7 +135,7 @@ void ui_light::update()
 
     if (delete_index.has_value())
     {
-        std::erase_if(lights, [&](const auto& p) { return p == lights.at(delete_index.value()); });
+        lights.erase(lights.begin() + static_cast<std::ptrdiff_t>(*delete_index));
         manager.need_light_update();
     }
 

@@ -4,6 +4,7 @@
 #include "vulkan_core/vulkan_sampler.h"
 
 #include <glm/glm.hpp>
+#include <memory>
 
 struct scene_image
 {

@@ -3,11 +3,17 @@
 #include "string_helper.h"
 
 #include <array>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <string>
 #include <unicode/errorcode.h>
 #include <unicode/parseerr.h>
 #include <unicode/regex.h>
 #include <unordered_map>
+#include <vector>
 
 constexpr std::string_view RECORDS_PATH = "resources\\records\\";
 
@@ -50,7 +56,7 @@ inline const std::unordered_map<UChar, uint8_t> chinese_digits = {
 
 [[nodiscard]] inline bool is_chinese_digit(UChar ch) noexcept
 {
-    return chinese_digits.find(ch) != chinese_digits.end();
+    return chinese_digits.contains(ch);
 }
 
 [[nodiscard]] inline bool is_arabic_digit(UChar ch) noexcept
@@ -73,7 +79,7 @@ inline const std::unordered_map<UChar, PIECE_TYPE> piece_map = {
 
 [[nodiscard]] inline bool is_piece_type(UChar ch) noexcept
 {
-    return piece_map.find(ch) != piece_map.end();
+    return piece_map.contains(ch);
 }
 
 [[nodiscard]] inline PIECE_TYPE get_piece_type(UChar ch) noexcept
@@ -83,7 +89,7 @@ inline const std::unordered_map<UChar, PIECE_TYPE> piece_map = {
 
 template <typename string_class>
     requires std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>
-[[nodiscard]] std::vector<string_class> read_record(const std::filesystem::path& _record_path)
+[[nodiscard]] std::expected<std::vector<string_class>, std::string> read_record(const std::filesystem::path& _record_path)
 {
     std::vector<string_class> all_records;
 
@@ -93,16 +99,16 @@ template <typename string_class>
     const std::string content((std::istreambuf_iterator<char>(in_file)), std::istreambuf_iterator<char>());
     in_file.close();
 
-    icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
+    const icu::UnicodeString records_text(content.c_str(), static_cast<int32_t>(content.size()), encoding.c_str());
 
-    icu::UnicodeString pattern =
+    const icu::UnicodeString pattern =
         u"([前后中])?[ ]*([车車俥马馬傌炮砲相象士仕帅帥将將兵卒])[ ]*([一二三四五六七八九]|\\d)?[ ]*([进退平])[ ]*([一二三四五六七八九]|\\d)";
     UParseError    pe{};
     icu::ErrorCode status;
     const auto compiled_pattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(pattern, pe, status));
     if (status.isFailure())
     {
-        throw std::runtime_error("Failed to compile regex pattern!");
+        return std::unexpected("Failed to compile regex pattern!");
     }
 
     const auto matcher = std::unique_ptr<icu::RegexMatcher>(compiled_pattern->matcher(records_text, status));
@@ -120,7 +126,7 @@ template <typename string_class>
             u_strToWCS(ws.data(), static_cast<int32_t>(ws.size()), &ws_len, match.getBuffer(), match.length(), &error);
             if (U_FAILURE(error))
             {
-                throw std::runtime_error("Cannot convert to wstring.");
+                return std::unexpected("Cannot convert to wstring.");
             }
             ws.resize(ws_len);
 
@@ -135,8 +141,9 @@ template <typename string_class>
     return all_records;
 }
 
-[[nodiscard]] std::vector<all_board_state> load_records(const std::filesystem::path& _record_path);
-[[nodiscard]] constexpr all_board_state    get_init_all_board() noexcept
+[[nodiscard]] std::expected<std::vector<all_board_state>, std::string> load_records(const std::filesystem::path& _record_path);
+
+[[nodiscard]] constexpr all_board_state get_init_all_board() noexcept
 {
     half_board_state red;
     red.emplace_back(piece_state(PIECE_TYPE::GENERAL, 5, 0));

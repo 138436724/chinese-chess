@@ -2,8 +2,10 @@
 
 #include "tools/record_loader.h"
 
-#include <glm/glm.hpp>
-#include <imgui.h>
+#include <array>
+#include <filesystem>
+#include <unordered_map>
+#include <vector>
 
 struct scene_model;
 struct scene_material;

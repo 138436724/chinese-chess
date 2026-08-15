@@ -4,21 +4,28 @@
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
-#include "scene_rasterization_render.h"
-#include "scene_raytracing_render.h"
 #include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 #include "vulkan_core/vulkan_sampler.h"
 
+#include <concepts>
+#include <filesystem>
+#include <limits>
+#include <memory>
+#include <string_view>
+#include <vector>
+
 class vulkan_application;
+class scene_rasterization_render;
+class scene_raytracing_render;
 
 class scene_manager
 {
 public:
     scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height);
-    ~scene_manager() = default;
+    ~scene_manager();
 
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
@@ -41,9 +48,9 @@ public:
 
     void set_use_ray_tracing(bool _use_ray_tracing);
 
-    bool          get_need_update() const noexcept;
-    scene_camera& get_active_camera() noexcept;
-    vulkan_image& get_render_image() noexcept;
+    [[nodiscard]] bool          get_need_update() const noexcept;
+    scene_camera&               get_active_camera() noexcept;
+    [[nodiscard]] vulkan_image& get_render_image() noexcept;
 
 private:
     [[nodiscard]] std::shared_ptr<scene_light> create(std::type_identity<scene_light>);
@@ -52,7 +59,7 @@ private:
     [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
                                                          const std::filesystem::path& _font_path,
                                                          uint32_t                     _font_size,
-                                                         const std::wstring&          _characters,
+                                                         std::wstring_view            _characters,
                                                          uint32_t                     _padding);
     [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
                                                          const std::filesystem::path& _image_path,

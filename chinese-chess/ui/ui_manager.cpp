@@ -9,6 +9,7 @@
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_common.h"
 
+#include <algorithm>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
@@ -57,13 +58,13 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
 
     graphic_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eGraphics));
 
-    std::array                   pool_size{vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1),
-                                           vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1)};
-    vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
+    const std::array                   pool_size{vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1),
+                                                 vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1)};
+    const vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(*app.get_device(), pool_info);
 
-    color_format                              = app.get_swapchain().get_format();
-    ImGui_ImplVulkan_PipelineInfo create_info = {
+    color_format                                    = app.get_swapchain().get_format();
+    const ImGui_ImplVulkan_PipelineInfo create_info = {
         .MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_common::MSAA_SAMPLE_COUNT),
         .PipelineRenderingCreateInfo =
             vk::PipelineRenderingCreateInfo({}, color_format, vk::Format::eUndefined, vk::Format::eUndefined, nullptr),
@@ -170,13 +171,13 @@ vk::SemaphoreSubmitInfo ui_manager::render()
     const std::array begin_barriers = {color_image_barrier, render_output_barrier};
     (*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barriers, nullptr));
 
-    vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal,
-                                                    vk::ResolveModeFlagBits::eAverage, render_output.get_imageview(),
-                                                    vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear,
-                                                    vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
+    const vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal,
+                                                          vk::ResolveModeFlagBits::eAverage, render_output.get_imageview(),
+                                                          vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear,
+                                                          vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
 
-    vk::RenderingInfo renderingInfo({}, vk::Rect2D({0, 0}, app.get_swapchain().get_extent()), 1, {},
-                                    colorAttachmentInfo, nullptr, nullptr, nullptr);
+    const vk::RenderingInfo renderingInfo({}, vk::Rect2D({0, 0}, app.get_swapchain().get_extent()), 1, {},
+                                          colorAttachmentInfo, nullptr, nullptr, nullptr);
 
     (*commandbuffer).beginRendering(renderingInfo);
 

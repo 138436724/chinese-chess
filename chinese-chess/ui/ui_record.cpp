@@ -2,12 +2,17 @@
 
 #include "scene/scene_manager.h"
 #include "scene/scene_material.h"
+#include "scene/scene_model.h"
 #include "tools/font_loader.h"
 #include "tools/model_loader.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <glm/glm.hpp>
+#include <imgui.h>
+#include <print>
 #include <ranges>
+#include <utility>
 #ifdef _WIN32
 #include <commdlg.h>
 #endif  // _WIN32
@@ -214,14 +219,26 @@ void ui_record::handle(int _glfw_key) noexcept
 
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
-    all_records = record_loader::read_record<std::string>(_record_path);
+    auto records = record_loader::read_record<std::string>(_record_path);
+    if (!records)
+    {
+        std::println(std::cerr, "Cannot read record file {}: {}", _record_path.generic_string(), records.error());
+        return;
+    }
+    all_records = std::move(*records);
 
     all_records_c_str = all_records | std::views::transform([](const auto& _record) static { return _record.data(); })
                         | std::ranges::to<std::vector>();
 
     now_record_index = 0;
 
-    board_state = record_loader::load_records(_record_path);
+    auto states = record_loader::load_records(_record_path);
+    if (!states)
+    {
+        std::println(std::cerr, "Cannot read record file {}: {}", _record_path.generic_string(), states.error());
+        return;
+    }
+    board_state = std::move(*states);
 }
 
 //all_board_state ui_record::capture_board_state()
@@ -283,7 +300,7 @@ void ui_record::prev_step() noexcept
 
 void ui_record::next_step() noexcept
 {
-    if (now_record_index < board_state.size() - 1)
+    if (std::cmp_less(now_record_index + 1ull, board_state.size()))
     {
         now_record_index++;
         restore_board_state(static_cast<uint32_t>(now_record_index));

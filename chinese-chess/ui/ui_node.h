@@ -1,15 +1,14 @@
 #pragma once
 
-#include "scene/scene_light.h"
-#include "scene/scene_material.h"
-
 #include <filesystem>
-#include <imgui.h>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 struct scene_model;
+struct scene_material;
+struct scene_image;
 class scene_manager;
 
 class ui_node

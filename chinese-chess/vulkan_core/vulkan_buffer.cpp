@@ -4,6 +4,8 @@
 
 #include "vulkan_common.h"
 
+#include <bit>
+
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
     : stage(std::exchange(_other.stage, {}))
     , access(std::exchange(_other.access, {}))
@@ -64,7 +66,7 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
 
 #ifndef NDEBUG
     _device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(
-        buffer.objectType, reinterpret_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), std::format("Buffer{}", _name).c_str()));
+        buffer.objectType, std::bit_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), std::format("Buffer{}", _name).c_str()));
 #else
     (void)_name;
 #endif  // !NDEBUG

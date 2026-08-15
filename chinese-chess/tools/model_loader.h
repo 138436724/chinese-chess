@@ -1,10 +1,14 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <glm/glm.hpp>
 #include <string_view>
+#include <utility>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 constexpr std::string_view MODELS_PATH = "resources\\models\\";

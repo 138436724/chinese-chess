@@ -1,6 +1,8 @@
 #include "scene_model_manager.h"
 
 #include "scene_material_manager.h"
+#include "scene_model.h"
+#include "tools/model_loader.h"
 #include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_queue.h"
@@ -8,7 +10,9 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <ranges>
+#include <span>
 
 namespace {
 struct model_data  // std430 layout
@@ -44,8 +48,7 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
 std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::path& _model_path)
 {
     // find in cache
-    if (auto iter = std::ranges::find_if(models_cache, [&_model_path](const auto& s) { return s.first == _model_path; });
-        iter != models_cache.end())
+    if (auto iter = models_cache.find(_model_path); iter != models_cache.end())
     {
         if (!iter->second.expired())
         {
@@ -62,7 +65,7 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
     auto loaded_model = model_loader::load_model(_model_path);
     if (!loaded_model)
     {
-        throw std::runtime_error(std::format("Failed to load model {}: {}", _model_path.string(), loaded_model.error()));
+        throw std::runtime_error(std::format("Failed to load model {}: {}", _model_path.generic_string(), loaded_model.error()));
     }
 
     mesh->vertices = std::move(loaded_model->vertices);
@@ -178,8 +181,8 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
         std::vector<uint8_t> staging_vertex(vertices_size);
         std::ranges::for_each(meshes, [&](const auto& p) {
             const auto sp = p.lock();
-            memcpy(staging_vertex.data() + sp->vertex_offset, sp->vertices.data(),
-                   sp->vertices.size() * sizeof(sp->vertices.front()));
+            std::memcpy(staging_vertex.data() + sp->vertex_offset, sp->vertices.data(),
+                        sp->vertices.size() * sizeof(sp->vertices.front()));
         });
 
         _waited_infos.push_back(vulkan_common::upload_buffer(
@@ -200,7 +203,8 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
         std::vector<uint8_t> staging_index(indices_size);
         std::ranges::for_each(meshes, [&](const auto& p) {
             const auto sp = p.lock();
-            memcpy(staging_index.data() + sp->index_offset, sp->indices.data(), sp->indices.size() * sizeof(sp->indices.front()));
+            std::memcpy(staging_index.data() + sp->index_offset, sp->indices.data(),
+                        sp->indices.size() * sizeof(sp->indices.front()));
         });
 
         _waited_infos.push_back(vulkan_common::upload_buffer(
@@ -210,12 +214,11 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             staging_index, "model_index"));
 
 
-        // update blas todo use compute_queue build
         vulkan_commandbuffer commandbuffer =
             std::move(vulkan_commandbuffer::create(device,
-                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
+                                                   vk::CommandBufferAllocateInfo(compute_queue.get_command_pool(),
                                                                                  vk::CommandBufferLevel::ePrimary, 1),
-                                                   &graphic_queue, &semaphore)
+                                                   &compute_queue, &semaphore)
                           .front());
         commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -227,7 +230,7 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
                 physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(sp->vertices.size()),
                 vertices_buffer.get_buffer_address().deviceAddress + sp->vertex_offset,
                 static_cast<uint32_t>(sp->indices.size()),
-                indices_buffer.get_buffer_address().deviceAddress + sp->index_offset, graphic_queue.get_index());
+                indices_buffer.get_buffer_address().deviceAddress + sp->index_offset, compute_queue.get_index());
             recycle_bin.retire(std::move(scratch_buffer), "scene model manager update mesh scratch buffer to create blas.");
         });
 
@@ -252,11 +255,10 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
                            | std::views::transform([](const auto& p) static { return p.lock()->get_blas_instance(); })
                            | std::ranges::to<std::vector>();
 
-    // todo generate tlas (graphics queue required: AS build needs VK_QUEUE_COMPUTE_BIT)
     vulkan_commandbuffer commandbuffer = std::move(
         vulkan_commandbuffer::create(
-            device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
-            &graphic_queue, &semaphore)
+            device, vk::CommandBufferAllocateInfo(compute_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
+            &compute_queue, &semaphore)
             .front());
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -264,7 +266,7 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
     {
         vulkan_buffer tlas_instance_buffer;
         commandbuffer.add_waited_info(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
+            allocator, device, recycle_bin, semaphore, compute_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
@@ -283,7 +285,7 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
 
         vulkan_buffer tlas_instance_buffer;
         commandbuffer.add_waited_info(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
+            allocator, device, recycle_bin, semaphore, compute_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
@@ -291,7 +293,7 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
 
         tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(
             physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),
-            tlas_instance_buffer.get_buffer_address().deviceAddress, graphic_queue.get_index());
+            tlas_instance_buffer.get_buffer_address().deviceAddress, compute_queue.get_index());
 
         recycle_bin.retire(std::move(tlas_instance_buffer), "ray tracing old tlas instance buffer.");
     }
@@ -313,10 +315,17 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
         const auto all_draw_commands =
             models | std::views::transform([](const auto& p) static {
                 const auto sp = p.lock();
-                return vk::DrawIndexedIndirectCommand(
-                    static_cast<uint32_t>(sp->model_info->indices.size()), (sp && sp->is_show) ? 1u : 0u,
-                    static_cast<uint32_t>(sp->model_info->index_offset / sizeof(uint32_t)),
-                    static_cast<uint32_t>(sp->model_info->vertex_offset / sizeof(model_vertex)), 0);
+                if (sp)
+                {
+                    return vk::DrawIndexedIndirectCommand(
+                        static_cast<uint32_t>(sp->model_info->indices.size()), sp->is_show ? 1u : 0u,
+                        static_cast<uint32_t>(sp->model_info->index_offset / sizeof(uint32_t)),
+                        static_cast<int32_t>(sp->model_info->vertex_offset / sizeof(model_vertex)), 0u);
+                }
+                else
+                {
+                    return vk::DrawIndexedIndirectCommand(0u, 0u, 0u, 0, 0u);
+                }
             })
             | std::ranges::to<std::vector>();
 

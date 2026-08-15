@@ -1,13 +1,17 @@
 #include "scene_rasterization_render.h"
 
-#include "scene_light_manager.h"
+#include "scene_camera.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
+#include "tools/model_loader.h"
 #include "tools/shader_compiler.h"
-#include "vulkan_core/vulkan_commandbuffer.h"
 #include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
+
+#include <array>
+#include <iterator>
+#include <ranges>
 
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&     _allocator,
                                                        const vk::raii::PhysicalDevice& _physical_device,
@@ -161,7 +165,7 @@ void scene_rasterization_render::reset_accumulation() noexcept {}
 
 void scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {
-    std::array bindings{
+    const std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eFragment, nullptr)};
@@ -181,7 +185,7 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
     const vk::raii::ShaderModule shaderModule(
         device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
                                            reinterpret_cast<const uint32_t*>(spirv_code->data())));
-    std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {
+    const std::array shader_stages = {
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTRY_NAME.data()),
         vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTRY_NAME.data()),
     };
@@ -198,9 +202,10 @@ void scene_rasterization_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_sets), "rasterization descriptor sets.");
     recycle_bin.retire(std::move(descriptor_pool), "rasterization descriptor pool.");
 
-    std::array pool_size = {vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-                            vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-                            vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
+    const std::array pool_size = {
+        vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
 
     vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
                                                       | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind,

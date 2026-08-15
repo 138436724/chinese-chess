@@ -1,9 +1,14 @@
 #pragma once
-#include "scene_material.h"
 #include "tools/model_loader.h"
 #include "vulkan_core/vulkan_acceleration_structure.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <glm/glm.hpp>
 #include <memory>
+#include <vector>
+
+struct scene_material;
 
 struct model_information
 {

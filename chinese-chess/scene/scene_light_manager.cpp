@@ -1,16 +1,19 @@
 #include "scene_light_manager.h"
 
+#include "scene_light.h"
 #include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <ranges>
+#include <span>
+#include <utility>
 
 namespace {
 struct light_data
 {
     alignas(16) glm::vec3 color        = glm::vec3(1.f);
-    uint32_t active_type               = static_cast<uint32_t>(light_type::directional);
+    uint32_t active_type               = std::to_underlying(light_type::directional);
     alignas(16) glm::vec3 direction    = glm::vec3(0.f, -1.f, 0.f);
     float intensity                    = 1.f;
     alignas(16) glm::vec3 position     = glm::vec3(0.f);
@@ -93,7 +96,7 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
         const auto lights_ssbo = lights | std::views::transform([this](const auto& p) {
                                      const auto sp = p.lock();
                                      return light_data{.color            = sp->color,
-                                                       .active_type      = static_cast<uint32_t>(sp->active_type),
+                                                       .active_type      = std::to_underlying(sp->active_type),
                                                        .direction        = glm::normalize(sp->direction),
                                                        .intensity        = sp->intensity,
                                                        .position         = sp->position,

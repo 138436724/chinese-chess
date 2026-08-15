@@ -2,6 +2,7 @@
 
 #include "vulkan_queue.h"
 
+#include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_swapchain
