@@ -7,9 +7,11 @@
 #include <slang.h>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #define SHADER_COMPILER shader_compiler::get_shader_compiler()
+
 constexpr std::string_view VERT_ENTRY_NAME               = "vertMain";
 constexpr std::string_view FRAG_ENTRY_NAME               = "fragMain";
 constexpr std::string_view RAY_GEN_ENTRY_NAME            = "rayGenMain";
@@ -30,17 +32,11 @@ public:
 
 private:
     shader_compiler();
-    ~shader_compiler()                                 = default;
+    ~shader_compiler();
     shader_compiler(const shader_compiler&)            = delete;
     shader_compiler& operator=(const shader_compiler&) = delete;
     shader_compiler(shader_compiler&&)                 = delete;
     shader_compiler& operator=(shader_compiler&&)      = delete;
-
-    [[nodiscard]] std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_to_slang_module(
-        const slang::SessionDesc&            _session_desc,
-        const std::string&                   _shader_string,
-        bool                                 _as_shader_name,
-        const std::vector<std::string_view>& _entry_name) const;
 
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;
@@ -48,4 +44,12 @@ private:
     std::array<slang::CompilerOptionEntry, 4> options;
     slang::TargetDesc                         target_desc;
     slang::SessionDesc                        session_desc;
+
+    struct shader_cache_info
+    {
+        std::string       dependence;
+        std::string       fingerprint;
+        std::vector<char> spirv;
+    };
+    mutable std::unordered_map<std::string, shader_cache_info> shader_cache;
 };

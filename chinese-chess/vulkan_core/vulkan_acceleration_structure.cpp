@@ -7,9 +7,9 @@ vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration
     : scratch_alignment(std::exchange(_other.scratch_alignment, {}))
     , geometry(std::exchange(_other.geometry, {}))
     , range_info(std::exchange(_other.range_info, {}))
+    , buffer(std::exchange(_other.buffer, {}))
     , acceleration_structure(std::exchange(_other.acceleration_structure, nullptr))
     , address(std::exchange(_other.address, {}))
-    , buffer(std::exchange(_other.buffer, {}))
 {
 }
 
@@ -20,9 +20,9 @@ vulkan_acceleration_structure& vulkan_acceleration_structure::operator=(vulkan_a
         std::ranges::swap(scratch_alignment, _other.scratch_alignment);
         std::ranges::swap(geometry, _other.geometry);
         std::ranges::swap(range_info, _other.range_info);
+        std::ranges::swap(buffer, _other.buffer);
         std::ranges::swap(acceleration_structure, _other.acceleration_structure);
         std::ranges::swap(address, _other.address);
-        std::ranges::swap(buffer, _other.buffer);
     }
     return *this;
 }

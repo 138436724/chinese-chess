@@ -23,6 +23,7 @@ public:
     scene_raytracing_render(const vma::raii::Allocator&     _allocator,
                             const vk::raii::PhysicalDevice& _physical_device,
                             const vk::raii::Device&         _device,
+                            const vk::raii::PipelineCache&  _pipeline_cache,
                             vulkan_recycle_bin&             _recycle_bin,
                             vulkan_semaphore&               _semaphore,
                             const vulkan_queue&             _graphic_queue,
@@ -57,6 +58,7 @@ private:
     const vma::raii::Allocator&     allocator;
     const vk::raii::PhysicalDevice& physical_device;
     const vk::raii::Device&         device;
+    const vk::raii::PipelineCache&  pipeline_cache;
     vulkan_recycle_bin&             recycle_bin;
     vulkan_semaphore&               semaphore;
     const vulkan_queue&             graphic_queue;

@@ -449,6 +449,9 @@ out/
 #imgui setting
 imgui.ini
 
+# generate cache
+resources/cache/
+
 # font files
 *.ttf
 *.otf

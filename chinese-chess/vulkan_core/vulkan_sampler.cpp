@@ -82,7 +82,7 @@ void vulkan_sampler::create(const vk::raii::PhysicalDevice& _physical_device, co
     sampler = vk::raii::Sampler(_device, sampler_info);
 }
 
-const vk::raii::Sampler& vulkan_sampler::get_sampler() const noexcept
+const vk::raii::Sampler& vulkan_sampler::operator*() const noexcept
 {
     return sampler;
 }

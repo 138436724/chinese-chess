@@ -27,6 +27,12 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFla
 #endif  // !NDEBUG
 }  // namespace
 
+vulkan_application::~vulkan_application()
+{
+    wait();
+    descriptor.clear_descriptor_info();
+}
+
 void vulkan_application::init(const std::vector<const char*>& _instance_layers,
                               const std::vector<const char*>& _instance_extensions,
                               vk::InstanceCreateFlags         _flags)
@@ -62,6 +68,8 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
                                                   &graphic_queue, &semaphore);
 
     swapchain.create(instance, *physical_device, *device, _surface, present_index, _width, _height);
+
+    pipeline_cache.create(*physical_device, *device);
     create_pipeline();
 
     // create sampler
@@ -185,9 +193,8 @@ void vulkan_application::bind_image(vulkan_image& _scene_image, vulkan_image& _u
                                                                                   vk::ImageLayout::eShaderReadOnlyOptimal));
     descriptor.add_descriptor_info(vk::DescriptorType::eSampledImage, std::move(ui_pool_info));
 
-    std::vector<DescriptorBufferOrImageInfo> sampler_pool_info(vulkan_common::MAX_FRAMES_IN_FLIGHT,
-                                                               vk::DescriptorImageInfo(image_sampler.get_sampler(), nullptr,
-                                                                                       vk::ImageLayout::eUndefined));
+    std::vector<DescriptorBufferOrImageInfo> sampler_pool_info(
+        vulkan_common::MAX_FRAMES_IN_FLIGHT, vk::DescriptorImageInfo(*image_sampler, nullptr, vk::ImageLayout::eUndefined));
     descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(sampler_pool_info));
 
     std::ranges::for_each(std::views::zip(ocio_images, ocio_samplers), [&](const auto& _binding) {
@@ -218,6 +225,11 @@ const vk::raii::Instance& vulkan_application::get_instance() const noexcept
     return instance;
 }
 
+const vma::raii::Allocator& vulkan_application::get_allocator() const noexcept
+{
+    return allocator;
+}
+
 const vulkan_physical_device& vulkan_application::get_physical_device() const noexcept
 {
     return physical_device;
@@ -228,9 +240,9 @@ const vulkan_device& vulkan_application::get_device() const noexcept
     return device;
 }
 
-const vma::raii::Allocator& vulkan_application::get_allocator() const noexcept
+const vulkan_pipeline_cache& vulkan_application::get_pipeline_cache() const noexcept
 {
-    return allocator;
+    return pipeline_cache;
 }
 
 const vulkan_swapchain& vulkan_application::get_swapchain() const noexcept
@@ -575,7 +587,7 @@ void vulkan_application::create_pipeline()
     };
 
     const std::array color_format_array = {swapchain.get_format()};
-    pipeline.create(*device, bindings, {}, {}, {}, shader_stages, vk::PrimitiveTopology::eTriangleList,
+    pipeline.create(*device, *pipeline_cache, bindings, {}, {}, {}, shader_stages, vk::PrimitiveTopology::eTriangleList,
                     vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise,
                     vk::SampleCountFlagBits::e1, vk::False, color_format_array, vk::Format::eUndefined);
 }

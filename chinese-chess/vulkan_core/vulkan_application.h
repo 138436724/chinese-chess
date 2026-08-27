@@ -7,6 +7,7 @@
 #include "vulkan_image.h"
 #include "vulkan_physical_device.h"
 #include "vulkan_pipeline.h"
+#include "vulkan_pipeline_cache.h"
 #include "vulkan_queue.h"
 #include "vulkan_recycle_bin.h"
 #include "vulkan_sampler.h"
@@ -19,8 +20,9 @@
 class vulkan_application
 {
 public:
-    vulkan_application()                                     = default;
-    ~vulkan_application()                                    = default;
+    vulkan_application() = default;
+    ~vulkan_application();
+
     vulkan_application(const vulkan_application&)            = delete;
     vulkan_application& operator=(const vulkan_application&) = delete;
     vulkan_application(vulkan_application&&)                 = delete;
@@ -40,9 +42,10 @@ public:
 
     // getters
     [[nodiscard]] const vk::raii::Instance&     get_instance() const noexcept;
+    [[nodiscard]] const vma::raii::Allocator&   get_allocator() const noexcept;
     [[nodiscard]] const vulkan_physical_device& get_physical_device() const noexcept;
     [[nodiscard]] const vulkan_device&          get_device() const noexcept;
-    [[nodiscard]] const vma::raii::Allocator&   get_allocator() const noexcept;
+    [[nodiscard]] const vulkan_pipeline_cache&  get_pipeline_cache() const noexcept;
     [[nodiscard]] const vulkan_swapchain&       get_swapchain() const noexcept;
 
 private:
@@ -66,6 +69,7 @@ private:
     vulkan_physical_device physical_device;
     vulkan_device          device;
     vma::raii::Allocator   allocator = nullptr;
+    vulkan_pipeline_cache  pipeline_cache;
 
     uint32_t current_frame = 0;
 

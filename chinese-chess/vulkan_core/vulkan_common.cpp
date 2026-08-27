@@ -19,7 +19,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
                                                      vulkan_buffer&                 _buffer,
                                                      vk::BufferUsageFlags           _usage,
                                                      const std::span<const uint8_t> _data,
-                                                     const std::string&             _buffer_name) noexcept
+                                                     const std::string&             _buffer_name)
 {
     const std::array queue_array = {_transfer_queue.get_index()};
 
@@ -122,7 +122,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                     const vk::Extent3D&            _image_extent,
                                                     vulkan_image&                  _image,
                                                     const std::span<const uint8_t> _data,
-                                                    const std::string&             _image_name) noexcept
+                                                    const std::string&             _image_name)
 {
 
     // create image
@@ -265,15 +265,15 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     return submit_info;
 }
 
-[[nodiscard]] vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator& _allocator,
-                                                                    const vk::raii::Device&     _device,
-                                                                    vulkan_recycle_bin&         _recycle_bin,
-                                                                    vulkan_semaphore&           _semaphore,
-                                                                    const vulkan_queue&         _graphic_queue,
-                                                                    const vulkan_queue&         _transfer_queue,
-                                                                    vulkan_image&               _image,
-                                                                    vulkan_buffer&              _buffer,
-                                                                    const std::string&          _buffer_name) noexcept
+vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator& _allocator,
+                                                      const vk::raii::Device&     _device,
+                                                      vulkan_recycle_bin&         _recycle_bin,
+                                                      vulkan_semaphore&           _semaphore,
+                                                      const vulkan_queue&         _graphic_queue,
+                                                      const vulkan_queue&         _transfer_queue,
+                                                      vulkan_image&               _image,
+                                                      vulkan_buffer&              _buffer,
+                                                      const std::string&          _buffer_name)
 {
     const auto [image_width, image_height]     = _image.get_extent();
     const VkFormat                image_format = static_cast<VkFormat>(_image.get_format());

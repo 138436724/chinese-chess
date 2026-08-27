@@ -26,6 +26,7 @@ public:
     void release() noexcept;
 
 private:
+    const inline static bool                                         output    = false;
     const vulkan_semaphore*                                          semaphore = nullptr;
     std::deque<std::pair<uint64_t, std::move_only_function<void()>>> resources;
 };
@@ -36,7 +37,10 @@ inline void vulkan_recycle_bin::retire(T&& _resource, std::string&& _message)
     uint64_t cpu_value = semaphore->get_cpu_value();
     resources.emplace_back(cpu_value, [resource = std::move(_resource), message = std::move(_message)]() mutable {
 #ifndef NDEBUG
-        std::println("{}", message);
+        if constexpr (output)
+        {
+            std::println("{}", message);
+        }
 #endif  // !NDEBUG
     });
 }

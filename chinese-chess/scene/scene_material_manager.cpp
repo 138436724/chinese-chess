@@ -609,10 +609,10 @@ const vk::raii::Sampler& scene_material_manager::get_sampler(sampler_type _type)
     switch (_type)
     {
         case sampler_type::font:
-            return font_sampler.get_sampler();
+            return *font_sampler;
         case sampler_type::sky_box:
-            return skybox_sampler.get_sampler();
+            return *skybox_sampler;
         default:  // diffuse/color/normal/roughness/metallic all same
-            return diffuse_sampler.get_sampler();
+            return *diffuse_sampler;
     }
 }

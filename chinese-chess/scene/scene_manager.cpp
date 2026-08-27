@@ -15,7 +15,10 @@
 #include <string>
 #include <vulkan/utility/vk_format_utils.h>
 
-scene_manager::~scene_manager() = default;
+scene_manager::~scene_manager()
+{
+    app.wait();
+}
 
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
@@ -49,13 +52,12 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
                           std::filesystem::path(TEXTURES_PATH) / u8"cracked ground.hdr", true, sampler_type::sky_box);
 
     rasterization_render = std::make_unique<scene_rasterization_render>(
-        app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
+        app.get_allocator(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue,
         compute_queue, transfer_queue, model_manager, material_manager, light_manager, render_output, color_format);
 
-    raytracing_render =
-        std::make_unique<scene_raytracing_render>(app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                                  recycle_bin, semaphore, graphic_queue, compute_queue, transfer_queue,
-                                                  model_manager, material_manager, light_manager, render_output);
+    raytracing_render = std::make_unique<scene_raytracing_render>(
+        app.get_allocator(), *app.get_physical_device(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin, semaphore,
+        graphic_queue, compute_queue, transfer_queue, model_manager, material_manager, light_manager, render_output);
 
     // default use raytracing
     active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
@@ -83,7 +85,8 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
                          vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
     active_render->resize(width, height);
-    need_update();
+    is_dirty        = true;
+    is_render_dirty = true;
 }
 
 void scene_manager::update()
@@ -97,7 +100,7 @@ void scene_manager::update()
         return manager->update(waited_infos) || b;
     });
 
-    if (any_dirty)
+    if (any_dirty || is_render_dirty)
     {
         active_render->update();
     }
@@ -108,7 +111,8 @@ void scene_manager::update()
 
     skybox_index = material_manager.get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
 
-    is_dirty = false;
+    is_dirty        = false;
+    is_render_dirty = false;
 }
 
 vk::SemaphoreSubmitInfo scene_manager::render()
@@ -128,11 +132,6 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
     return commandbuffer.get_submit_info();
-}
-
-void scene_manager::destroy()
-{
-    std::ranges::for_each(managers, [](auto& manager) { manager->clear(); });
 }
 
 void scene_manager::handle(int _glfw_key)
@@ -248,7 +247,8 @@ void scene_manager::set_use_ray_tracing(bool _use_ray_tracing)
 
     // force resize and update
     active_render->resize(width, height);
-    need_update();
+    is_dirty        = true;
+    is_render_dirty = true;
 }
 
 bool scene_manager::get_need_update() const noexcept

@@ -1,5 +1,43 @@
 #include "vulkan_pipeline.h"
 
+#include "tools/shader_compiler.h"
+
+#include <filesystem>
+#include <ranges>
+#include <string_view>
+#include <vector>
+
+namespace {
+
+[[nodiscard]] std::pair<vk::raii::ShaderModule, std::vector<vk::PipelineShaderStageCreateInfo>> compile_shader(
+    const vk::raii::Device&                  _device,
+    const std::filesystem::path&             _shader_path,
+    const std::span<const shader_stage_info> _shader_stages)
+{
+    std::vector<std::string_view> entry_names =
+        _shader_stages | std::views::transform(&shader_stage_info::name) | std::ranges::to<std::vector>();
+
+    const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(_shader_path, entry_names);
+    if (!spirv_code)
+    {
+        throw std::runtime_error(spirv_code.error());
+    }
+
+    auto shader_module =
+        vk::raii::ShaderModule(_device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
+                                                                   reinterpret_cast<const uint32_t*>(spirv_code->data())));
+
+    auto shader_stages = _shader_stages | std::views::transform([&shader_module](const auto& stage) {
+                             return vk::PipelineShaderStageCreateInfo({}, stage.stage, shader_module, stage.name.data());
+                         })
+                         | std::ranges::to<std::vector>();
+
+
+    return std::make_pair(std::move(shader_module), shader_stages);
+}
+
+}  // namespace
+
 vulkan_pipeline::vulkan_pipeline(vulkan_pipeline&& _other) noexcept
     : descriptor_set_layout(std::exchange(_other.descriptor_set_layout, nullptr))
     , pipeline_layout(std::exchange(_other.pipeline_layout, nullptr))
@@ -19,6 +57,7 @@ vulkan_pipeline& vulkan_pipeline::operator=(vulkan_pipeline&& _other) noexcept
 }
 
 void vulkan_pipeline::create(const vk::raii::Device&                                    _device,
+                             const vk::raii::PipelineCache&                             _pipeline_cache,
                              const std::span<const vk::DescriptorSetLayoutBinding>      _descriptor_set_layout_bindings,
                              const std::span<const vk::PushConstantRange>               _push_constant,
                              const std::span<const vk::VertexInputBindingDescription>   _binding_description,
@@ -67,15 +106,40 @@ void vulkan_pipeline::create(const vk::raii::Device&                            
                                        &dynamic_state_info, pipeline_layout, nullptr, 0, nullptr, 0),
         vk::PipelineRenderingCreateInfo({}, _color_formats, _depth_format, vk::Format::eUndefined));
 
-    pipeline = vk::raii::Pipeline(_device, nullptr, pipeline_info.get());
+    pipeline = vk::raii::Pipeline(_device, _pipeline_cache, pipeline_info.get());
 }
 
-void vulkan_pipeline::create(const vk::raii::Device&                                  _device,
-                             const std::span<const vk::DescriptorSetLayoutBinding>    _descriptor_set_layout_bindings,
-                             const std::span<const vk::PushConstantRange>             _push_constant,
-                             const std::span<const vk::PipelineShaderStageCreateInfo> _shader_stages,
-                             const std::span<const vk::RayTracingShaderGroupCreateInfoKHR> _shader_groups,
-                             uint32_t                                                      _max_depth)
+void vulkan_pipeline::create_from_shader(const vk::raii::Device&        _device,
+                                         const vk::raii::PipelineCache& _pipeline_cache,
+                                         const std::span<const vk::DescriptorSetLayoutBinding> _descriptor_set_layout_bindings,
+                                         const std::span<const vk::PushConstantRange>             _push_constant,
+                                         const std::span<const vk::VertexInputBindingDescription> _binding_description,
+                                         const std::span<const vk::VertexInputAttributeDescription> _attribute_descriptions,
+                                         const std::filesystem::path&             _shader_path,
+                                         const std::span<const shader_stage_info> _shader_stages,
+                                         vk::PrimitiveTopology                    _topology_type,
+                                         vk::PolygonMode                          _polygon_mode,
+                                         vk::CullModeFlags                        _cull_mode,
+                                         vk::FrontFace                            _front_face,
+                                         vk::SampleCountFlagBits                  _multisample_count,
+                                         vk::Bool32                               _use_depth,
+                                         const std::span<const vk::Format>&       _color_formats,
+                                         vk::Format                               _depth_format)
+{
+    const auto& [shader_module, shader_stages] = compile_shader(_device, _shader_path, _shader_stages);
+    create(_device, _pipeline_cache, _descriptor_set_layout_bindings, _push_constant, _binding_description,
+           _attribute_descriptions, shader_stages, _topology_type, _polygon_mode, _cull_mode, _front_face,
+           _multisample_count, _use_depth, _color_formats, _depth_format);
+}
+
+void vulkan_pipeline::create_from_shader(const vk::raii::Device&        _device,
+                                         const vk::raii::PipelineCache& _pipeline_cache,
+                                         const std::span<const vk::DescriptorSetLayoutBinding> _descriptor_set_layout_bindings,
+                                         const std::span<const vk::PushConstantRange>                  _push_constant,
+                                         const std::filesystem::path&                                  _shader_path,
+                                         const std::span<const shader_stage_info>                      _shader_stages,
+                                         const std::span<const vk::RayTracingShaderGroupCreateInfoKHR> _shader_groups,
+                                         uint32_t                                                      _max_depth)
 {
     descriptor_set_layout =
         vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings));
@@ -83,8 +147,9 @@ void vulkan_pipeline::create(const vk::raii::Device&                            
     const vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
     pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
 
-    const vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, _shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
-    pipeline = vk::raii::Pipeline(_device, nullptr, nullptr, pipeline_info);
+    const auto& [shader_module, shader_stages] = compile_shader(_device, _shader_path, _shader_stages);
+    const vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
+    pipeline = vk::raii::Pipeline(_device, nullptr, _pipeline_cache, pipeline_info);
 }
 
 const vk::raii::DescriptorSetLayout& vulkan_pipeline::get_descriptor_set_layout() const noexcept

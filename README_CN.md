@@ -38,23 +38,24 @@
 | **棋谱回放** | ICU4C 自动检测 GB2312/UTF-8 编码，正则解析中文记谱法（含前/中/后与中文数字），逐步播放对局（W/A 上一步，S/D 下一步） |
 | **ImGui 控制面板** | 场景设置窗口包含相机、灯光、材质/物体、棋谱 4 个面板（docking + 多视口） |
 | **截图保存** | 支持 EXR（HDR）和 PNG（LDR）格式，按 **C** 键保存当前帧（仅场景，不含 UI） |
-| **热重载** | 按 **F5** 仅重新编译当前激活渲染器的 pipeline（多态分发，无需记录当前路径）；按 **F6** 热重载磁盘纹理（SHA-256 变更检测 → 单线程重压缩 → 同步更新 sidecar → 同槽位重上传）；file_watcher 以 SHA-256 哈希判定文件是否修改，未修改则直接使用 .spv 缓存 |
-| **字体渲染** | FreeType 逐字栅格化生成字形图集（当前资源仅 LXGW WenKai GB Medium），图集宽高 4 对齐、内容居中，并经 UASTC 压缩为单通道 BC4（桌面）/ EAC_R11（移动端）上传 |
-| **RenderDoc 帧捕获** | Debug 构建集成 RenderDoc（v1.7.0 API）：UI 操作使场景变脏后，本帧（更新生效帧）自动开始/结束捕获 |
+| **热重载** | 按 **F5** 重编译当前激活渲染器的 pipeline（复用同一 pipeline cache 句柄，不读写盘）；按 **F6** 热重载磁盘纹理（SHA-256 判变 → 单线程重压缩 sidecar → 同槽位重上传） |
+| **字体渲染** | FreeType 逐字栅格化生成字形图集，图集宽高 4 对齐、内容居中，经 UASTC 压缩为单通道 BC4（桌面）/ EAC_R11（移动端） |
+| **RenderDoc 帧捕获** | Debug 构建集成 RenderDoc（v1.7.0 API）：UI 操作使场景变脏后，本帧自动开始/结束捕获 |
 
 ### 🎨 渲染特性
 
 | 功能 | 说明 |
 |------|------|
 | **双渲染管线** | 前向光栅化（MSAA 多重采样 + resolve）与 Vulkan 光线追踪路径追踪，运行时一键切换 |
-| **路径追踪器** | 最大 8 次弹射；NEE 多光源直接光照（Lambertian 漫反射 + GGX Cook-Torrance 镜面反射）；间接弹射为 Lambertian 余弦加权采样 |
-| **俄罗斯轮盘赌** | 基于路径吞吐量最大分量自适应终止（p_continue < 0.05 直接截断） |
-| **时域累积** | 渐进式渲染，混合系数 alpha = 1/(frame_index+1)，Wang Hash 种子按帧变化 + 子像素随机抖动抗锯齿 |
+| **路径追踪器** | 最大 8 次弹射；NEE 多光源直接光照（Lambertian 漫反射 + GGX Cook-Torrance 镜面反射）；间接弹射波瓣选择（透射/GGX/漫反射） |
+| **俄罗斯轮盘赌** | 基于路径吞吐量自适应终止（p_continue < 0.05 截断） |
+| **时域累积** | 渐进式渲染，混合系数 `alpha = 1/(1 + frame_index/2)`，Wang Hash 种子按帧变化 + 子像素随机抖动抗锯齿 |
 | **三种光源类型** | 方向光、点光源（距离平方衰减 + Range 裁剪）、聚光灯（内外锥角平滑过渡） |
-| **阴影光线** | Any-Hit Shader + `RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH` + `SKIP_CLOSEST_HIT` + 背面剔除 |
+| **阴影光线** | Any-Hit Shader + `ACCEPT_FIRST_HIT_AND_END_SEARCH` + `SKIP_CLOSEST_HIT` + 背面剔除 |
 | **HDR 环境贴图** | 等距矩形投影 HDR 天空（默认 `cracked ground.hdr`，运行时压缩为 `.ktx2` sidecar）；未绑定贴图时回退默认天空色 |
 | **ACES 2.0 色彩管理** | OpenColorIO：CPU 截图色彩变换 + GPU 合成 Pass 运行时注入（存在绑定序缺陷，见[已知问题](#已知问题)） |
-**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。描述符仅在 scene_manager 聚合到 any_dirty（manager 实际重传 SSBO/重建 TLAS）时重建。
+
+**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。描述符仅在 scene_manager 聚合到 `any_dirty || is_render_dirty`（manager 实际重传 SSBO/重建 TLAS，或 resize/渲染器切换强制置位）时重建。
 
 ### ⚙️ 工程特性
 
@@ -63,12 +64,13 @@
 | **现代 C++23** | 大量使用 `std::ranges`、`std::views::cartesian_product`、Concepts 约束、`std::format`/`std::println`、`std::move_only_function` |
 | **Vulkan RAII 封装** | 使用 `vulkan.hpp` C++ 绑定（`vulkan_raii`）和 VMA (Vulkan Memory Allocator) RAII 接口 |
 | **时间线信号量** | 单一时间线信号量 + 原子计数器的无栅栏 GPU-CPU 同步（组件各自持有独立的信号量与回收站） |
-| **回收站机制** | 延迟资源销毁，按 GPU 信号量值安全释放资源（Debug 构建打印回收日志） |
-| **资源状态追踪** | 每个 `vulkan_buffer`/`vulkan_image` 跟踪当前 Stage / Access / Layout / Queue，用于自动生成正确的 Pipeline Barrier |
+| **回收站机制** | 延迟资源销毁，按 GPU 信号量值安全释放资源（Debug 回收日志由 `constexpr output=false` 编译期关闭） |
+| **资源状态追踪** | 每个 `vulkan_buffer`/`vulkan_image` 跟踪当前 Stage / Access / Layout / Queue，自动生成正确的 Pipeline Barrier |
 | **智能队列选择** | C++23 `cartesian_product` 穷举（图形、计算、传输、呈现）队列族组合，专用传输队列 10× 加分，最大化独立队列族数量 |
 | **两步初始化** | `vulkan_application` 分离 Instance 创建（`init`）与 Device/Swapchain 创建（`create`） |
-| **管理器架构** | scene_model_manager 统一持有顶点/索引缓冲、BLAS/TLAS、间接绘制命令与模型 SSBO；材质/灯光管理器持有各自 SSBO；各 manager 自查单一 is_dirty（create 与真删除时置脏、update 消费并返回是否执行），scene_manager 聚合 any_dirty 决定重建描述符或仅重置累积 |
-| **KTX2 纹理压缩管线** | 磁盘纹理首次加载时在源文件旁生成 `.ktx2` sidecar（**UASTC 中间格式**，内存压缩 → 转码前同步写盘 → 加载时按设备转码 BC6H/BC7 上传，设备不支持则回退 OIIO 直传）；字体图集同样走 UASTC → 单通道 BC4/EAC_R11；F6 热重载单线程顺序执行（SHA-256 门控 → 重压缩 → 同槽位重上传） |
+| **管理器架构** | scene_model_manager 统一持有顶点/索引缓冲、BLAS/TLAS、间接绘制命令与模型 SSBO；各 manager 自查单一 is_dirty（create 与真删除时置脏、update 消费并返回是否执行），scene_manager 聚合 `any_dirty || is_render_dirty` 决定重建描述符或仅重置累积 |
+| **KTX2 纹理压缩管线** | 磁盘纹理与字体图集统一 **UASTC 中间格式**（内存压缩 → 转码前同步写 sidecar → 加载时按设备转码 BC6H/BC7/BC4/EAC_R11 上传，设备不支持则回退 OIIO 直传） |
+| **Pipeline 缓存** | 独立 RAII 类 `vulkan_pipeline_cache`（`vulkan_application` 单实例持有，所有管线共享同一句柄）：启动读盘一次（设备校验，不匹配/损坏则空缓存起步）、退出写盘一次，加速启动；F5 热重载不读写盘 |
 | **工具单例** | shader_compiler / file_watcher / renderdoc_capture 为单例；其余工具为命名空间函数 |
 
 ---
@@ -94,16 +96,7 @@ VK_KHR_acceleration_structure, VK_KHR_ray_tracing_pipeline
 VK_KHR_deferred_host_operations, VK_KHR_buffer_device_address, VK_KHR_push_descriptor
 ```
 
-特性（Features2 链）：
-
-```
-samplerAnisotropy, fillModeNonSolid, multiDrawIndirect, shaderInt64
-pushDescriptor (Vulkan 1.4), dynamicRendering (1.3), synchronization2 (1.3)
-bufferDeviceAddress (1.2), runtimeDescriptorArray (1.2), scalarBlockLayout (1.2), timelineSemaphore (1.2)
-shaderDrawParameters (1.1), extendedDynamicState (VK_EXT_extended_dynamic_state)
-accelerationStructure + accelerationStructureCaptureReplay + descriptorBindingAccelerationStructureUpdateAfterBind
-rayTracingPipeline + rayTracingPipelineTraceRaysIndirect + rayTraversalPrimitiveCulling
-```
+特性（Features2 链）：`samplerAnisotropy`、`fillModeNonSolid`、`multiDrawIndirect`、`shaderInt64`、`pushDescriptor`（1.4）、`dynamicRendering`/`synchronization2`（1.3）、`bufferDeviceAddress`/`runtimeDescriptorArray`/`scalarBlockLayout`/`timelineSemaphore`（1.2）、`shaderDrawParameters`（1.1）、`extendedDynamicState`（EXT）、加速度结构（`accelerationStructure` + CaptureReplay + UpdateAfterBind）、光线追踪（`rayTracingPipeline` + TraceRaysIndirect + PrimitiveCulling）。
 
 ---
 
@@ -114,18 +107,14 @@ rayTracingPipeline + rayTracingPipelineTraceRaysIndirect + rayTraversalPrimitive
 ```bash
 # 项目内置 vcpkg 子模块（见 .gitmodules）
 git submodule update --init --recursive
-
-# 首次使用 vcpkg 时引导
-.\vcpkg\bootstrap-vcpkg.bat
+.\vcpkg\bootstrap-vcpkg.bat   # 首次使用 vcpkg 时引导
 ```
 
-vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`。
-`vcpkg-configuration.json` 的默认注册表为 GitHub `microsoft/vcpkg`（国内网络可自行替换为镜像）。
+vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`；`vcpkg-configuration.json` 的默认注册表为 GitHub `microsoft/vcpkg`（国内网络可自行替换为镜像）。
 
 ### 2. 配置与构建
 
 ```bash
-# 使用 VS2022 开发者命令行（或直接用 VS 打开项目文件夹）
 cmake --preset x64-debug     # 或 x64-release
 cmake --build out/build/x64-release
 ```
@@ -165,7 +154,7 @@ GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 | **W/A** | 棋谱上一步 |
 | **S/D** | 棋谱下一步 |
 | **C** | 保存当前帧截图 |
-| **F5** | 热重载：仅重新编译着色器并重建当前激活渲染器的 pipeline（若编译失败会直接终止程序，见[已知问题](#已知问题)） |
+| **F5** | 热重载：重新编译当前激活渲染器的 pipeline（若编译失败会直接终止程序，见[已知问题](#已知问题)） |
 | **F6** | 热重载：检测已加载磁盘纹理的源文件，变更则单线程重压缩 KTX2 sidecar 并同槽位重上传 |
 | **ImGui 面板** | 场景设置窗口控制相机、灯光、材质/物体、棋谱参数（相机无鼠标轨道控制，通过面板数值调整） |
 
@@ -180,7 +169,7 @@ GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 Debug 构建会自动集成 RenderDoc：
 1. 确保系统已安装 RenderDoc（`renderdoc.dll` 在进程 DLL 搜索路径中）
 2. 在 UI 中进行任意操作（修改材质、移动光源等）使场景数据变脏
-3. UI 操作使场景变脏后，程序在**本帧**自动开始并结束 RenderDoc 捕获（跳过首帧：`first_frame` 为 true 时不捕获（RenderDoc 无法在首帧开始捕获）；UI 更新后、scene 消费前调用 `StartFrameCapture`，因此 `scene->update()` 里的 upload 命令也在捕获内）
+3. 程序在**本帧**自动开始并结束捕获（跳过首帧；`StartFrameCapture` 在 `scene->update()` 前调用，因此其中的上传/TLAS 构建也在捕获内）
 4. 捕获文件保存在 `resources/captures/`（`_capture_N.rdc`）
 
 ### 棋谱回放
@@ -214,31 +203,32 @@ chinese-chess/
 ├── window/                           # GLFW 窗口 + 程序入口
 │   ├── window.h/cpp                  # 窗口 RAII 封装、帧循环、输入分发、截图、RenderDoc 集成（Debug）
 │   └── main.cpp                      # 程序入口
-├── vulkan_core/      (16 个类)      # Vulkan 1.4 RAII 封装层
-│   ├── vulkan_application           # 核心应用：两步初始化（init→create）、场景+UI 合成渲染
-│   ├── vulkan_common                # 共享工具：格式选择、缓冲/图像上传/下载（三段式 QFOT）
+├── vulkan_core/      (17 个类)      # Vulkan 1.4 RAII 封装层
+│   ├── vulkan_application           # 两步初始化（init→create）、场景+UI 合成渲染、持有 pipeline cache
+│   ├── vulkan_common                # 格式选择、缓冲/图像上传/下载（QFOT）、运行期全局
 │   ├── vulkan_device                # 逻辑设备 RAII 封装（move-only）
-│   ├── vulkan_physical_device       # 物理设备选择：C++23 cartesian_product 队列分配
+│   ├── vulkan_physical_device       # 物理设备选择：cartesian_product 队列分配
 │   ├── vulkan_swapchain             # 交换链管理（Mailbox/FIFO、动态重建、逐图像二元信号量）
-│   ├── vulkan_pipeline              # 管线创建（图形 + 光线追踪两个重载）
+│   ├── vulkan_pipeline              # 管线创建（图形 + 光线追踪两个重载；缓存句柄由参数传入）
+│   ├── vulkan_pipeline_cache        # 磁盘 pipeline cache 加载/保存（独立 RAII 类 + 设备校验）
 │   ├── vulkan_descriptor            # 描述符池/集管理（variant 缓冲/图像写入）
 │   ├── vulkan_buffer / vulkan_image # 缓冲/图像 + VMA RAII 分配器 + 状态追踪
 │   ├── vulkan_commandbuffer         # 命令缓冲 + 时间线信号量集成（静态工厂批量创建）
 │   ├── vulkan_queue                 # 队列 + CommandPool 封装
 │   ├── vulkan_semaphore             # 时间线信号量 + 原子计数器
-│   ├── vulkan_recycle_bin           # 延迟资源回收站（Debug 构建打印回收日志）
-│   ├── vulkan_sampler               # 采样器 RAII（diffuse/font/sky_box/screen 分类型）
+│   ├── vulkan_recycle_bin           # 延迟资源回收站（Debug 回收日志编译期关闭）
+│   ├── vulkan_sampler               # 采样器 RAII（diffuse/font/sky_box/screen 等分类型）
 │   ├── vulkan_acceleration_structure # BLAS/TLAS 创建（返回需保持存活的暂存缓冲）
 │   └── vulkan_shader_binding_table  # 光线追踪 SBT 管理（5 个 Shader Group）
 ├── scene/            (11 个类)      # 场景管理
 │   ├── scene_manager                # 场景编排器：双管线管理、脏检查、F5/F6 热重载、save_image
 │   ├── scene_base                   # pro::proxy facade 定义（manager_base / manager_render）
 │   ├── scene_model                  # 模型（BLAS 实例、变换矩阵、is_show 可见性、材质引用）
-│   ├── scene_material               # PBR 材质（双色混合 + 粗糙度 + 金属度 + Alpha 贴图 + 透射参数 opacity/ior/transmission）
+│   ├── scene_material               # PBR 材质（双色混合 + 粗糙度/金属度 + Alpha 贴图 + 透射参数）
 │   ├── scene_light                  # 光源（扁平结构体，light_type 区分方向光/点光源/聚光灯）
 │   ├── scene_camera                 # 透视/正交相机 + 缓存逆矩阵
 │   ├── scene_model_manager          # 顶点/索引缓冲、BLAS/TLAS、间接绘制命令、模型 SSBO
-│   ├── scene_material_manager       # 材质生命周期 + 材质 SSBO + bindless 纹理数组（KTX2 压缩纹理、字体图集压缩、F6 热重载）
+│   ├── scene_material_manager       # 材质生命周期 + 材质 SSBO + bindless 纹理数组（KTX2 压缩、字体图集、F6 热重载）
 │   ├── scene_light_manager          # 灯光生命周期 + 灯光 SSBO
 │   ├── scene_rasterization_render   # 前向 MSAA 渲染：间接绘制、动态渲染、is_show 支持
 │   └── scene_raytracing_render      # 路径追踪：TLAS 引用、push constant 累积参数
@@ -250,9 +240,9 @@ chinese-chess/
 │   ├── ui_node                      # 材质 + 物体管理面板（含贴图/模型文件选择）
 │   └── ui_record                    # 棋谱加载与逐步回放（ICU4C 正则解析，WASD 键导航）
 ├── tools/            (9 个类)       # 工具与加载器
-│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（.spv 缓存 + SHA-256；std::expected 返回，失败带 Slang 诊断）
-│   ├── model_loader                 # glTF/GLB 模型加载 (fastgltf)，std::expected<model_data, load_error>，consteval 顶点属性描述
-│   ├── image_helper                 # 图像读写 PNG/EXR/HDR (OpenImageIO) + KTX2 压缩/读写（UASTC 中间格式）+ paste_image/convert_channels 通道合成
+│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（依赖感知 .spv 缓存 + SHA-256；std::expected 返回）
+│   ├── model_loader                 # glTF/GLB 模型加载 (fastgltf)，std::expected<model_data, std::string>
+│   ├── image_helper                 # 图像读写 PNG/EXR/HDR (OpenImageIO) + KTX2 压缩/读写（UASTC 中间格式）+ 通道合成
 │   ├── ocio_helper                  # OpenColorIO：GPU shader 生成/替换编译、LUT+UBO 上传、CPU 变换
 │   ├── font_loader                  # FreeType 字形栅格化（逐字符 glyph 信息）
 │   ├── record_loader                # 中文象棋记谱法解析（ICU4C 正则 + 走法规则 + 吃子处理）
@@ -261,66 +251,29 @@ chinese-chess/
 │   └── renderdoc_capture            # RenderDoc API 封装（v1.7.0，Debug 构建专用）
 └── resources/
     ├── shaders/      (9 个 .slang)  # Slang 着色器源文件（含 .spv 编译缓存）
-    ├── fonts/        (磁盘 14 / 跟踪 2)  # LXGW WenKai GB/Mono GB + 思源黑体 + 华文粗楷（其余 *.ttf/*.otf 被 .gitignore 忽略）；运行时仅用 LXGW WenKai GB Medium 栅格化棋盘/棋子字形图集
+    ├── fonts/        (磁盘 14 / 跟踪 2)  # 仅 LXGW WenKai GB Medium 被跟踪并用于运行时图集（其余 gitignored）
     ├── models/       (4 个 .glb)    # 棋盘、棋盘线、棋子、天空盒 + chess_all.blend 源文件
-    ├── textures/     (.hdr + .ktx2) # HDR 环境贴图（cracked ground.hdr，约 90 MB；运行时生成 UASTC 中间格式 sidecar，加载时转码 BC6H/BC7）
+    ├── textures/     (.hdr + .ktx2) # HDR 环境贴图（cracked ground.hdr，约 90 MB；运行时生成 UASTC sidecar）
     ├── ocios/        (5 个 .ocio)   # ACES 2.0 色彩配置（studio/D60/reference/CG）+ 转换图
     ├── records/      (.txt)         # 棋谱文件（棋谱1.txt，GB2312 示例）
     ├── captures/     (.png/.exr/.rdc)  # 截图输出 + RenderDoc 捕获
-    └── file_watch_cache.hash        # 文件监听持久化哈希缓存
+    └── cache/        (pipeline_cache.cache + file_watch_cache.cache)  # 运行期生成的缓存（gitignored）
 ```
 
 ### 数据流
 
-```
-帧循环 (glfw_window::render):
-  glfwPollEvents()
-
-  [Debug 构建]:
-    ui->update()             → ImGui NewFrame + 面板更新（UI 操作使场景置脏）+ ImGui::Render
-    if !first_frame && scene->get_need_update()  // UI 置脏？本帧捕获（跳过首帧，scene->update() 的 upload 也在捕获内）
-    scene->update()          → 脏检查：上传模型/材质/灯光 SSBO，重建 TLAS + 间接绘制命令 + 描述符
-  [Release 构建]:
-    ui->update()             → 同帧更新
-    scene->update()
-  ui->render()               → UI MSAA 渲染 → resolve → submit（返回时间线信号量）
-  scene->render()            → 光栅化或光追渲染 → submit（返回时间线信号量）
-  app->render({ui, scene})   → 回收站 release
-                             → 命令缓冲 begin_record（等待时间线信号量 + 清空列表）
-                             → swapchain.acquire_image（OutOfDate 则 end_record + return）
-                             → 添加等待：scene/UI 时间线 + acquire 二元信号量
-                             → Pipeline Barrier: scene/UI → eShaderSampledRead
-                             → Pipeline Barrier: swapchain → eColorAttachmentOptimal
-                             → 全屏三角形混合绘制（采样 scene + UI 纹理；OCIO 注入代码作用于 scene 颜色）
-                             → Pipeline Barrier: swapchain → ePresentSrcKHR
-                             → end_record → submit（signal）→ present（Mailbox/FIFO）
-                             → 推进 current_frame
-
-  if need_save: scene->save_image() → download_image 三段式 QFOT → CPU OCIO 变换 → EXR/PNG
-  [Debug: RenderDoc end_capture]
-
-  FPS 计数器（窗口标题，每 0.5 秒更新）
-```
+帧循环（`glfw_window::render`）：`glfwPollEvents()` → `ui->update()`（ImGui 面板，UI 操作使场景置脏；Debug 下按需本帧 RenderDoc 捕获）→ `scene->update()`（脏检查：重传模型/材质/灯光 SSBO、重建 TLAS + 间接绘制命令 + 描述符）→ `ui->render()` / `scene->render()`（各自 MSAA/光追渲染后 submit，返回时间线信号量）→ `app->render()`（回收站 release → acquire swapchain → barrier → 全屏三角形混合 scene + UI（OCIO 注入代码作用于 scene 颜色）→ present）→ 需要时 `scene->save_image()`（`download_image` 三段式 QFOT → CPU OCIO 变换 → EXR/PNG）。详细时序见 `CLAUDE.md` Data Flow 一节。
 
 ### 核心设计模式
 
-**两步初始化**：`vulkan_application` 使用 `init(instance_layers, extensions)` 创建 Vulkan Instance，再调用 `create(surface, width, height)` 创建 Device、Swapchain、管线。分离设计允许在两步之间创建 Window Surface（Surface 依赖 Instance）。
-
-**智能队列选择**：`vulkan_physical_device::create()` 使用 C++23 `std::views::cartesian_product` 穷举所有（图形、计算、传输、呈现）队列族组合，评分选择最优方案——强烈偏好专用传输队列（10× 加分），最大化独立队列族数量。
-
-**时间线信号量 + 回收站**：`vulkan_semaphore` 封装时间线信号量与原子 CPU 计数器。`vulkan_recycle_bin` 将资源与信号量值配对存储；`release()` 在 GPU 通过该值后销毁资源。命令缓冲在 submit 时 Signal，在 `begin_record()` 时 Wait。常规帧循环无需 Fence 与 `vkDeviceWaitIdle`（仅窗口销毁与 resize 回调调用 waitIdle）。
-
-**资源状态追踪**：`vulkan_buffer`/`vulkan_image` 在每次 Pipeline Barrier 后通过 `set_info()` 更新当前 Stage / Access / Layout / Queue。后续 Barrier 基于实际当前状态生成，而非假设的状态。
-
-**队列所有权转移（upload_image / download_image）**：上传为三段式——传输队列 release（仅转移所有权，不改变布局，纯传输队列无 shader 阶段）→ 图形队列 acquire 并转换到 `eShaderReadOnlyOptimal`。下载为五段式——图形 release → 传输队列转换到 `eTransferSrcOptimal` 并拷贝到 staging → 图形队列 re-acquire 并恢复原布局。
-
-**Bindless 描述符**：场景纹理通过单个大型描述符数组访问（最多 1024 个 `eCombinedImageSampler`，光栅 binding 2 / 光追 binding 5）。模型/材质/光源数据通过 SSBO 在 GPU 端直接索引。描述符仅在 scene_manager 聚合到 any_dirty（manager 实际重传 SSBO/重建 TLAS）时重建。
-
-**UI/场景分层合成**：应用层的 Blend Pass（`blend_image.slang`）通过全屏三角形将场景渲染输出和 UI 渲染输出进行 Alpha 混合；`ocio_conversion()` 函数体在编译期被 OCIO 生成代码替换（`USE_OCIO=true`）。
-
-**类型擦除 UI 面板**：`ui_base` 使用 `pro::proxy` 库（P0779R0 风格）实现值语义多态。`ui_manager` 以 `std::vector<pro::proxy<ui_base>>` 持有异构面板（ui_camera、ui_light、ui_node、ui_record），统一分发 resize/update/handle。
-
-**Debug/Release 分离**：Debug 与 Release 帧循环顺序一致——`ui->update()`（ImGui 面板更新使场景置脏）→ `scene->update()`（消费脏状态）。Debug 额外在两者之间打开 RenderDoc 捕获窗口（跳过首帧），使 `scene->update()` 中的上传/TLAS 构建包含在捕获内。
+- **两步初始化**：`vulkan_application` 先 `init(instance_layers, extensions)` 创建 Instance，再 `create(surface, w, h)` 创建 Device/Swapchain/管线——两步之间可创建依赖 Instance 的 Window Surface。
+- **智能队列选择**：`cartesian_product` 穷举（图形、计算、传输、呈现）队列族组合评分选择，专用传输队列 10× 加分。
+- **时间线信号量 + 回收站**：`vulkan_semaphore`（时间线信号量 + 原子计数器）+ `vulkan_recycle_bin`（资源与信号量值配对，GPU 越过该值后销毁）；CB 在 submit 时 signal、begin_record 时 wait，帧循环无 Fence/`vkDeviceWaitIdle`（仅销毁/resize 调用）。
+- **资源状态追踪**：`vulkan_buffer`/`vulkan_image` 在每次 barrier 后更新 Stage/Access/Layout/Queue，后续 barrier 基于实际当前状态生成。
+- **Bindless 描述符**：纹理走大型描述符数组（≤1024），数据走 SSBO；仅在 `any_dirty || is_render_dirty` 时重建描述符。
+- **UI/场景分层合成**：Blend Pass（`blend_image.slang`）全屏三角形 Alpha 混合两渲染输出；`ocio_conversion()` 函数体编译期被 OCIO 生成代码替换。
+- **类型擦除 UI 面板**：`ui_base` 基于 `pro::proxy`（P0779R0 风格）值语义多态，`ui_manager` 以 `std::vector<pro::proxy<ui_base>>` 持有四个面板。
+- **Debug/Release 一致帧序**：均为 `ui->update()` → `scene->update()`；Debug 额外在两者之间打开 RenderDoc 捕获（跳过首帧）。
 
 ---
 
@@ -330,42 +283,34 @@ chinese-chess/
 
 - 前向渲染，单次 `drawIndexedIndirect` 调用（命令由 scene_model_manager 生成）
 - MSAA 多重采样 + resolve（从硬件支持的采样数中自动选择最高值）
-- 深度测试 + 背面剔除
-- 顶点数据：Position + UV（法线已注释，光栅化路径不需要法线）
-- Bindless 纹理数组，通过 `SV_DrawIndex` 索引模型和材质 SSBO
-- 隐藏模型通过 `instanceCount=0` 正确跳过
+- 深度测试 + 背面剔除；顶点数据 Position + UV
+- Bindless 纹理数组，通过 `SV_DrawIndex` 索引模型/材质 SSBO
+- 隐藏模型通过 `instanceCount=0` 跳过；fragment 同时守卫 `material_index` 与 `texture_index`（0xFFFFFFFF 判空）
 - 双色混合：`lerp(background_color, foreground_color, alpha_map.r)`（非光照模型）
-- fragment 阶段已同时守卫 `material_index` 与 `texture_index`（0xFFFFFFFF 判空）
 
 ### 光线追踪管线 (`ray_tracing.slang` + `lighting.slang`)
 
 蒙特卡洛路径追踪器（当前实现）：
 
-- **NEE（Next Event Estimation）**：每个命中点对所有光源执行直接光照采样（方向光/点光源/聚光灯均为 delta 分布），阴影光线（Any-Hit + `ACCEPT_FIRST_HIT_AND_END_SEARCH | SKIP_CLOSEST_HIT | CULL_BACK_FACING_TRIANGLES`，半透明材质按 `opacity` 概率穿透），贡献按 MIS 幂启发式（`power_heuristic`）加权
-- **直接光照 BRDF**：`diffuse = (1-kS)·(1-metallic)·albedo/π`（Lambertian）+ `specular = evaluate_ggx(...)`（Trowbridge-Reitz NDF + Smith 几何 + Fresnel-Schlick）；单光源贡献带 firefly 钳制 `min(亮度(throughput)×100, 100)`
-- **恒定环境光**：`AMBIENT_LIGHT`（默认 0.25），直接光之后以 `材质色 × AMBIENT_LIGHT × (0.5 + 0.5·NdotV)` 叠加，完全阴影区域也有基础可见度
-- **间接弹射（波瓣选择）**：按概率三分支——透射（`opacity × transmission`，玉石折射 + Beer-Lambert 吸收）、GGX 镜面（VNDF 重要性采样）、Disney 漫反射；吞吐量 `×= lobe_value / (lobe_prob × p_continue)`，`MAX_THROUGHPUT = 10` 钳制
-  - 玉石透射：`absorption_density = JADE_BASE_ABSORPTION(12) + JADE_ENGRAVE_ABSORPTION(30) × texture_weight`，仅进入时衰减（`T = exp(-density × PIECE_THICKNESS)`）；`texture_weight`（字符 alpha 权重）随 `HitPayload` 透传，刻字区更暗更实
+- **NEE**：每个命中点对所有光源采样（方向光/点光源/聚光灯均为 delta 分布），阴影光线带背面剔除（半透明按 `opacity` 概率穿透），贡献按 MIS 幂启发式加权；diffuse `(1-kS)(1-metallic)albedo/π` + GGX Cook-Torrance specular；单光贡献 firefly 钳制
+- **恒定环境光**：`AMBIENT_LIGHT`（默认 0.25）以 `材质色 × AMBIENT_LIGHT × (0.5 + 0.5·NdotV)` 叠加，完全阴影区域也有基础可见度
+- **间接弹射（波瓣选择）**：按概率三分支——透射（`opacity × transmission`，玉石折射 + Beer-Lambert 吸收）、GGX 镜面（VNDF 重要性采样）、Disney 漫反射；吞吐量按 `lobe_value / (lobe_prob × p_continue)` 加权，`MAX_THROUGHPUT = 10`
 - **高度雾**：解析指数雾（`evaluate_height_fog`），命中点弹射段与 miss 无穷远处均应用，含太阳散射
 - **俄罗斯轮盘赌 / 最大弹射**：`p_continue = min(1, 亮度(throughput))`，低于 0.05 截断；`MAX_BOUNCES = 8`
-- **时域累积**：`t = 1/(frame_index+1)`，Wang Hash 种子按帧变化，子像素随机抖动抗锯齿；新采样亮度超已累积均值 4 倍时做 firefly 钳制
-- **天空**：`skybox_index` 有效时从 HDR 等距矩形纹理采样，过暗回退程序化渐变天空；应用高度雾
-- **玉石棋子**：红方白玉 `(0.95, 0.92, 0.85)` + 深红刻字，黑方青玉 `(0.15, 0.45, 0.32)` + 墨绿刻字；`opacity=0.8, ior=1.5, transmission=1.0, roughness=0.3`，材质面板可调（不透明度/折射率/透射强度滑条）
-- **常量**：`MAX_BOUNCES = 8`、`MAX_LIGHTS = 64`、`SHADOW_EPSILON = 0.001`（common.slang）
-- 主循环未使用：BRDF LUT（`scene_brdflut.slang`，遗留）、`sample_hemisphere_uniform`、`evaluate_brdf`/`sample_brdf` 分派辅助函数
-
-
+- **时域累积**：`alpha = 1/(1 + frame_index/2)`，Wang Hash 种子按帧变化 + 子像素抖动；新采样亮度超已累积均值 4 倍时 firefly 钳制
+- **天空**：`skybox_index` 有效时采样 HDR 等距矩形纹理，过暗回退程序化渐变天空
+- **玉石棋子**：红方白玉 `(0.95, 0.92, 0.85)` + 深红刻字，黑方青玉 `(0.15, 0.45, 0.32)` + 墨绿刻字；`opacity=0.8, ior=1.5, transmission=1.0, roughness=0.3`，材质面板可调
 
 ### 其他着色器
 
-- **`blend_image.slang`**（使用中）：场景 + UI Alpha 合成；`ocio_conversion()` 为占位实现，编译期由 `ocio_helper::replace_and_compile` 替换为 OCIO 生成的 HLSL 代码（`USE_OCIO = true` 时）
-- **`scene_skybox.slang` / `scene_brdflut.slang` / `scene_cubemap.slang`**（遗留）：HDR 立方体贴图色调映射、BRDF split-sum LUT、等距矩形→cubemap 转换；当前 C++ 未引用（光追路径直接采样 HDR 等距矩形纹理）
+- **`blend_image.slang`**（使用中）：场景 + UI Alpha 合成；`ocio_conversion()` 为占位实现，编译期由 `ocio_helper::replace_and_compile` 替换为 OCIO 生成代码（`USE_OCIO = true` 时）
+- **`scene_skybox.slang` / `scene_brdflut.slang` / `scene_cubemap.slang`**（遗留）：HDR 立方体贴图色调映射、BRDF split-sum LUT、等距矩形→cubemap 转换；当前 C++ 未引用
 
 ### 色彩管理管线
 
 1. 场景渲染 → `R16G16B16A16_SFLOAT` HDR 图像
-2. 截图保存时 CPU 端执行 OCIO 色彩空间变换（SceneLinear → 默认 display/view，`studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio`）
-3. GPU 合成 Pass：管线创建时 `generate_shader_info` + `replace_and_compile` 注入 OCIO 代码，上传 LUT 纹理与 UBO（`ocio_ubo` / `ocio_images` / `ocio_samplers`）
+2. 截图保存时 CPU 端执行 OCIO 色彩空间变换（SceneLinear → 默认 display/view）
+3. GPU 合成 Pass：`generate_shader_info` + `replace_and_compile` 注入 OCIO 代码，上传 LUT 纹理与 UBO
 4. 交换链使用 `eB8G8R8A8Unorm`（`USE_OCIO=true`）+ sRGB color space，present 模式优先 Mailbox，回退 FIFO
 5. ⚠️ 已知缺陷：描述符写入顺序与管线布局不一致（UBO/纹理错位），GPU 端变换实际未正确生效，见[已知问题](#已知问题)
 
@@ -375,25 +320,25 @@ chinese-chess/
 
 | 着色器 | 管线 | 入口点 | 状态 / 功能 |
 |--------|------|--------|------|
-| `rasterization.slang` | Graphics | `vertMain`, `fragMain` | 使用中：前向 MSAA，Bindless 纹理，间接绘制（法线已注释） |
-| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + MIS、GGX/Disney 波瓣选择、玉石透射、高度雾、恒定环境光、俄罗斯轮盘赌、时域累积、HDR 天空） |
-| `lighting.slang` | (module) | — | 使用中：光源采样、Lambertian/Disney/GGX BRDF、阴影光线、MIS power heuristic、天空采样、高度雾 |
-| `common.slang` | (module) | — | 使用中：常量、Wang Hash RNG、随机数、数学/颜色工具、切线空间、Hammersley 序列、全屏三角形 |
+| `rasterization.slang` | Graphics | `vertMain`, `fragMain` | 使用中：前向 MSAA，Bindless 纹理，间接绘制 |
+| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + MIS、GGX/Disney 波瓣选择、玉石透射、高度雾、环境光、轮盘赌、时域累积、HDR 天空） |
+| `lighting.slang` | (module) | — | 使用中：光源采样、BRDF、阴影光线、MIS、天空采样、高度雾 |
+| `common.slang` | (module) | — | 使用中：常量、Wang Hash RNG、数学/颜色工具、Hammersley、全屏三角形 |
 | `scene_data.slang` | (module) | — | 使用中：Vertex / model_data / material_data / light_data / push constant 结构（与 C++ 对齐） |
 | `blend_image.slang` | Graphics | `vertMain`, `fragMain` | 使用中：场景+UI Alpha 合成；`ocio_conversion()` 编译期被 OCIO 代码替换 |
 | `scene_skybox.slang` | Graphics | `vertMain`, `fragMain` | 遗留：HDR 立方体贴图 + Uncharted 2 色调映射（未被引用） |
-| `scene_brdflut.slang` | Graphics | `vertMain`, `fragMain` | 遗留：BRDF 积分 LUT（Hammersley + GGX 重要性采样，Sascha Willems 示例，未被引用） |
+| `scene_brdflut.slang` | Graphics | `vertMain`, `fragMain` | 遗留：BRDF 积分 LUT（Hammersley + GGX 重要性采样，未被引用） |
 | `scene_cubemap.slang` | Graphics | `vertMain`, `fragMain` | 遗留：等距矩形→6 面立方体贴图（MRT，未被引用） |
 
 着色器依赖关系：
 ```
 common.slang ← scene_data.slang ← lighting.slang ← ray_tracing.slang
-blend_image.slang / rasterization.slang 使用 common / scene_data 模块
+rasterization.slang 使用 common / scene_data 模块
+blend_image.slang 自包含（无 import；ocio_conversion 桩函数体由 ocio_helper 替换）
 scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 ```
 
-
-着色器使用 **Slang** 编译为 SPIR-V（`spirv_1_4` target，最大优化级别），运行时编译并缓存 `.spv` 文件（SHA-256 判定是否重新编译）。入口点名称定义在 `tools/shader_compiler.h` 中。
+着色器使用 **Slang** 编译为 SPIR-V（`spirv_1_4` target，最大优化级别），运行时编译并缓存 `.spv` 文件（SHA-256 判定是否重新编译，import 链任一文件变更即失效）。入口点名称定义在 `tools/shader_compiler.h` 中。
 
 ---
 
@@ -415,32 +360,18 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 | **proxy** | 多态值类型 facade 模式（UI 面板类型擦除） |
 | **shader-slang** | Slang → SPIR-V 着色器编译 |
 | **icu** (icu4c) | Unicode 字符集检测、编码转换、正则表达式 |
+| **ktx**（vcpkg overlay port，KTX-Software 5.0.0-rc1，UASTC HDR） | BC6H/BC7 纹理压缩 + 加载 |
 
 ---
 
 ## 已知问题
 
-以下问题基于 2026-08-18 本地工作区源码验证（含 KTX2 压缩管线定型、字体图集压缩、F6 单线程热重载、std::expected 改造、玉石透射、环境光等近期改动）。详细清单见 `CLAUDE.md` Known Issues 一节。
+完整清单与修复历史见 `CLAUDE.md` Known Issues 一节。当前影响使用的 OPEN 项：
 
-### 正确性
-
-1. **光追 Push Constant 超限**（`scene_raytracing_render.h:48-55`）：push_constant 结构体 144 字节（2×mat4 + 3×u32，MSVC `sizeof` 实测），超过规范保证最小值 128；未查询 `maxPushConstantsSize`，部分 GPU 可能异常。
-2. ~~光栅化缺少 texture_index 守卫~~（已修复 2026-08-09：rasterization.slang 现同时守卫 material_index 与 texture_index）；描述符布局仍未启用 ePartiallyBound，未填充槽位技术上未定义。
-3. **F5 热重载遇编译错误直接终止**（`scene_manager.cpp:142-145`）：先回收旧渲染器再构造新的，着色器编译失败抛异常 → `std::terminate`，旧管线也已不可恢复。
-4. **OCIO GPU 合成绑定序错位**：管线布局为 [scene, ui, sampler, UBO, 纹理对...]，而 `bind_image()` 按 [scene, ui, sampler, 纹理对..., UBO] 顺序写入描述符 → 自 binding 3 起 UBO/纹理全部错位。OCIO 函数体替换（`replace_and_compile`）与 LUT/UBO 上传均已实现，但因绑定错位 GPU 变换实际不可用；debug callback 仅打印，未过滤相关验证错误。
-5. **删除全部灯光后写入空描述符**：light manager 仅在非空时重建 SSBO，而 RT 描述符无条件写入 → 无灯光时写入空缓冲（`nullDescriptor` 未启用）。
-6. **ImGui 多视口交换链误报**（第三方，imgui 1.92.8）：拖出 ImGui 面板创建的辅助视口未 acquire 即提交，触发 `UNASSIGNED-non-acquired-swapchain-image-used` 验证警告；当前 debug callback 未做过滤（旧文档描述已失效）。
-
-### 性能 / 待办
-
-- ~~每次场景脏更新都销毁并重建描述符池与全部描述符集~~（已修复 2026-08-10：仅当 manager 实际执行更新（any_dirty）时才重建，视图变化不触碰描述符）；
-- ~~`scene_manager::update()` 无条件更新两条渲染路径~~（已修复 2026-08-10：各 manager 自查脏状态，相机/视图变化仅重置光追累积）；
-- 管理器更新时无条件 retire 并重建 SSBO/TLAS/间接绘制缓冲（仅当对应集合非空时才重新上传）；
-- BLAS/TLAS 构建计划迁移到计算队列（源码 TODO；TLAS 构建需要 VK_QUEUE_COMPUTE_BIT）；TLAS 已在实例数量不变时走 refit（eUpdate），仅增删模型才完全重建；
-- `save_image` 中布局转换应在所有权转移后在目标队列执行（源码 TODO）；
-- **遗留/未使用着色器**：scene_skybox.slang / scene_brdflut.slang / scene_cubemap.slang 未被 C++ 引用（保留待复用）；已消除重复：ray_tracing.slang 不再本地定义工具函数，三个遗留模块与全部入口着色器统一 import common / scene_data / lighting；
-- ~~`CMakeLists.txt` 未显式设置 `/utf-8`~~（已修复 2026-08-11：`if(WIN32)` 下已添加 `add_compile_options(/utf-8)`）；
-- CMakePresets 中的 x86 与 Linux/macOS 预设未维护，仅 Windows x64 经过测试。
+- **F5 热重载编译错误会终止程序**（旧管线先回收再构造新管线，编译失败 → `std::terminate`）
+- **OCIO GPU 合成变换未生效**（描述符绑定序错位，自 binding 3 起 UBO/纹理错位；CPU 截图色彩变换正常）
+- **删除全部灯光后写入空描述符**（`nullDescriptor` 未启用）
+- **ImGui 多视口交换链验证误报**（第三方 imgui 1.92.8，辅助视口未 acquire 即 present）
 
 ---
 
@@ -452,14 +383,10 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 2026-04  完善 OCIO 映射与小修正
 2026-05  光线追踪封装（加速结构创建，移除 proxy 库）；光追初步实现；SSBO 重写光追；可按棋谱移动棋子；可切换光栅化/光追；替换为立体模型并尝试路径追踪
 2026-06  重写提升可维护性；纠正矩阵乘法顺序；UI 与场景管理封装；多光源处理；灯光/摄像机 UI 封装；高光计算；物体与材质封装（proxy4 取代虚函数）；VMA 管理存储；HDR 天空采样；智能队列选择与独立命令池；时间线信号量取代栅栏并添加回收站
-2026-07  物理设备/逻辑设备封装；彻底分离传输与图像队列（时间线信号量同步，不再直接等待命令完成）；拆分单独的时间线信号量与回收站；特定条件触发 RenderDoc 抓帧；modelmanager 统一构建 TLAS 与间接绘制命令；尽量移除 u8string
-2026-08  （工作区未提交）CMake 迁移：CMakeLists.txt + CMakePresets.json 取代 .slnx/.vcxproj；新增 vcpkg 子模块；scene_light 由 std::variant 重构为扁平结构体；着色器全量重写（common/scene_data 模块化、去重、修复布局与 texture_index 守卫）；半透明玉石棋子（白玉/青玉 + 刻字吸收 + 材质面板透射参数）；恒定环境光；std::expected 改造（model_loader/shader_compiler/oci_helper/find_supported_format，失败携带具体原因与 Slang 诊断）；重新扫描并更新 README/CLAUDE 文档
-2026-08-10  细粒度更新：各 manager 自查 is_dirty，create 与真删除时置脏、update 消费并返回是否执行；scene_manager 聚合 any_dirty 决定重建描述符或仅重置累积；UI 经 need_update / need_camera_update / need_material_update / need_model_update / need_light_update 路由
-2026-08-10  TLAS 增量优化：实例数量不变时仅 refit（eUpdate 模式，持久 scratch 缓冲 + 每次 refit 重建局部 instance 缓冲），增删模型才完全重建
-2026-08-12  F5 热重载优化：仅重新编译当前激活渲染器的 pipeline（recreate，多态分发，删除 use_ray_tracing 成员与 refresh_active_render）；resize 仅走热路径渲染器 + 渲染器宽高守卫；set_use_ray_tracing 承担绑定+force resize+描述符重建
-2026-08-15  KTX2 纹理压缩管线：源纹理旁生成 .ktx2 sidecar（UASTC 中间格式 → 加载时转码 BC6H/BC7），F6 纹理热重载（mtime/SHA-256 门控 + std::jthread 并行重压缩 + 同槽位重上传）；字形图集 padding=2 修复渗墨伪影；std::expected 全面推广；默认天空纹理重命名为 ASCII 名 cracked ground.hdr（顺带解决 KTX2 sidecar 文件名编码问题）
-2026-08-16  新增 scene_base（pro::proxy facade 定义）
-2026-08-18  KTX2 管线定型：磁盘纹理改为内存压缩 + 同步写 UASTC sidecar（转码前，保持可移植中间格式）+ upload_ktx2 上传时转码（BC6H/BC7/BC4/EAC_R11 映射）；新增字体图集压缩（单字棋子与多字棋盘"楚河汉界"，宽高 4 对齐 + 内容居中，UASTC → 单通道 BC4/EAC_R11）；F6 热重载改为单线程遍历 images_cache（字体合成键经 exists 天然排除）；image_helper 新增 OIIO paste_image（1→N 通道复制）/ convert_channels；upload_image 移除逐区域拷贝参数（仅整图上传）；is_dirty 清除移到 update 流程成功之后；file_watcher 空 expected 解引用修复；另新增未跟踪计划文档 spectral-rendering-plan.md（光谱渲染 Hero-Wavelength 实施计划草案，尚未实施）
+2026-07  物理设备/逻辑设备封装；彻底分离传输与图像队列（时间线信号量同步）；拆分单独的时间线信号量与回收站；特定条件触发 RenderDoc 抓帧；modelmanager 统一构建 TLAS 与间接绘制命令；尽量移除 u8string
+2026-08  上旬 CMake 迁移（CMakeLists/CMakePresets 取代 .slnx/.vcxproj）+ vcpkg 子模块；scene_light 扁平结构体重构；着色器全量重写（common/scene_data 模块化、修复布局与 texture_index 守卫）；半透明玉石棋子；恒定环境光；std::expected 改造
+2026-08  中旬 KTX2 压缩管线：磁盘纹理 UASTC sidecar（内存压缩 → 同步写盘 → 加载转码 BC6H/BC7）；字体图集压缩（BC4/EAC_R11，4 对齐居中）；F6 单线程热重载（SHA-256 门控 + 同槽位重上传）；字形 padding=2 修复渗墨；细粒度脏检查（各 manager 自查 is_dirty）+ TLAS 增量 refit；F5 仅重编译激活渲染器
+2026-08  下旬 pipeline cache 定稿（独立 vulkan_pipeline_cache 单实例：启动读盘一次/退出写盘一次，F5 不读写盘；着色器编译并入 vulkan_pipeline；.spv 缓存依赖感知）；is_render_dirty 精细化重建（resize/切换零重传）；析构顺序加固（vulkan_application/scene_manager/ui_manager 析构前自行 wait，destroy() 合并进析构函数）；scene_base facade 优化（proxy_view 无需 support_*）；ui_base 约束收紧为 nothrow；修饰符规范扫描（补 7 处 [[nodiscard]]、移除 5 个错误 noexcept、[[nodiscard]] 只留 .h 声明）
 ```
 
 ---

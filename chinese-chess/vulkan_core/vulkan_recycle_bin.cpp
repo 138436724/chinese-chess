@@ -15,9 +15,12 @@ void vulkan_recycle_bin::release() noexcept
     while (!resources.empty() && resources.front().first < gpu_val)
     {
 #ifndef NDEBUG
-        auto& [_value, _print_message] = resources.front();
-        std::print("Semaphore value {}. Retire resource value {}. ", gpu_val, _value);
-        _print_message();
+        if constexpr (output)
+        {
+            auto& [_value, _print_message] = resources.front();
+            std::print("Semaphore value {}. Retire resource value {}. ", gpu_val, _value);
+            _print_message();
+        }
 #endif  // !NDEBUG
         resources.pop_front();
     }

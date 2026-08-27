@@ -21,6 +21,15 @@ constexpr std::string_view USE_RAY_TRACING = "使用光线追踪";
 }  // namespace
 
 
+ui_manager::~ui_manager()
+{
+    app.wait();
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+}
+
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)
     : app(_app)
     , manager(_manager)
@@ -198,13 +207,6 @@ vk::SemaphoreSubmitInfo ui_manager::render()
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
     return commandbuffer.get_submit_info();
-}
-
-void ui_manager::destroy()
-{
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
 }
 
 void ui_manager::handle(int _glfw_key) noexcept

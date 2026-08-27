@@ -58,7 +58,7 @@ private:
     vk::AccelerationStructureGeometryKHR       geometry;
     vk::AccelerationStructureBuildRangeInfoKHR range_info;
 
+    vulkan_buffer                      buffer;
     vk::raii::AccelerationStructureKHR acceleration_structure = nullptr;
     vk::DeviceAddress                  address                = 0;
-    vulkan_buffer                      buffer;
 };

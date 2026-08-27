@@ -17,12 +17,11 @@ class ui_manager
 {
 public:
     ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height);
-    ~ui_manager() = default;
+    ~ui_manager();
 
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
     [[nodiscard]] vk::SemaphoreSubmitInfo render();
-    void                                  destroy();
     void                                  handle(int _glfw_key) noexcept;
 
     [[nodiscard]] vulkan_image& get_render_image() noexcept;

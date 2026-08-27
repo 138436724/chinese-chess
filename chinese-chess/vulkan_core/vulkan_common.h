@@ -27,8 +27,8 @@ inline constexpr bool                    USE_OCIO             = true;
 
 [[nodiscard]] inline std::expected<vk::Format, std::string> find_supported_format(const vk::raii::PhysicalDevice& _physical_device,
                                                                                   const std::vector<vk::Format>& _candidates,
-                                                                                  vk::ImageTiling _tiling,
-                                                                                  vk::FormatFeatureFlags _features) noexcept
+                                                                                  vk::ImageTiling        _tiling,
+                                                                                  vk::FormatFeatureFlags _features)
 {
     const auto format_iter = std::ranges::find_if(_candidates, [&](const auto& format) {
         vk::FormatProperties props = _physical_device.getFormatProperties(format);
@@ -83,7 +83,7 @@ inline constexpr bool                    USE_OCIO             = true;
                                                     vulkan_buffer&                 _buffer,
                                                     vk::BufferUsageFlags           _usage,
                                                     const std::span<const uint8_t> _data,
-                                                    const std::string&             _buffer_name = "") noexcept;
+                                                    const std::string&             _buffer_name = "");
 
 [[nodiscard]] vk::SemaphoreSubmitInfo upload_image(const vma::raii::Allocator&    _allocator,
                                                    const vk::raii::Device&        _device,
@@ -97,7 +97,7 @@ inline constexpr bool                    USE_OCIO             = true;
                                                    const vk::Extent3D&            _image_extent,
                                                    vulkan_image&                  _image,
                                                    const std::span<const uint8_t> _data,
-                                                   const std::string&             _image_name = "") noexcept;
+                                                   const std::string&             _image_name = "");
 
 [[nodiscard]] vk::SemaphoreSubmitInfo download_image(const vma::raii::Allocator& _allocator,
                                                      const vk::raii::Device&     _device,
@@ -107,5 +107,5 @@ inline constexpr bool                    USE_OCIO             = true;
                                                      const vulkan_queue&         _transfer_queue,
                                                      vulkan_image&               _image,
                                                      vulkan_buffer&              _buffer,
-                                                     const std::string&          _buffer_name = "") noexcept;
+                                                     const std::string&          _buffer_name = "");
 }  // namespace vulkan_common

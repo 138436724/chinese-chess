@@ -69,9 +69,12 @@ glfw_window::glfw_window()
 glfw_window::~glfw_window()
 {
     app->wait();
+    app->get_pipeline_cache().save();
 
-    ui->destroy();
-    scene->destroy();
+    // delete before destroy window
+    ui.reset();
+    scene.reset();
+    app.reset();
 
     glfwDestroyWindow(window);
     glfwTerminate();

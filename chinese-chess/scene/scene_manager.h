@@ -30,7 +30,6 @@ public:
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
     [[nodiscard]] vk::SemaphoreSubmitInfo render();
-    void                                  destroy();
     void                                  handle(int _glfw_key);
 
     void need_update() noexcept;
@@ -49,7 +48,7 @@ public:
     void set_use_ray_tracing(bool _use_ray_tracing);
 
     [[nodiscard]] bool          get_need_update() const noexcept;
-    scene_camera&               get_active_camera() noexcept;
+    [[nodiscard]] scene_camera& get_active_camera() noexcept;
     [[nodiscard]] vulkan_image& get_render_image() noexcept;
 
 private:
@@ -67,7 +66,8 @@ private:
                                                          sampler_type                 _type);
 
 private:
-    bool is_dirty = true;
+    bool is_dirty        = true;
+    bool is_render_dirty = true;
 
     uint32_t                     skybox_index = std::numeric_limits<uint32_t>::max();
     std::shared_ptr<scene_image> skybox_image = nullptr;

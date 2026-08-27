@@ -26,7 +26,7 @@ public:
 
     void create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, sampler_type _type);
 
-    [[nodiscard]] const vk::raii::Sampler& get_sampler() const noexcept;
+    [[nodiscard]] const vk::raii::Sampler& operator*() const noexcept;
 
 private:
     vk::raii::Sampler sampler = nullptr;

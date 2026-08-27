@@ -12,8 +12,8 @@ struct ui_base : pro::facade_builder
     ::add_convention<mem_resize, void(uint32_t, uint32_t)>
     ::add_convention<mem_update, void()>
     ::add_convention<mem_handle, void(int)>
-    ::support_relocation<pro::constraint_level::nontrivial>
-    ::support_destruction<pro::constraint_level::nontrivial>
+    ::support_relocation<pro::constraint_level::nothrow>
+    ::support_destruction<pro::constraint_level::nothrow>
     ::build
 {
 };

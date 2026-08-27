@@ -13,22 +13,22 @@
 #include <iterator>
 #include <ranges>
 
-scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&     _allocator,
-                                                       const vk::raii::PhysicalDevice& _physical_device,
-                                                       const vk::raii::Device&         _device,
-                                                       vulkan_recycle_bin&             _recycle_bin,
-                                                       vulkan_semaphore&               _semaphore,
-                                                       const vulkan_queue&             _graphic_queue,
-                                                       const vulkan_queue&             _compute_queue,
-                                                       const vulkan_queue&             _transfer_queue,
-                                                       const scene_model_manager&      _model_manager,
-                                                       const scene_material_manager&   _material_manager,
-                                                       const scene_light_manager&      _light_manager,
-                                                       vulkan_image&                   _render_output,
-                                                       vk::Format                      _color_format)
+scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&    _allocator,
+                                                       const vk::raii::Device&        _device,
+                                                       const vk::raii::PipelineCache& _pipeline_cache,
+                                                       vulkan_recycle_bin&            _recycle_bin,
+                                                       vulkan_semaphore&              _semaphore,
+                                                       const vulkan_queue&            _graphic_queue,
+                                                       const vulkan_queue&            _compute_queue,
+                                                       const vulkan_queue&            _transfer_queue,
+                                                       const scene_model_manager&     _model_manager,
+                                                       const scene_material_manager&  _material_manager,
+                                                       const scene_light_manager&     _light_manager,
+                                                       vulkan_image&                  _render_output,
+                                                       vk::Format                     _color_format)
     : allocator(_allocator)
-    , physical_device(_physical_device)
     , device(_device)
+    , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
     , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
@@ -175,25 +175,16 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
     const auto binding = model_vertex::get_binding_description();
     const auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
-    const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "rasterization.slang",
-                                                                  {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
-    if (!spirv_code)
-    {
-        throw std::runtime_error(spirv_code.error());
-    }
-
-    const vk::raii::ShaderModule shaderModule(
-        device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
-                                           reinterpret_cast<const uint32_t*>(spirv_code->data())));
-    const std::array shader_stages = {
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, shaderModule, VERT_ENTRY_NAME.data()),
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, shaderModule, FRAG_ENTRY_NAME.data()),
+    constexpr std::array shader_stages = {
+        shader_stage_info{VERT_ENTRY_NAME, vk::ShaderStageFlagBits::eVertex},
+        shader_stage_info{FRAG_ENTRY_NAME, vk::ShaderStageFlagBits::eFragment},
     };
 
-    pipeline.create(device, bindings, std::span(&push_constant, 1), std::span(&binding, 1), attribute, shader_stages,
-                    vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
-                    vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
-                    std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
+    pipeline.create_from_shader(device, pipeline_cache, bindings, std::span(&push_constant, 1), std::span(&binding, 1),
+                                attribute, std::filesystem::path(SHADERS_PATH) / "rasterization.slang", shader_stages,
+                                vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
+                                vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
+                                std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
 }
 
 void scene_rasterization_render::update_descriptor()

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -9,6 +10,7 @@
 class file_watcher
 {
 public:
+    [[nodiscard]] static std::expected<std::string, std::string> generate_file_hash(const std::filesystem::path& _file_path);
     [[nodiscard]] bool                 is_file_modified(const std::filesystem::path& _file_path);
     [[nodiscard]] static file_watcher& get_file_watcher() noexcept;
 

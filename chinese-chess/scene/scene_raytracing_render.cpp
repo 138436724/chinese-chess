@@ -31,6 +31,7 @@ enum class stage_indices : uint32_t
 scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&     _allocator,
                                                  const vk::raii::PhysicalDevice& _physical_device,
                                                  const vk::raii::Device&         _device,
+                                                 const vk::raii::PipelineCache&  _pipeline_cache,
                                                  vulkan_recycle_bin&             _recycle_bin,
                                                  vulkan_semaphore&               _semaphore,
                                                  const vulkan_queue&             _graphic_queue,
@@ -43,6 +44,7 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     : allocator(_allocator)
     , physical_device(_physical_device)
     , device(_device)
+    , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
     , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
@@ -142,27 +144,12 @@ void scene_raytracing_render::create_pipeline_and_sbt()
 
     const vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_raytracing_render::push_constant));
 
-    const auto spirv_code =
-        SHADER_COMPILER.compile_shader_to_spv(std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
-                                              {RAY_GEN_ENTRY_NAME, RAY_MISS_ENTRY_NAME, RAY_SHADOW_MISS_ENTRY_NAME,
-                                               RAY_CLOSEST_HIT_ENTRY_NAME, RAY_SHADOW_ANY_HIT_ENTRY_NAME});
-    if (!spirv_code)
-    {
-        throw std::runtime_error(spirv_code.error());
-    }
-    const vk::raii::ShaderModule shaderModule(
-        device, vk::ShaderModuleCreateInfo({}, spirv_code->size() * sizeof(char),
-                                           reinterpret_cast<const uint32_t*>(spirv_code->data())));
-
-    const std::array<vk::PipelineShaderStageCreateInfo, static_cast<size_t>(stage_indices::shader_group_max_count)> shader_stages = {
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eRaygenKHR, shaderModule, RAY_GEN_ENTRY_NAME.data()),
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule, RAY_MISS_ENTRY_NAME.data()),
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eMissKHR, shaderModule,
-                                          RAY_SHADOW_MISS_ENTRY_NAME.data()),
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eClosestHitKHR, shaderModule,
-                                          RAY_CLOSEST_HIT_ENTRY_NAME.data()),
-        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eAnyHitKHR, shaderModule,
-                                          RAY_SHADOW_ANY_HIT_ENTRY_NAME.data()),
+    constexpr std::array shader_stages = {
+        shader_stage_info{RAY_GEN_ENTRY_NAME, vk::ShaderStageFlagBits::eRaygenKHR},
+        shader_stage_info{RAY_MISS_ENTRY_NAME, vk::ShaderStageFlagBits::eMissKHR},
+        shader_stage_info{RAY_SHADOW_MISS_ENTRY_NAME, vk::ShaderStageFlagBits::eMissKHR},
+        shader_stage_info{RAY_CLOSEST_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eClosestHitKHR},
+        shader_stage_info{RAY_SHADOW_ANY_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eAnyHitKHR},
     };
 
     const std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
@@ -184,7 +171,9 @@ void scene_raytracing_render::create_pipeline_and_sbt()
     const auto props = physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
                                                       vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
     const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    pipeline.create(device, bindings, std::span(&push_constant, 1), shader_stages, shader_groups, properties.maxRayRecursionDepth);
+    pipeline.create_from_shader(device, pipeline_cache, bindings, std::span(&push_constant, 1),
+                                std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang", shader_stages, shader_groups,
+                                properties.maxRayRecursionDepth);
 
 
     // create shader binding table
