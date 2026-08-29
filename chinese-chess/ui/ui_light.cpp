@@ -3,10 +3,15 @@
 #include "scene/scene_light.h"
 #include "scene/scene_manager.h"
 
+#include <cstddef>
 #include <format>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <iterator>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
 
 
 namespace {

@@ -7,6 +7,7 @@
 #include "vulkan_core/vulkan_semaphore.h"
 
 #include <GLFW/glfw3.h>
+#include <vector>
 
 class vulkan_application;
 class scene_manager;

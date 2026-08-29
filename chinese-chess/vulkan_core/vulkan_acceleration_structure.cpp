@@ -3,6 +3,9 @@
 #include "tools/model_loader.h"
 #include "vulkan_common.h"
 
+#include <algorithm>
+#include <utility>
+
 vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration_structure&& _other) noexcept
     : scratch_alignment(std::exchange(_other.scratch_alignment, {}))
     , geometry(std::exchange(_other.geometry, {}))

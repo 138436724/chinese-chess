@@ -1,10 +1,13 @@
 #include "record_loader.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <ranges>
+#include <unicode/unistr.h>
 #include <utility>
 
 namespace {
@@ -129,12 +132,12 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
                                                the_board_state.size() + 1));
         }
 
-        if (is_player_red == is_arabic_digit(result[3]))
+        if (is_player_red == is_arabic_digit(result.charAt(3)))
         {
             return std::unexpected(std::format("Ambiguous piece order in record file."));
         }
 
-        if (!is_piece_type(result[0]) && !is_piece_type(result[1]))
+        if (!is_piece_type(result.charAt(0)) && !is_piece_type(result.charAt(1)))
         {
             return std::unexpected(std::format("Unknown piece type in record file."));
         }
@@ -148,13 +151,14 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
         const PIECE_COLOR now_color       = static_cast<PIECE_COLOR>(is_player_red);
         const PIECE_COLOR now_other_color = static_cast<PIECE_COLOR>(!is_player_red);
 
-        const PIECE_TYPE now_type = is_piece_type(result[0]) ? get_piece_type(result[0]) : get_piece_type(result[1]);
+        const PIECE_TYPE now_type =
+            is_piece_type(result.charAt(0)) ? get_piece_type(result.charAt(0)) : get_piece_type(result.charAt(1));
 
         uint8_t now_x = std::numeric_limits<uint8_t>::max();
         uint8_t now_y = std::numeric_limits<uint8_t>::max();
-        if (is_piece_type(result[0]))
+        if (is_piece_type(result.charAt(0)))
         {
-            now_x = get_digit(result[1]);
+            now_x = get_digit(result.charAt(1));
         }
         else
         {
@@ -166,7 +170,7 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
 
             std::ranges::sort(the_pieces, [](const auto& _l, const auto& _r) static { return _l->y > _r->y; });
 
-            switch (result[0])
+            switch (result.charAt(0))
             {
                 case u'前':
                     now_y = the_pieces.front()->y;
@@ -203,10 +207,11 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
             return std::unexpected(std::format("Ambiguous piece position in record file."));
         }
 
-        auto& now_piece           = now_pieces.front();
-        const auto [new_x, new_y] = move_piece(now_type, now_piece.x, now_piece.y, result[2], get_digit(result[3]));
-        now_piece.x               = new_x;
-        now_piece.y               = new_y;
+        auto& now_piece = now_pieces.front();
+        const auto [new_x, new_y] =
+            move_piece(now_type, now_piece.x, now_piece.y, result.charAt(2), get_digit(result.charAt(3)));
+        now_piece.x = new_x;
+        now_piece.y = new_y;
 
         std::erase_if(now_board.at(static_cast<size_t>(now_other_color)), [&](const auto& _piece) {
             return _piece.x == (10 - new_x) && _piece.y == (9 - new_y);  // 红方和黑方的Y是相反的

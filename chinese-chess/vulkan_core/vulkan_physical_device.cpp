@@ -1,5 +1,7 @@
 #include "vulkan_physical_device.h"
 
+#include <utility>
+
 vulkan_physical_device::vulkan_physical_device(vulkan_physical_device&& _other) noexcept
     : physical_device(std::exchange(_other.physical_device, nullptr))
     , graphic_index(std::exchange(_other.graphic_index, vk::QueueFamilyIgnored))

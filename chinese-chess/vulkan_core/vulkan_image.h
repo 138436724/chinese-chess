@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 
 class vulkan_image

@@ -6,6 +6,7 @@
 #include "vulkan_queue.h"
 #include "vulkan_recycle_bin.h"
 
+#include <array>
 #include <vulkan/utility/vk_format_utils.h>
 
 // 转换布局需要转移所有权之后，在新队列转换布局，不能交出所有权的时候转换布局

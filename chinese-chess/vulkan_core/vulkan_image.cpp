@@ -1,6 +1,9 @@
 #include "vulkan_image.h"
 
 #include <bit>
+#include <format>
+#include <stdexcept>
+#include <utility>
 
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
     : format(std::exchange(_other.format, {}))

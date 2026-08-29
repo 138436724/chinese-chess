@@ -12,6 +12,7 @@
 #include <imgui.h>
 #include <print>
 #include <ranges>
+#include <string_view>
 #include <utility>
 #ifdef _WIN32
 #include <commdlg.h>

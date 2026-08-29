@@ -2,8 +2,10 @@
 
 #include "scene/scene_manager.h"
 
+#include <array>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <string_view>
 
 
 namespace {

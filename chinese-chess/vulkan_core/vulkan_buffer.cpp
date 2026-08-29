@@ -5,6 +5,8 @@
 #include "vulkan_common.h"
 
 #include <bit>
+#include <stdexcept>
+#include <utility>
 
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
     : stage(std::exchange(_other.stage, {}))

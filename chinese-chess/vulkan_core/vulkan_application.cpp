@@ -5,6 +5,7 @@
 #include "vulkan_common.h"
 
 #include <algorithm>
+#include <array>
 #include <expected>
 #include <format>
 #include <print>

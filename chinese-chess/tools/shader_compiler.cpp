@@ -3,8 +3,8 @@
 #include "file_watcher.h"
 
 #include <algorithm>
+#include <format>
 #include <fstream>
-#include <optional>
 #include <print>
 #include <ranges>
 #include <slang-com-helper.h>

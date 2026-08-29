@@ -1,6 +1,9 @@
 #include "vulkan_device.h"
 
+#include <algorithm>
 #include <ranges>
+#include <utility>
+#include <vector>
 
 vulkan_device::vulkan_device(vulkan_device&& _other) noexcept
     : device(std::exchange(_other.device, nullptr))

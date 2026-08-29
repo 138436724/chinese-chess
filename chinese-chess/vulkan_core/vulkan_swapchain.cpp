@@ -3,8 +3,10 @@
 #include "vulkan_common.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <print>
+#include <utility>
 #include <vulkan/vulkan.hpp>
 
 vulkan_swapchain::vulkan_swapchain(vulkan_swapchain&& _other) noexcept

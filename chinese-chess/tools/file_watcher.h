@@ -11,7 +11,7 @@ class file_watcher
 {
 public:
     [[nodiscard]] static std::expected<std::string, std::string> generate_file_hash(const std::filesystem::path& _file_path);
-    [[nodiscard]] bool                 is_file_modified(const std::filesystem::path& _file_path);
+    [[nodiscard]] bool                 is_file_modified(const std::filesystem::path& _file_path) const;
     [[nodiscard]] static file_watcher& get_file_watcher() noexcept;
 
 private:
@@ -22,6 +22,6 @@ private:
     file_watcher(file_watcher&&)                 = delete;
     file_watcher& operator=(file_watcher&&)      = delete;
 
-    static file_watcher                          watcher;
-    std::unordered_map<std::string, std::string> file_watch_cache;
+    static file_watcher                                  watcher;
+    mutable std::unordered_map<std::string, std::string> file_watch_cache;
 };

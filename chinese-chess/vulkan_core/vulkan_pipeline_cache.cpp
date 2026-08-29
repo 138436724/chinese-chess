@@ -6,6 +6,7 @@
 #include <iostream>
 #include <print>
 #include <span>
+#include <stdexcept>
 #include <string_view>
 #include <system_error>
 #include <vector>

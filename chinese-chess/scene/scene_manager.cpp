@@ -13,6 +13,7 @@
 #include <print>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <vulkan/utility/vk_format_utils.h>
 
 scene_manager::~scene_manager()

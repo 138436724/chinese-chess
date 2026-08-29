@@ -4,12 +4,16 @@
 #include "scene/scene_material.h"
 #include "scene/scene_model.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <format>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <imgui.h>
 #include <iterator>
 #include <ranges>
+#include <string>
+#include <string_view>
 #ifdef _WIN32
 #include <commdlg.h>
 #endif  // _WIN32

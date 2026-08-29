@@ -2,6 +2,9 @@
 
 #include "vulkan_common.h"
 
+#include <array>
+#include <utility>
+
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
     : handle_size(std::exchange(_other.handle_size, {}))
     , handle_alignment(std::exchange(_other.handle_alignment, {}))

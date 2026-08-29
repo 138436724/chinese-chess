@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 class vulkan_application;

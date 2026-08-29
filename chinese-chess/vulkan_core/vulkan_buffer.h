@@ -1,6 +1,7 @@
 #pragma once
 
 // need replace "vk_mem_alloc.h" by <vma/vk_mem_alloc.h> if use vcpkg install
+#include <string>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 
 class vulkan_buffer

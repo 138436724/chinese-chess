@@ -2,7 +2,7 @@
 
 #include "renderdoc_app.h"
 
-#include <string>
+#include <string_view>
 
 namespace {
 constexpr std::string_view RENDERDOC_DLL = "renderdoc.dll";

@@ -12,6 +12,7 @@
 #include <array>
 #include <iterator>
 #include <ranges>
+#include <utility>
 
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&    _allocator,
                                                        const vk::raii::Device&        _device,

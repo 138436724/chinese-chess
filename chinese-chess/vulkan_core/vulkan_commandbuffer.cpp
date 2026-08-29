@@ -3,8 +3,9 @@
 #include "vulkan_queue.h"
 #include "vulkan_semaphore.h"
 
-#include <algorithm>
+#include <array>
 #include <ranges>
+#include <utility>
 
 vulkan_commandbuffer::vulkan_commandbuffer(vulkan_commandbuffer&& _other) noexcept
     : commandbuffer(std::exchange(_other.commandbuffer, nullptr))

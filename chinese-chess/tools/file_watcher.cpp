@@ -1,5 +1,6 @@
 #include "file_watcher.h"
 
+#include <array>
 #include <format>
 #include <fstream>
 #include <memory>
@@ -113,7 +114,7 @@ std::expected<std::string, std::string> file_watcher::generate_file_hash(const s
            | std::ranges::to<std::string>();
 }
 
-bool file_watcher::is_file_modified(const std::filesystem::path& _file_path)
+bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) const
 {
     const auto        file_hash = generate_file_hash(_file_path);
     const std::string file_path = _file_path.generic_string();
