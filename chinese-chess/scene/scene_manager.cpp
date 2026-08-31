@@ -1,6 +1,7 @@
 #include "scene_manager.h"
 
 #include "scene_rasterization_render.h"
+#include "scene_rayquery_render.h"
 #include "scene_raytracing_render.h"
 #include "tools/image_helper.h"
 #include "tools/ocio_helper.h"
@@ -52,16 +53,26 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     skybox_image = create(std::type_identity<scene_image>{},
                           std::filesystem::path(TEXTURES_PATH) / u8"cracked ground.hdr", true, sampler_type::sky_box);
 
-    rasterization_render = std::make_unique<scene_rasterization_render>(
-        app.get_allocator(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue,
-        compute_queue, transfer_queue, model_manager, material_manager, light_manager, render_output, color_format);
+    scene_renders.insert_or_assign(render_mode::rasterization,
+                                   pro::make_proxy<manager_render, scene_rasterization_render>(
+                                       app.get_allocator(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin,
+                                       semaphore, graphic_queue, compute_queue, transfer_queue, model_manager,
+                                       material_manager, light_manager, render_output, color_format));
 
-    raytracing_render = std::make_unique<scene_raytracing_render>(
-        app.get_allocator(), *app.get_physical_device(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin, semaphore,
-        graphic_queue, compute_queue, transfer_queue, model_manager, material_manager, light_manager, render_output);
+    scene_renders.insert_or_assign(render_mode::ray_tracing,
+                                   pro::make_proxy<manager_render, scene_raytracing_render>(
+                                       app.get_allocator(), *app.get_physical_device(), *app.get_device(),
+                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, compute_queue,
+                                       transfer_queue, model_manager, material_manager, light_manager, render_output));
 
-    // default use raytracing
-    active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
+    scene_renders.insert_or_assign(render_mode::ray_query,
+                                   pro::make_proxy<manager_render, scene_rayquery_render>(
+                                       app.get_allocator(), *app.get_physical_device(), *app.get_device(),
+                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, compute_queue,
+                                       transfer_queue, model_manager, material_manager, light_manager, render_output));
+
+    // default use raytracing pipeline
+    active_render = scene_renders.at(render_mode::ray_tracing);
 
     resize(_width, _height);
 }
@@ -235,16 +246,9 @@ void scene_manager::save_image()
     }
 }
 
-void scene_manager::set_use_ray_tracing(bool _use_ray_tracing)
+void scene_manager::set_render_mode(render_mode _mode)
 {
-    if (_use_ray_tracing)
-    {
-        active_render = pro::make_proxy_view<manager_render>(*raytracing_render);
-    }
-    else
-    {
-        active_render = pro::make_proxy_view<manager_render>(*rasterization_render);
-    }
+    active_render = scene_renders.at(_mode);
 
     // force resize and update
     active_render->resize(width, height);

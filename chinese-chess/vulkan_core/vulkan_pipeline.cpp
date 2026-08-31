@@ -34,7 +34,7 @@ namespace {
                          | std::ranges::to<std::vector>();
 
 
-    return std::make_pair(std::move(shader_module), shader_stages);
+    return std::make_pair(std::move(shader_module), std::move(shader_stages));
 }
 
 }  // namespace
@@ -76,8 +76,8 @@ void vulkan_pipeline::create(const vk::raii::Device&                            
     descriptor_set_layout =
         vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings));
 
-    vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
-    pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
+    pipeline_layout =
+        vk::raii::PipelineLayout(_device, vk::PipelineLayoutCreateInfo({}, *(descriptor_set_layout), _push_constant, nullptr));
 
     const vk::PipelineVertexInputStateCreateInfo vertex_input_info({}, _binding_description, _attribute_descriptions, nullptr);
     const vk::PipelineInputAssemblyStateCreateInfo input_assembly({}, _topology_type, vk::False, nullptr);
@@ -145,12 +145,30 @@ void vulkan_pipeline::create_from_shader(const vk::raii::Device&        _device,
     descriptor_set_layout =
         vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings));
 
-    const vk::PipelineLayoutCreateInfo pipeline_layout_info({}, *(descriptor_set_layout), _push_constant, nullptr);
-    pipeline_layout = vk::raii::PipelineLayout(_device, pipeline_layout_info);
+    pipeline_layout =
+        vk::raii::PipelineLayout(_device, vk::PipelineLayoutCreateInfo({}, *(descriptor_set_layout), _push_constant, nullptr));
 
     const auto& [shader_module, shader_stages] = compile_shader(_device, _shader_path, _shader_stages);
     const vk::RayTracingPipelineCreateInfoKHR pipeline_info({}, shader_stages, _shader_groups, _max_depth, {}, {}, {}, pipeline_layout);
     pipeline = vk::raii::Pipeline(_device, nullptr, _pipeline_cache, pipeline_info);
+}
+
+void vulkan_pipeline::create_from_shader(const vk::raii::Device&        _device,
+                                         const vk::raii::PipelineCache& _pipeline_cache,
+                                         const std::span<const vk::DescriptorSetLayoutBinding> _descriptor_set_layout_bindings,
+                                         const std::span<const vk::PushConstantRange> _push_constant,
+                                         const std::filesystem::path&                 _shader_path,
+                                         const std::span<const shader_stage_info>     _shader_stages)
+{
+    descriptor_set_layout =
+        vk::raii::DescriptorSetLayout(_device, vk::DescriptorSetLayoutCreateInfo({}, _descriptor_set_layout_bindings, {}));
+
+    pipeline_layout =
+        vk::raii::PipelineLayout(_device, vk::PipelineLayoutCreateInfo({}, *descriptor_set_layout, _push_constant, nullptr));
+
+    const auto& [shader_module, shader_stages] = compile_shader(_device, _shader_path, _shader_stages);
+    const vk::ComputePipelineCreateInfo pipeline_info({}, shader_stages.front(), pipeline_layout, nullptr, 0);
+    pipeline = vk::raii::Pipeline(_device, _pipeline_cache, pipeline_info);
 }
 
 const vk::raii::DescriptorSetLayout& vulkan_pipeline::get_descriptor_set_layout() const noexcept

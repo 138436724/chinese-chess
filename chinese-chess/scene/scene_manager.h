@@ -16,11 +16,17 @@
 #include <memory>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 class vulkan_application;
-class scene_rasterization_render;
-class scene_raytracing_render;
+
+enum class render_mode : uint32_t
+{
+    rasterization,
+    ray_tracing,
+    ray_query,
+};
 
 class scene_manager
 {
@@ -46,7 +52,7 @@ public:
                  || std::same_as<T, scene_light>)
     [[nodiscard]] auto create(Args&&... args);
 
-    void set_use_ray_tracing(bool _use_ray_tracing);
+    void set_render_mode(render_mode _mode);
 
     [[nodiscard]] bool          get_need_update() const noexcept;
     [[nodiscard]] scene_camera& get_active_camera() noexcept;
@@ -95,12 +101,11 @@ private:
 
     scene_camera active_camera;
 
-    const vk::Format color_format = vk::Format::eR16G16B16A16Sfloat;
-    vulkan_image     render_output;
+    static constexpr vk::Format color_format = vk::Format::eR16G16B16A16Sfloat;
+    vulkan_image                render_output;
 
-    std::unique_ptr<scene_rasterization_render> rasterization_render = nullptr;
-    std::unique_ptr<scene_raytracing_render>    raytracing_render    = nullptr;
-    pro::proxy_view<manager_render>             active_render        = nullptr;
+    std::unordered_map<render_mode, pro::proxy<manager_render>> scene_renders;
+    pro::proxy_view<manager_render>                             active_render = nullptr;
 };
 
 template <typename T, typename... Args>

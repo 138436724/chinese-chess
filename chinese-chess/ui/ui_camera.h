@@ -19,7 +19,7 @@ public:
 private:
     scene_manager& manager;
 
-    int active_type = static_cast<int>(projection_type::orthographic);
+    int active_type = static_cast<int>(projection_type::perspective);
 
     glm::vec4 orthographic_range    = glm::vec4(-10.f, 10.f, -10.f, 10.f);
     glm::vec2 orthographic_near_far = glm::vec2(0.1f, 100.f);

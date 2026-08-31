@@ -4,8 +4,8 @@ import scene_data;
 // ============================================================================
 // lighting.slang — 光照库模块
 // 光源数据结构在 scene_data.slang 中定义；本模块只负责：
-//   光源采样（NEE）、BRDF 评估/采样/PDF、阴影光线、MIS 权重、天空采样、高度雾
-// 被 ray_tracing.slang（和 scene_brdflut.slang）复用。
+//   光源采样（NEE）、BRDF 评估/采样/PDF、阴影光线、天空采样、高度雾
+// 被 ray_tracing.slang / ray_query.slang（和 scene_brdflut.slang）复用。
 // ============================================================================
 
 enum light_type : uint32_t
@@ -13,14 +13,6 @@ enum light_type : uint32_t
   directional = 0,
   point       = 1,
   spot        = 2
-};
-
-// ---- BRDF 类型枚举 ----
-enum brdf_type : uint32_t
-{
-  lambertian     = 0,
-  ggx            = 1,
-  disney_diffuse = 2  // Burley 2012 Disney Diffuse（粗糙表面掠射角柔化）
 };
 
 // ---- 光照采样结果（NEE 采样返回值） ----
@@ -46,19 +38,6 @@ struct shadow_payload
   bool is_shadowed;
   uint seed;  // 概率阴影（半透明穿透）用随机种子，与主路径种子解耦
 };
-
-// ---- 半球均匀采样（以法线为中心的切线空间） ----
-float3 sample_hemisphere_uniform(float3 N, inout uint seed)
-{
-  float2 r     = random_float2(seed);
-  float  z     = r.x;
-  float  r_xy  = sqrt(max(0.0, 1.0 - z * z));
-  float  phi   = 2.0 * PI * r.y;
-  float3 local = float3(r_xy * cos(phi), r_xy * sin(phi), z);
-
-  tangent_space ts = build_tangent_space(N);
-  return ts.T * local.x + ts.B * local.y + N * local.z;
-}
 
 // ---- 余弦加权半球采样（重要性采样 Lambertian BRDF） ----
 float3 sample_hemisphere_cosine(float3 N, inout uint seed)
@@ -163,22 +142,6 @@ light_sample sample_light(light_data light, float3 hit_pos, inout uint seed)
 // BRDF 函数族（Lambertian / Disney Diffuse / GGX）
 // ============================================================================
 
-// Lambertian BRDF 评估：f_r = albedo / PI
-float3 evaluate_lambertian(float3 albedo)
-{
-  return albedo * INV_PI;
-}
-
-// Lambertian BRDF 采样（余弦加权半球）：value = albedo（cos/pdf 相消）
-brdf_sample sample_lambertian(float3 albedo, float3 N, inout uint seed)
-{
-  brdf_sample bs;
-  bs.direction = sample_hemisphere_cosine(N, seed);
-  bs.value     = albedo;
-  bs.pdf       = max(0.0, dot(N, bs.direction)) * INV_PI;
-  return bs;
-}
-
 // Lambertian PDF
 float pdf_lambertian(float3 N, float3 L)
 {
@@ -186,9 +149,8 @@ float pdf_lambertian(float3 N, float3 L)
 }
 
 // Disney Diffuse BRDF 评估（Burley 2012）：粗糙表面掠射角变亮
-float3 evaluate_disney_diffuse(float3 albedo, float roughness, float3 N, float3 V, float3 L, float3 H)
+float3 evaluate_disney_diffuse(float3 albedo, float roughness, float3 N, float3 V, float3 L, float3 H, float NdotL)
 {
-  float NdotL = max(dot(N, L), 0.0f);
   float NdotV = max(dot(N, V), 0.0f);
   if(NdotL <= 0.0f || NdotV <= 0.0f)
     return float3(0.0f);
@@ -217,7 +179,7 @@ brdf_sample sample_disney_diffuse(float3 albedo, float roughness, float3 N, floa
   }
 
   float3 H = normalize(V + bs.direction);
-  bs.value = evaluate_disney_diffuse(albedo, roughness, N, V, bs.direction, H) * NdotL / pdf_lambertian(N, bs.direction);
+  bs.value = evaluate_disney_diffuse(albedo, roughness, N, V, bs.direction, H, NdotL) * NdotL / pdf_lambertian(N, bs.direction);
   bs.pdf = pdf_lambertian(N, bs.direction);
   return bs;
 }
@@ -268,31 +230,55 @@ float3 evaluate_ggx(float3 F0, float roughness, float3 N, float3 V, float3 L)
   return D * G * F / max(4.0 * NdotV * NdotL, 0.001);
 }
 
-// GGX 重要性采样（反射方向）：采样半向量再反射出射方向
+// GGX 可见法线分布（VNDF）重要性采样（Heitz 2018 "Sampling the GGX Distribution of Visible Normals"）
+// 返回采样出的反射方向 L（世界空间）。较经典 Smith 采样方差更低、firefly 更少，
+// 且采样方向保证在上半球（不会被 NdotL<=0 拒绝浪费）。
 float3 sample_ggx(float3 V, float roughness, float3 N, inout uint seed)
 {
   float2 r = random_float2(seed);
   float  a = roughness * roughness;
 
-  float  phi      = 2.0 * PI * r.x;
-  float  cosTheta = sqrt(max(0.0, (1.0 - r.y) / (1.0 + (a * a - 1.0) * r.y)));
-  float  sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-  float3 hLocal   = float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-
+  // 视线变换到切线空间（局部半球，+Z = 法线）
   tangent_space ts = build_tangent_space(N);
-  float3        H  = ts.T * hLocal.x + ts.B * hLocal.y + N * hLocal.z;
+  float3        Ve = float3(dot(V, ts.T), dot(V, ts.B), dot(V, N));
+
+  // §3.2 拉伸到椭圆体配置
+  float3 Vh = normalize(float3(a * Ve.x, a * Ve.y, Ve.z));
+
+  // §4.1 正交基（半球配置特化）
+  float  lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+  float3 T1    = lensq > 0.0 ? float3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : float3(1.0, 0.0, 0.0);
+  float3 T2    = cross(Vh, T1);
+
+  // §4.2 投影面积参数化（同心圆盘采样）
+  float r_disk = sqrt(r.x);
+  float phi    = 2.0 * PI * r.y;
+  float t1     = r_disk * cos(phi);
+  float t2     = r_disk * sin(phi);
+  float s      = 0.5 * (1.0 + Vh.z);
+  t2           = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+
+  // §4.3 重投影到半球
+  float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+
+  // §3.4 变换回椭圆体配置并归一化 → 世界空间半向量 H
+  float3 H_local = normalize(float3(a * Nh.x, a * Nh.y, max(0.0, Nh.z)));
+  float3 H       = ts.T * H_local.x + ts.B * H_local.y + N * H_local.z;
+
+  // 反射出射方向 L
   return normalize(reflect(-V, H));
 }
 
-// GGX BRDF 采样：pdf = D*NdotH/(4*VdotH)，value = fr*NdotL/pdf
+// GGX BRDF 采样（VNDF）：pdf = D·G1(V)/(4·NdotV)，value = F·G1(L)（fr·NdotL/pdf 约简）
 brdf_sample sample_ggx_brdf(float3 albedo, float3 F0, float roughness, float3 N, float3 V, inout uint seed)
 {
   brdf_sample bs;
   float3      L = sample_ggx(V, roughness, N, seed);
   bs.direction  = L;
 
+  float NdotV = max(dot(N, V), 0.0);
   float NdotL = max(dot(N, L), 0.0);
-  if(NdotL <= 0.0)
+  if(NdotV <= 0.0 || NdotL <= 0.0)
   {
     bs.value = float3(0.0);
     bs.pdf   = 0.0;
@@ -300,76 +286,18 @@ brdf_sample sample_ggx_brdf(float3 albedo, float3 F0, float roughness, float3 N,
   }
 
   float3 H     = normalize(V + L);
-  float  NdotV = max(dot(N, V), 0.0);
   float  NdotH = max(dot(N, H), 0.0);
   float  VdotH = max(dot(V, H), 0.001);
 
-  bs.pdf   = d_ggx(NdotH, roughness) * NdotH / max(4.0 * VdotH, 0.001);
-  bs.value = evaluate_ggx(F0, roughness, N, V, L) * NdotL / max(bs.pdf, 0.001);
+  // VNDF 对应项：采样分布 pdf = D·G1(V)/(4·NdotV)，吞吐量约简为 F·G1(L)
+  float  D    = d_ggx(NdotH, roughness);
+  float  G1_v = g_schlick_ggx(NdotV, roughness);
+  float  G1_l = g_schlick_ggx(NdotL, roughness);
+  float3 F    = f_schlick(F0, VdotH);
+
+  bs.pdf   = D * G1_v / max(4.0 * NdotV, 0.001);
+  bs.value = G1_l * F;
   return bs;
-}
-
-// GGX PDF（给定出射方向 L）
-float pdf_ggx(float3 N, float3 V, float3 L, float roughness)
-{
-  float3 H     = normalize(V + L);
-  float  NdotH = max(dot(N, H), 0.0);
-  float  NdotL = max(dot(N, L), 0.0);
-  float  VdotH = max(dot(V, H), 0.001);
-
-  if(NdotL <= 0.0)
-    return 0.0;
-
-  return d_ggx(NdotH, roughness) * NdotH / max(4.0 * VdotH, 0.001);
-}
-
-// 统一 BRDF 评估（按类型调度）
-float3 evaluate_brdf(uint type, float3 albedo, float3 F0, float3 N, float3 V, float3 L, float roughness)
-{
-  switch(type)
-  {
-    case brdf_type::lambertian:
-      return evaluate_lambertian(albedo);
-    case brdf_type::ggx:
-      return evaluate_ggx(F0, roughness, N, V, L);
-    case brdf_type::disney_diffuse: {
-      float3 H = normalize(V + L);
-      return evaluate_disney_diffuse(albedo, roughness, N, V, L, H);
-    }
-    default:
-      return evaluate_lambertian(albedo);
-  }
-}
-
-// 统一 BRDF 采样（按类型调度）
-brdf_sample sample_brdf(uint type, float3 albedo, float3 F0, float3 N, float3 V, float roughness, inout uint seed)
-{
-  switch(type)
-  {
-    case brdf_type::lambertian:
-      return sample_lambertian(albedo, N, seed);
-    case brdf_type::ggx:
-      return sample_ggx_brdf(albedo, F0, roughness, N, V, seed);
-    case brdf_type::disney_diffuse:
-      return sample_disney_diffuse(albedo, roughness, N, V, seed);
-    default:
-      return sample_lambertian(albedo, N, seed);
-  }
-}
-
-// 统一 BRDF PDF（按类型调度）
-float pdf_brdf(uint type, float3 N, float3 V, float3 L, float roughness)
-{
-  switch(type)
-  {
-    case brdf_type::lambertian:
-    case brdf_type::disney_diffuse:  // 分布与 Lambert 相同
-      return pdf_lambertian(N, L);
-    case brdf_type::ggx:
-      return pdf_ggx(N, V, L, roughness);
-    default:
-      return pdf_lambertian(N, L);
-  }
 }
 
 // ============================================================================
@@ -402,28 +330,6 @@ bool trace_shadow_ray(RaytracingAccelerationStructure tlas, float3 origin, float
 }
 
 // ============================================================================
-// MIS（多重重要性采样）权重
-// ============================================================================
-
-// 幂启发式（Veach 1997），β = 2
-float power_heuristic(float pdf_a, float pdf_b)
-{
-  float a2 = pdf_a * pdf_a;
-  float b2 = pdf_b * pdf_b;
-  return a2 / (a2 + b2 + 1e-5f);
-}
-
-// 球面均匀采样（天空/环境光照）
-float3 sample_uniform_sphere(inout uint seed)
-{
-  float2 r    = random_float2(seed);
-  float  z    = 1.0f - 2.0f * r.x;
-  float  r_xy = sqrt(max(0.0, 1.0 - z * z));
-  float  phi  = 2.0 * PI * r.y;
-  return float3(r_xy * cos(phi), r_xy * sin(phi), z);
-}
-
-// ============================================================================
 // 天空 / 环境光照采样
 // ============================================================================
 
@@ -442,15 +348,10 @@ float3 sample_sky(float3 direction)
   }
   else
   {
-    float t = pow(clamp(-up, 0.0f, 1.0f), 2.0f);
+    float up_ground = clamp(-up, 0.0f, 1.0f);
+    float t         = up_ground * up_ground;
     return lerp(HORIZON, GROUND, t);
   }
-}
-
-// 自定义纯色天空（保留接口，供外部扩展）
-float3 sample_sky(float3 direction, float3 sky_color)
-{
-  return sky_color;
 }
 
 // HDR 等距矩形环境贴图采样（方向 → 经纬 UV）
@@ -501,24 +402,11 @@ fog_result evaluate_height_fog(float3 origin, float3 direction, float distance, 
 
   // 太阳散射增强：视线与太阳方向越接近，散射越亮
   float sun_factor = clamp(dot(direction, sun_direction), 0.0f, 1.0f);
-  sun_factor       = pow(sun_factor, 8.0f);
+  sun_factor *= sun_factor;  // 2
+  sun_factor *= sun_factor;  // 4
+  sun_factor *= sun_factor;  // 8
   inscatter_color += (float3(1.0f) - res.transmittance) * sun_color * sun_factor * 0.5f;
 
   res.inscatter = inscatter_color;
   return res;
-}
-
-// 便捷包装：origin → hit_point 之间的雾效
-fog_result evaluate_height_fog_between(float3 origin, float3 hit_point, float density, float falloff, float3 fog_color, float3 sun_color, float3 sun_direction)
-{
-  float3 dir  = hit_point - origin;
-  float  dist = length(dir);
-  if(dist < 1e-6f)
-  {
-    fog_result f;
-    f.transmittance = float3(1.f);
-    f.inscatter     = float3(0.f);
-    return f;
-  }
-  return evaluate_height_fog(origin, dir / dist, dist, density, falloff, fog_color, sun_color, sun_direction);
 }

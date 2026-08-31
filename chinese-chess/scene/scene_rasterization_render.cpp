@@ -14,6 +14,11 @@
 #include <ranges>
 #include <utility>
 
+namespace {
+constexpr std::string_view VERT_ENTRY_NAME = "vertMain";
+constexpr std::string_view FRAG_ENTRY_NAME = "fragMain";
+}  // namespace
+
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&    _allocator,
                                                        const vk::raii::Device&        _device,
                                                        const vk::raii::PipelineCache& _pipeline_cache,
@@ -166,15 +171,16 @@ void scene_rasterization_render::reset_accumulation() noexcept {}
 
 void scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {
-    const std::array bindings{
+    constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr),
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eFragment, nullptr)};
 
-    const vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(scene_rasterization_render::push_constant));
+    constexpr vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eVertex, 0,
+                                                  sizeof(scene_rasterization_render::push_constant));
 
-    const auto binding = model_vertex::get_binding_description();
-    const auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
+    constexpr auto binding = model_vertex::get_binding_description();
+    constexpr auto attribute = model_vertex::get_attribute_descriptions<model_vertex_type::position, model_vertex_type::uv>();
 
     constexpr std::array shader_stages = {
         shader_stage_info{VERT_ENTRY_NAME, vk::ShaderStageFlagBits::eVertex},
@@ -194,7 +200,7 @@ void scene_rasterization_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_sets), "rasterization descriptor sets.");
     recycle_bin.retire(std::move(descriptor_pool), "rasterization descriptor pool.");
 
-    const std::array pool_size = {
+    constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_common::MAX_FRAMES_IN_FLIGHT)};

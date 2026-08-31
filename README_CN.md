@@ -4,9 +4,9 @@
 
 **基于 C++23 和 Vulkan 1.4 的实时 3D 中国象棋渲染引擎**
 
-支持光栅化与光线追踪双渲染模式 | 内置路径追踪器 | ACES 2.0 色彩管理
+支持光栅化 / RT Pipeline / Ray Query 三种渲染模式 | 内置路径追踪器 | ACES 2.0 色彩管理
 
-![渲染效果图](chinese-chess/resources/captures/2026_06_09_00_03_06.png)
+![渲染效果图](chinese-chess/resources/captures/2026_08_31_22_32_39.png)
 
 </div>
 
@@ -46,7 +46,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| **双渲染管线** | 前向光栅化（MSAA 多重采样 + resolve）与 Vulkan 光线追踪路径追踪，运行时一键切换 |
+| **三种渲染模式** | 前向光栅化（MSAA 多重采样 + resolve）、Vulkan 光线追踪路径追踪（RT Pipeline）、compute + ray query 路径（Ray Query，与 RT pipeline 行为一致），UI 下拉一键切换 |
 | **路径追踪器** | 最大 8 次弹射；NEE 多光源直接光照（Lambertian 漫反射 + GGX Cook-Torrance 镜面反射）；间接弹射波瓣选择（透射/GGX/漫反射） |
 | **俄罗斯轮盘赌** | 基于路径吞吐量自适应终止（p_continue < 0.05 截断） |
 | **时域累积** | 渐进式渲染，混合系数 `alpha = 1/(1 + frame_index/2)`，Wang Hash 种子按帧变化 + 子像素随机抖动抗锯齿 |
@@ -64,7 +64,7 @@
 | **现代 C++23** | 大量使用 `std::ranges`、`std::views::cartesian_product`、Concepts 约束、`std::format`/`std::println`、`std::move_only_function` |
 | **Vulkan RAII 封装** | 使用 `vulkan.hpp` C++ 绑定（`vulkan_raii`）和 VMA (Vulkan Memory Allocator) RAII 接口 |
 | **时间线信号量** | 单一时间线信号量 + 原子计数器的无栅栏 GPU-CPU 同步（组件各自持有独立的信号量与回收站） |
-| **回收站机制** | 延迟资源销毁，按 GPU 信号量值安全释放资源（Debug 回收日志由 `constexpr output=false` 编译期关闭） |
+| **回收站机制** | 延迟资源销毁，按 GPU 信号量值安全释放资源（Debug 回收日志由 `output=false` 常量经 `if constexpr` 编译期关闭） |
 | **资源状态追踪** | 每个 `vulkan_buffer`/`vulkan_image` 跟踪当前 Stage / Access / Layout / Queue，自动生成正确的 Pipeline Barrier |
 | **智能队列选择** | C++23 `cartesian_product` 穷举（图形、计算、传输、呈现）队列族组合，专用传输队列 10× 加分，最大化独立队列族数量 |
 | **两步初始化** | `vulkan_application` 分离 Instance 创建（`init`）与 Device/Swapchain 创建（`create`） |
@@ -91,12 +91,12 @@
 扩展（`vulkan_application.cpp` 中枚举）：
 
 ```
-VK_KHR_swapchain, VK_KHR_spirv_1_4, VK_KHR_synchronization2
-VK_KHR_acceleration_structure, VK_KHR_ray_tracing_pipeline
+VK_KHR_swapchain, VK_KHR_synchronization2
+VK_KHR_acceleration_structure, VK_KHR_ray_tracing_pipeline, VK_KHR_ray_query
 VK_KHR_deferred_host_operations, VK_KHR_buffer_device_address, VK_KHR_push_descriptor
 ```
 
-特性（Features2 链）：`samplerAnisotropy`、`fillModeNonSolid`、`multiDrawIndirect`、`shaderInt64`、`pushDescriptor`（1.4）、`dynamicRendering`/`synchronization2`（1.3）、`bufferDeviceAddress`/`runtimeDescriptorArray`/`scalarBlockLayout`/`timelineSemaphore`（1.2）、`shaderDrawParameters`（1.1）、`extendedDynamicState`（EXT）、加速度结构（`accelerationStructure` + CaptureReplay + UpdateAfterBind）、光线追踪（`rayTracingPipeline` + TraceRaysIndirect + PrimitiveCulling）。
+特性（Features2 链）：`samplerAnisotropy`、`fillModeNonSolid`、`multiDrawIndirect`、`shaderInt64`、`pushDescriptor`（1.4）、`dynamicRendering`/`synchronization2`/`shaderIntegerDotProduct`（1.3）、`bufferDeviceAddress`/`runtimeDescriptorArray`/`scalarBlockLayout`/`timelineSemaphore`（1.2）、`shaderDrawParameters`（1.1）、`extendedDynamicState`（EXT）、加速度结构（`accelerationStructure` + CaptureReplay + UpdateAfterBind）、光线追踪（`rayTracingPipeline` + TraceRaysIndirect + PrimitiveCulling）。
 
 ---
 
@@ -231,7 +231,8 @@ chinese-chess/
 │   ├── scene_material_manager       # 材质生命周期 + 材质 SSBO + bindless 纹理数组（KTX2 压缩、字体图集、F6 热重载）
 │   ├── scene_light_manager          # 灯光生命周期 + 灯光 SSBO
 │   ├── scene_rasterization_render   # 前向 MSAA 渲染：间接绘制、动态渲染、is_show 支持
-│   └── scene_raytracing_render      # 路径追踪：TLAS 引用、push constant 累积参数
+│   ├── scene_raytracing_render      # 路径追踪：TLAS 引用、push constant 累积参数
+│   └── scene_rayquery_render        # 路线 A 实验：compute + ray query 路径追踪（手动最近命中，9 实验模式）
 ├── ui/               (6 个类)       # ImGui 用户界面
 │   ├── ui_manager                   # ImGui 初始化、MSAA 渲染、渲染模式切换
 │   ├── ui_base                      # proxy.hpp facade 类型（多态 UI 面板）
@@ -239,8 +240,8 @@ chinese-chess/
 │   ├── ui_light                     # 灯光编辑面板（添加/删除/颜色/强度/锥角）
 │   ├── ui_node                      # 材质 + 物体管理面板（含贴图/模型文件选择）
 │   └── ui_record                    # 棋谱加载与逐步回放（ICU4C 正则解析，WASD 键导航）
-├── tools/            (9 个类)       # 工具与加载器
-│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（依赖感知 .spv 缓存 + SHA-256；std::expected 返回）
+├── tools/            (9 个模块)     # 工具与加载器（3 个单例类 + 6 个命名空间函数集）
+│   ├── shader_compiler              # Slang → SPIR-V 运行时编译（依赖感知着色器缓存 + SHA-256；std::expected 返回）
 │   ├── model_loader                 # glTF/GLB 模型加载 (fastgltf)，std::expected<model_data, std::string>
 │   ├── image_helper                 # 图像读写 PNG/EXR/HDR (OpenImageIO) + KTX2 压缩/读写（UASTC 中间格式）+ 通道合成
 │   ├── ocio_helper                  # OpenColorIO：GPU shader 生成/替换编译、LUT+UBO 上传、CPU 变换
@@ -250,14 +251,14 @@ chinese-chess/
 │   ├── string_helper                # 编码检测与转换（ICU4C）
 │   └── renderdoc_capture            # RenderDoc API 封装（v1.7.0，Debug 构建专用）
 └── resources/
-    ├── shaders/      (9 个 .slang)  # Slang 着色器源文件（含 .spv 编译缓存）
+    ├── shaders/      (10 个 .slang) # Slang 着色器源文件（编译缓存见 cache/）
     ├── fonts/        (磁盘 14 / 跟踪 2)  # 仅 LXGW WenKai GB Medium 被跟踪并用于运行时图集（其余 gitignored）
     ├── models/       (4 个 .glb)    # 棋盘、棋盘线、棋子、天空盒 + chess_all.blend 源文件
     ├── textures/     (.hdr + .ktx2) # HDR 环境贴图（cracked ground.hdr，约 90 MB；运行时生成 UASTC sidecar）
     ├── ocios/        (5 个 .ocio)   # ACES 2.0 色彩配置（studio/D60/reference/CG）+ 转换图
     ├── records/      (.txt)         # 棋谱文件（棋谱1.txt，GB2312 示例）
     ├── captures/     (.png/.exr/.rdc)  # 截图输出 + RenderDoc 捕获
-    └── cache/        (pipeline_cache.cache + file_watch_cache.cache)  # 运行期生成的缓存（gitignored）
+    └── cache/        (pipeline_cache.cache + shader_cache.cache + hash_cache.cache)  # 运行期生成的缓存（gitignored）
 ```
 
 ### 数据流
@@ -321,8 +322,9 @@ chinese-chess/
 | 着色器 | 管线 | 入口点 | 状态 / 功能 |
 |--------|------|--------|------|
 | `rasterization.slang` | Graphics | `vertMain`, `fragMain` | 使用中：前向 MSAA，Bindless 纹理，间接绘制 |
-| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + MIS、GGX/Disney 波瓣选择、玉石透射、高度雾、环境光、轮盘赌、时域累积、HDR 天空） |
-| `lighting.slang` | (module) | — | 使用中：光源采样、BRDF、阴影光线、MIS、天空采样、高度雾 |
+| `ray_tracing.slang` | RT | `rayGenMain`, `rayClosestHitMain`, `rayMissMain`, `rayShadowMissMain`, `rayShadowAnyHitMain` | 使用中：路径追踪（NEE + MIS、GGX（VNDF 采样）/Disney 波瓣选择、玉石透射、高度雾、环境光、轮盘赌、时域累积（firefly 钳制仅累积帧生效）、HDR 天空） |
+| `ray_query.slang` | Compute | `rayQueryComputeMain` | 使用中：compute + ray query 路径追踪（与 RT pipeline 行为一致：NEE/间接弹射/高度雾/时域累积；手动最近命中规避 Slang 2026.7.1 兼容问题，SPIR-V 1.6 整数点积种子） |
+| `lighting.slang` | (module) | — | 使用中：光源采样、BRDF（含 GGX VNDF 重要性采样）、阴影光线、天空采样、高度雾 |
 | `common.slang` | (module) | — | 使用中：常量、Wang Hash RNG、数学/颜色工具、Hammersley、全屏三角形 |
 | `scene_data.slang` | (module) | — | 使用中：Vertex / model_data / material_data / light_data / push constant 结构（与 C++ 对齐） |
 | `blend_image.slang` | Graphics | `vertMain`, `fragMain` | 使用中：场景+UI Alpha 合成；`ocio_conversion()` 编译期被 OCIO 代码替换 |
@@ -334,11 +336,12 @@ chinese-chess/
 ```
 common.slang ← scene_data.slang ← lighting.slang ← ray_tracing.slang
 rasterization.slang 使用 common / scene_data 模块
+ray_query.slang 使用 common / scene_data / lighting 模块
 blend_image.slang 自包含（无 import；ocio_conversion 桩函数体由 ocio_helper 替换）
 scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 ```
 
-着色器使用 **Slang** 编译为 SPIR-V（`spirv_1_4` target，最大优化级别），运行时编译并缓存 `.spv` 文件（SHA-256 判定是否重新编译，import 链任一文件变更即失效）。入口点名称定义在 `tools/shader_compiler.h` 中。
+着色器使用 **Slang** 编译为 SPIR-V（`spirv_1_6` target，最大优化级别；compute 阶段 RayQuery 需在 shader_compiler 构造函数显式声明 `spvRayQueryKHR` 能力），运行时编译并缓存于 `resources/cache/shader_cache.cache` 单一序列化文件（依赖路径与指纹共用同一分隔符；依赖列表含入口 shader 自身：逐个重算 SHA-256 与缓存指纹比对，任一变化即重编译；命中时直接返回缓存、跳过 Slang 依赖分析）。入口点名称定义在 `tools/shader_compiler.h` 中。
 
 ---
 
@@ -370,7 +373,7 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 
 - **F5 热重载编译错误会终止程序**（旧管线先回收再构造新管线，编译失败 → `std::terminate`）
 - **OCIO GPU 合成变换未生效**（描述符绑定序错位，自 binding 3 起 UBO/纹理错位；CPU 截图色彩变换正常）
-- **删除全部灯光后写入空描述符**（`nullDescriptor` 未启用）
+- **空容器写入空描述符**（`nullDescriptor` 未启用）：删光模型/材质/灯光后对应 SSBO 为空、空场景 TLAS 直接 retire，RT 描述符仍写（可能为 null 的）句柄；模型路径详见 `CLAUDE.md` #15
 - **ImGui 多视口交换链验证误报**（第三方 imgui 1.92.8，辅助视口未 acquire 即 present）
 
 ---
@@ -386,7 +389,11 @@ scene_skybox / scene_brdflut / scene_cubemap 为遗留模块（复用 common）
 2026-07  物理设备/逻辑设备封装；彻底分离传输与图像队列（时间线信号量同步）；拆分单独的时间线信号量与回收站；特定条件触发 RenderDoc 抓帧；modelmanager 统一构建 TLAS 与间接绘制命令；尽量移除 u8string
 2026-08  上旬 CMake 迁移（CMakeLists/CMakePresets 取代 .slnx/.vcxproj）+ vcpkg 子模块；scene_light 扁平结构体重构；着色器全量重写（common/scene_data 模块化、修复布局与 texture_index 守卫）；半透明玉石棋子；恒定环境光；std::expected 改造
 2026-08  中旬 KTX2 压缩管线：磁盘纹理 UASTC sidecar（内存压缩 → 同步写盘 → 加载转码 BC6H/BC7）；字体图集压缩（BC4/EAC_R11，4 对齐居中）；F6 单线程热重载（SHA-256 门控 + 同槽位重上传）；字形 padding=2 修复渗墨；细粒度脏检查（各 manager 自查 is_dirty）+ TLAS 增量 refit；F5 仅重编译激活渲染器
-2026-08  下旬 pipeline cache 定稿（独立 vulkan_pipeline_cache 单实例：启动读盘一次/退出写盘一次，F5 不读写盘；着色器编译并入 vulkan_pipeline；.spv 缓存依赖感知）；is_render_dirty 精细化重建（resize/切换零重传）；析构顺序加固（vulkan_application/scene_manager/ui_manager 析构前自行 wait，destroy() 合并进析构函数）；scene_base facade 优化（proxy_view 无需 support_*）；ui_base 约束收紧为 nothrow；修饰符规范扫描（补 7 处 [[nodiscard]]、移除 5 个错误 noexcept、[[nodiscard]] 只留 .h 声明）
+2026-08  下旬 pipeline cache 定稿（独立 vulkan_pipeline_cache 单实例：启动读盘一次/退出写盘一次，F5 不读写盘；着色器编译并入 vulkan_pipeline；着色器缓存依赖感知——单一序列化文件 shader_cache.cache）；is_render_dirty 精细化重建（resize/切换零重传）；析构顺序加固（vulkan_application/scene_manager/ui_manager 析构前自行 wait，destroy() 合并进析构函数）；scene_base facade 优化（proxy_view 无需 support_*）；ui_base 约束收紧为 nothrow；修饰符规范扫描（补 7 处 [[nodiscard]]、移除 4 个错误 noexcept（vulkan_common）、[[nodiscard]] 只留 .h 声明）
+2026-08-28  文档重扫修正：着色器缓存实为单一序列化文件 resources/cache/shader_cache.cache（非逐文件 .spv）；file_watcher 缓存实为 hash_cache.cache（非 file_watch_cache.cache）；Known Issue #3 引用改为 scene_manager.cpp:141-144 + 渲染器 recreate()；swapchain 两个 getter 的 noexcept 经复核确认按 getter 规则保留（作者决定以当前代码为准）；Known Issue #34 记录 ~vulkan_application 对未创建 device 无守卫调 waitIdle 的现状（作者决定暂不修改）；着色器缓存两级键优化（依赖列表逐文件校验，命中路径跳过 Slang loadModule，消除每次编译的依赖分析开销；缓存条目扁平化字符串字段、魔数不变，作者手动删除旧缓存文件；后移除冗余 entry_hash——Slang 依赖列表已含入口文件自身，指纹校验即覆盖入口变化；dependence/fingerprint 分隔符统一为单个 '\n'）
+2026-08-29  文档复核修正（以代码为准）：Known Issue #5 修正——代码无 dummy SSBO，空场景 TLAS 直接 retire（scene_model_manager.cpp:247-251），模型/材质/灯光三路 SSBO 空容器均跳过创建，RT 描述符仍写可能为 null 的句柄；Known Issue #8 改判 FIXED——BLAS/TLAS 构建实际已用 compute 队列（scene_model_manager.cpp:217-223 / 258-262）；Known Issue #27 数值修正——模型缩放钳制实为 [0.001, 10000]（ui_node.cpp:240）。同日代码整理：容器下标硬化仅 `record_loader.cpp` 保留 `charAt()`（ICU UnicodeString 的 `operator[]` 与 `charAt` 同实现、零开销），`vulkan_physical_device.h` 的 `.at()` 因编译失败回退为 `[]`；include 按 IWYU 清理（移除 5 处未使用、补充约 28 处缺失，含头文件自包含性，顺序交 clang-format）；`file_watcher::is_file_modified()` 改 `const` + `mutable` 哈希缓存（与 shader_compiler 缓存模式对齐）
+2026-08-31  光线追踪路线 A：新增 compute + ray query 路径追踪渲染器（`scene_rayquery_render` + `ray_query.slang`；`render_mode` 三模式枚举 + UI 下拉切换）。SPIR-V 1.6 全面升级：着色器 profile `spirv_1_6`、移除 `VK_KHR_spirv_1_4` 扩展、启用 `shaderIntegerDotProduct`、RNG 种子改用整数点积 OpUDot。Slang 2026.7.1 RayQuery 兼容问题（无候选确认 API / CommittedStatus 恒 None / CandidateInstanceID 错映射到自定义索引 / TraceRayInline 参数顺序）已逐一探测并规避（手动最近命中 + CandidateInstanceIndex），详见 `ray-tracing-extensions-plan.md` §12.6。后按作者要求移除 A2 实验模式与实验 UI，ray query 与 RT pipeline 行为对齐（时域累积/间接弹射/高度雾）
+2026-09-01  常量/函数修饰符提升（C++23 编译期优先，先 constexpr/constinit 后 const）：`color_format`→`static constexpr`、`global_counter`→`constinit`、`move_piece`/`location_transform`→`constexpr`、`vulkan_recycle_bin.h` `output`→`constexpr`；流水线创建处 vk 结构字面量（`bindings`/`push_constant`/`pool_size`、RT `shader_groups` 改 `constexpr std::array`）提升；`scene_camera` 平凡 getter 移入头文件 `constexpr`（值类型）；GPU 包装类 getter 与 `owner_less` 局部 constexpr 经复核回退（空洞/噪音）。着色器优化与质量改进：GGX 间接弹射改真正 VNDF 重要性采样（Heitz 2018，pdf=D·G1(V)/(4·NdotV)、value=F·G1(L)，方差更低、无被拒采样）；firefly 钳制仅累积帧生效（修首帧/相机移动后陈旧均值压暗）；`lighting.slang` 死代码清理（~150 行）与重复求值消除（`sample_ggx_brdf` 内联 GGX 评估、Disney 复用 NdotL）；整数幂 pow 改乘法
 ```
 
 ---

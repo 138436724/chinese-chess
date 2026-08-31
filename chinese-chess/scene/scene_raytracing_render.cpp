@@ -26,6 +26,13 @@ enum class stage_indices : uint32_t
     anyhit_shadow,
     shader_group_max_count
 };
+
+constexpr std::string_view RAY_GEN_ENTRY_NAME            = "rayGenMain";
+constexpr std::string_view RAY_MISS_ENTRY_NAME           = "rayMissMain";
+constexpr std::string_view RAY_SHADOW_MISS_ENTRY_NAME    = "rayShadowMissMain";
+constexpr std::string_view RAY_CLOSEST_HIT_ENTRY_NAME    = "rayClosestHitMain";
+constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain";
+
 }  // namespace
 
 scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&     _allocator,
@@ -133,7 +140,7 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
 void scene_raytracing_render::create_pipeline_and_sbt()
 {
     // create pipeline
-    const std::array bindings{
+    constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eAll, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
@@ -142,7 +149,7 @@ void scene_raytracing_render::create_pipeline_and_sbt()
         vk::DescriptorSetLayoutBinding(5, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eAll, nullptr),
     };
 
-    const vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_raytracing_render::push_constant));
+    constexpr vk::PushConstantRange push_constant(vk::ShaderStageFlagBits::eAll, 0, sizeof(scene_raytracing_render::push_constant));
 
     constexpr std::array shader_stages = {
         shader_stage_info{RAY_GEN_ENTRY_NAME, vk::ShaderStageFlagBits::eRaygenKHR},
@@ -152,7 +159,7 @@ void scene_raytracing_render::create_pipeline_and_sbt()
         shader_stage_info{RAY_SHADOW_ANY_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eAnyHitKHR},
     };
 
-    const std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shader_groups = {
+    constexpr std::array shader_groups = {
         // Group 0: Ray generation (general)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eGeneral, std::to_underlying(stage_indices::ray_gen)),
         // Group 1: Primary miss (general)
@@ -201,7 +208,7 @@ void scene_raytracing_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_sets), "ray tracing descriptor sets.");
     recycle_bin.retire(std::move(descriptor_pool), "ray tracing descriptor pool.");
 
-    const std::array pool_size = {
+    constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 3 * vulkan_common::MAX_FRAMES_IN_FLIGHT),

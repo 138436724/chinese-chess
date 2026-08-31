@@ -12,14 +12,7 @@
 
 #define SHADER_COMPILER shader_compiler::get_shader_compiler()
 
-constexpr std::string_view VERT_ENTRY_NAME               = "vertMain";
-constexpr std::string_view FRAG_ENTRY_NAME               = "fragMain";
-constexpr std::string_view RAY_GEN_ENTRY_NAME            = "rayGenMain";
-constexpr std::string_view RAY_MISS_ENTRY_NAME           = "rayMissMain";
-constexpr std::string_view RAY_SHADOW_MISS_ENTRY_NAME    = "rayShadowMissMain";
-constexpr std::string_view RAY_CLOSEST_HIT_ENTRY_NAME    = "rayClosestHitMain";
-constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain";
-constexpr std::string_view SHADERS_PATH                  = "resources\\shaders\\";
+constexpr std::string_view SHADERS_PATH = "resources\\shaders\\";
 
 class shader_compiler
 {
@@ -41,7 +34,7 @@ private:
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;
 
-    std::array<slang::CompilerOptionEntry, 4> options;
+    std::array<slang::CompilerOptionEntry, 5> options;
     slang::TargetDesc                         target_desc;
     slang::SessionDesc                        session_desc;
 

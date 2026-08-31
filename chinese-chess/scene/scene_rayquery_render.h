@@ -1,7 +1,7 @@
 #pragma once
 
+#include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_pipeline.h"
-#include "vulkan_core/vulkan_shader_binding_table.h"
 
 #include <glm/glm.hpp>
 #include <limits>
@@ -12,28 +12,27 @@ class scene_camera;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
-class vulkan_image;
 class scene_model_manager;
 class scene_material_manager;
 class scene_light_manager;
 
-class scene_raytracing_render
+class scene_rayquery_render
 {
 public:
-    scene_raytracing_render(const vma::raii::Allocator&     _allocator,
-                            const vk::raii::PhysicalDevice& _physical_device,
-                            const vk::raii::Device&         _device,
-                            const vk::raii::PipelineCache&  _pipeline_cache,
-                            vulkan_recycle_bin&             _recycle_bin,
-                            vulkan_semaphore&               _semaphore,
-                            const vulkan_queue&             _graphic_queue,
-                            const vulkan_queue&             _compute_queue,
-                            const vulkan_queue&             _transfer_queue,
-                            const scene_model_manager&      _model_manager,
-                            const scene_material_manager&   _material_manager,
-                            const scene_light_manager&      _light_manager,
-                            vulkan_image&                   _render_output);
-    ~scene_raytracing_render() = default;
+    scene_rayquery_render(const vma::raii::Allocator&     _allocator,
+                          const vk::raii::PhysicalDevice& _physical_device,
+                          const vk::raii::Device&         _device,
+                          const vk::raii::PipelineCache&  _pipeline_cache,
+                          vulkan_recycle_bin&             _recycle_bin,
+                          vulkan_semaphore&               _semaphore,
+                          const vulkan_queue&             _graphic_queue,
+                          const vulkan_queue&             _compute_queue,
+                          const vulkan_queue&             _transfer_queue,
+                          const scene_model_manager&      _model_manager,
+                          const scene_material_manager&   _material_manager,
+                          const scene_light_manager&      _light_manager,
+                          vulkan_image&                   _render_output);
+    ~scene_rayquery_render() = default;
 
     void resize(uint32_t _width, uint32_t _height);
     void update();
@@ -42,7 +41,7 @@ public:
     void reset_accumulation() noexcept;
 
 private:
-    void create_pipeline_and_sbt();
+    void create_pipeline();
     void update_descriptor();
 
 private:
@@ -78,5 +77,4 @@ private:
     vulkan_pipeline                      pipeline;
     vk::raii::DescriptorPool             descriptor_pool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptor_sets;
-    vulkan_shader_binding_table          sbt;
 };

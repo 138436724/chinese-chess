@@ -55,18 +55,17 @@ struct HitPayload
 [shader("raygeneration")]
 void rayGenMain()
 {
-  float2 launchID   = (float2)DispatchRaysIndex().xy;       // 当前像素
+  uint2  launchID   = DispatchRaysIndex().xy;                // 当前像素
   float2 launchSize = (float2)DispatchRaysDimensions().xy;  // 图像尺寸
 
   // 背面剔除：闭合几何可加快 BVH 遍历
   const uint rayFlags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
   // 初始化 RNG 种子：像素 + 帧号（必须在子像素抖动前）
-  uint2 pixelIndex = DispatchRaysIndex().xy;
-  uint  seed = wang_hash(pixelIndex.x * 1664525u + pixelIndex.y * 1013904223u + push_const.frame_index * 0x9e3779b9u);
+  uint seed = wang_hash(launchID.x * 1664525u + launchID.y * 1013904223u + push_const.frame_index * 0x9e3779b9u);
 
   // 子像素抖动：每帧随机偏移 [0,1) 像素，时域累积实现抗锯齿
-  float2 clipCoords = (launchID + random_float2(seed)) / launchSize * 2.f - 1.f;
+  float2 clipCoords = (float2(launchID) + random_float2(seed)) / launchSize * 2.f - 1.f;
 
   // 近/远平面逆投影（Vulkan NDC 深度 [0,1]）
   float4 nearPointV = mul(push_const.proj_inv_matrix, float4(clipCoords, 0.f, 1.f));
@@ -97,12 +96,17 @@ void rayGenMain()
   // ---- 时域累积 ----
   float3 prev_color = render_output[int2(launchID)].rgb;
 
-  // Firefly 钳制：新采样亮度不超过已累积均值 × 4
-  float prev_lum = max(luminance(prev_color), 0.01f);
-  float new_lum  = luminance(payload.color);
-  if(new_lum > prev_lum * 4.0f)
+  // Firefly 钳制：新采样亮度不超过已累积均值 × 4。
+  // 仅在累积帧生效（frame_index > 0）：重置后的首帧 alpha=1 整帧替换，
+  // 此时 render_output 仍是旧视角画面，拿陈旧均值钳制会把新采样错误压暗。
+  if(push_const.frame_index > 0u)
   {
-    payload.color *= (prev_lum * 4.0f) / max(new_lum, 1e-6f);
+    float prev_lum = max(luminance(prev_color), 0.01f);
+    float new_lum  = luminance(payload.color);
+    if(new_lum > prev_lum * 4.0f)
+    {
+      payload.color *= (prev_lum * 4.0f) / max(new_lum, 1e-6f);
+    }
   }
 
   // 自适应混合：早期快速收敛（近 EMA），后期接近算术平均
@@ -259,7 +263,8 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
   }
 
   // 介质界面 Fresnel（基于 ior）
-  float f0_dielectric = pow((material_ior - 1.f) / (material_ior + 1.f), 2.f);
+  float f0_dielectric = (material_ior - 1.f) / (material_ior + 1.f);
+  f0_dielectric *= f0_dielectric;
   float F_interface   = f0_dielectric + (1.f - f0_dielectric) * pow5(1.f - abs(dot(ray_dir, N_face)));
 
   float specular_prob = clamp(lerp(max_component(kS), 1.f, material_metallic), 0.05f, 0.95f);

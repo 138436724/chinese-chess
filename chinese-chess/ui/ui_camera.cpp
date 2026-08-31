@@ -54,7 +54,7 @@ void ui_camera::update() noexcept
 {
     ImGui::SeparatorText(CAMERA_SETTING.data());
 
-    const std::array all_camera_types = {
+    constexpr std::array all_camera_types = {
         ORTHOGRAPHIC_CAMERA.data(),
         PERSPECTIVE_CAMERA.data(),
     };

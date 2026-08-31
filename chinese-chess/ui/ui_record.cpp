@@ -29,7 +29,11 @@ constexpr std::string_view NEXT_STEP       = "下一步";
 
 constexpr uint32_t board_font_padding = 2;
 
-[[nodiscard]] glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
+constexpr float chess_board_z      = -1.5f;
+constexpr float chess_board_line_z = -1.45f;
+constexpr float chess_piece_z      = -1.4f;
+
+[[nodiscard]] constexpr glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
 {
     // 棋盘中心为坐标的(0, 0)点，而右下和左上作为双方棋子的定位原点
     glm::vec2 location{};
@@ -80,20 +84,21 @@ ui_record::ui_record(scene_manager& _manager)
     chess_board_material->foreground_color = glm::vec3(0., 0., 0.);
 
     chess_board               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_board.glb");
-    chess_board->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -7.f));
+    chess_board->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_z));
     chess_board->custom_index = 0u;
     chess_board->material     = std::move(chess_board_material);
 
 
     // create board line
     chess_board_line               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_board_line.glb");
-    chess_board_line->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
+    chess_board_line->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_line_z));
     chess_board_line->custom_index = 1u;
 
 
     // create all pieces and all materials
     std::ranges::for_each(all_chess_pieces, [this](auto& p) {
         p               = manager.create<scene_model>(std::string(MODELS_PATH) + "chess_piece.glb");
+        p->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_piece_z));
         p->custom_index = 2u;
     });
 }
@@ -273,7 +278,7 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         sp->is_show                = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
-                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), -3.f));
+                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), chess_piece_z));
     });
 
     index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
@@ -284,7 +289,7 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         sp->is_show                = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
-                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), -3.f));
+                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), chess_piece_z));
     });
 
     manager.need_update();

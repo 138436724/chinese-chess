@@ -20,7 +20,7 @@ constexpr std::string_view shader_cache_path   = "resources\\cache\\shader_cache
 constexpr std::string_view shader_cache_header = "shader_cache_header";
 constexpr char             split_char          = '\n';
 
-int global_counter = 0;
+constinit int global_counter = 0;
 
 [[nodiscard]] std::string get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
 {
@@ -183,6 +183,12 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
 
 shader_compiler::shader_compiler()
 {
+    const auto result = slang::createGlobalSession(global_session.writeRef());
+    if (!SLANG_SUCCEEDED(result))
+    {
+        throw std::runtime_error("Cannot create global session.");
+    }
+
     options = {
         slang::CompilerOptionEntry{
             slang::CompilerOptionName::EmitSpirvDirectly,
@@ -200,16 +206,14 @@ shader_compiler::shader_compiler()
             slang::CompilerOptionName::MatrixLayoutColumn,
             {slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},
         },
+        slang::CompilerOptionEntry{
+            slang::CompilerOptionName::Capability,
+            {slang::CompilerOptionValueKind::Int, global_session->findCapability("spvRayQueryKHR"), 0, nullptr, nullptr},
+        },
     };
 
-    const auto result = slang::createGlobalSession(global_session.writeRef());
-    if (!SLANG_SUCCEEDED(result))
-    {
-        throw std::runtime_error("Cannot create global session.");
-    }
-
     target_desc.format  = SLANG_SPIRV;
-    target_desc.profile = global_session->findProfile("spirv_1_4");
+    target_desc.profile = global_session->findProfile("spirv_1_6");
 
     session_desc.targets                  = &target_desc;
     session_desc.targetCount              = 1;

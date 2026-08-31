@@ -50,7 +50,7 @@ void ui_light::update()
 {
     ImGui::SeparatorText(LIGHT_MANAGER.data());
 
-    const std::array all_light_types = {DIRECTIONAL_LIGHT.data(), POINT_LIGHT.data(), SPOT_LIGHT.data()};
+    constexpr std::array all_light_types = {DIRECTIONAL_LIGHT.data(), POINT_LIGHT.data(), SPOT_LIGHT.data()};
     ImGui::Combo(LIGHT_TYPE.data(), &add_light_type, all_light_types.data(), static_cast<int>(all_light_types.size()));
 
     if (ImGui::Button(ADD_LIGHT.data()))

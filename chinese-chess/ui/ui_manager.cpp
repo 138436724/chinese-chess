@@ -18,9 +18,12 @@
 
 
 namespace {
-constexpr std::string_view SCENE_SETTING   = "场景设置";
-constexpr std::string_view SCENE_MANAGER   = "场景管理";
-constexpr std::string_view USE_RAY_TRACING = "使用光线追踪";
+constexpr std::string_view SCENE_SETTING             = "场景设置";
+constexpr std::string_view SCENE_MANAGER             = "场景管理";
+constexpr std::string_view RENDER_MODE               = "渲染模式";
+constexpr std::string_view RENDER_MODE_RASTERIZATION = "光栅化";
+constexpr std::string_view RENDER_MODE_RAY_TRACING   = "光线追踪 (RT Pipeline)";
+constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)";
 }  // namespace
 
 
@@ -70,7 +73,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
 
     graphic_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eGraphics));
 
-    const std::array                   pool_size{vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1),
+    constexpr std::array               pool_size{vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1),
                                                  vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1)};
     const vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(*app.get_device(), pool_info);
@@ -147,7 +150,7 @@ void ui_manager::update()
 
     ImGui::Begin(SCENE_SETTING.data(), &show_demo_window);
 
-    ray_tracing_ui();
+    render_mode_ui();
     std::ranges::for_each(ui_managers, [](auto& m) static { m->update(); });
 
     ImGui::End();
@@ -222,12 +225,15 @@ vulkan_image& ui_manager::get_render_image() noexcept
     return render_output;
 }
 
-void ui_manager::ray_tracing_ui() noexcept
+void ui_manager::render_mode_ui() noexcept
 {
     ImGui::SeparatorText(SCENE_MANAGER.data());
 
-    if (ImGui::Checkbox(USE_RAY_TRACING.data(), &use_ray_tracing))
+    constexpr std::array render_mode_names = {RENDER_MODE_RASTERIZATION.data(), RENDER_MODE_RAY_TRACING.data(),
+                                              RENDER_MODE_RAY_QUERY.data()};
+
+    if (ImGui::Combo(RENDER_MODE.data(), &current_mode, render_mode_names.data(), static_cast<int>(render_mode_names.size())))
     {
-        manager.set_use_ray_tracing(use_ray_tracing);
+        manager.set_render_mode(static_cast<render_mode>(current_mode));
     }
 }

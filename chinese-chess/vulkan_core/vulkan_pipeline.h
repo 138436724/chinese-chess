@@ -63,6 +63,13 @@ public:
                             const std::span<const vk::RayTracingShaderGroupCreateInfoKHR> _shader_groups,
                             uint32_t                                                      _max_depth);
 
+    void create_from_shader(const vk::raii::Device&                               _device,
+                            const vk::raii::PipelineCache&                        _pipeline_cache,
+                            const std::span<const vk::DescriptorSetLayoutBinding> _descriptor_set_layout_bindings,
+                            const std::span<const vk::PushConstantRange>          _push_constant,
+                            const std::filesystem::path&                          _shader_path,
+                            const std::span<const shader_stage_info>              _shader_stages);
+
     [[nodiscard]] const vk::raii::DescriptorSetLayout& get_descriptor_set_layout() const noexcept;
     [[nodiscard]] const vk::raii::PipelineLayout&      get_pipeline_layout() const noexcept;
     [[nodiscard]] const vk::raii::Pipeline&            get_pipeline() const noexcept;

@@ -26,7 +26,7 @@ public:
     void release() noexcept;
 
 private:
-    const inline static bool                                         output    = false;
+    constexpr inline static bool                                     output    = false;
     const vulkan_semaphore*                                          semaphore = nullptr;
     std::deque<std::pair<uint64_t, std::move_only_function<void()>>> resources;
 };

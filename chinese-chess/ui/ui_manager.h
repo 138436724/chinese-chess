@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scene/scene_manager.h"
 #include "ui_base.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
@@ -10,7 +11,6 @@
 #include <vector>
 
 class vulkan_application;
-class scene_manager;
 class vulkan_commandbuffer;
 struct ImDrawData;
 
@@ -28,8 +28,7 @@ public:
     [[nodiscard]] vulkan_image& get_render_image() noexcept;
 
 private:
-    void ray_tracing_ui() noexcept;
-    bool use_ray_tracing = true;
+    void render_mode_ui() noexcept;
 
 private:
     vk::Format color_format = vk::Format::eUndefined;
@@ -47,6 +46,7 @@ private:
 
     scene_manager&                   manager;
     std::vector<pro::proxy<ui_base>> ui_managers;
+    int                              current_mode = static_cast<int>(render_mode::ray_tracing);
 
     std::vector<vulkan_commandbuffer> commandbuffers;
     uint32_t                          current_frame = 0;

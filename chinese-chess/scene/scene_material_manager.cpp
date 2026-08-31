@@ -291,8 +291,8 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
     if (_is_hdr)
     {
-        const vk::Format image_format = vk::Format::eR16G16B16A16Sfloat;
-        auto             image_data_result =
+        constexpr vk::Format image_format = vk::Format::eR16G16B16A16Sfloat;
+        auto                 image_data_result =
             image_helper::read_image<half>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
         if (!image_data_result)
         {
@@ -309,8 +309,8 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     }
     else
     {
-        const vk::Format image_format = vk::Format::eR8G8B8A8Unorm;
-        auto             image_data_result =
+        constexpr vk::Format image_format = vk::Format::eR8G8B8A8Unorm;
+        auto                 image_data_result =
             image_helper::read_image<uint8_t>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
         if (!image_data_result)
         {

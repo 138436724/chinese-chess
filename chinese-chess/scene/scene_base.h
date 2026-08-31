@@ -31,6 +31,9 @@ struct manager_render : pro::facade_builder
     ::add_convention<mem_render_render, void(const scene_camera&, const vk::raii::CommandBuffer&, uint32_t)>
     ::add_convention<mem_render_recreate, void()>
     ::add_convention<mem_render_reset_accumulation, void()>
+    ::add_skill<pro::skills::as_view>
+    ::support_relocation<pro::constraint_level::nothrow>
+    ::support_destruction<pro::constraint_level::nothrow>
     ::build
 {
 };
