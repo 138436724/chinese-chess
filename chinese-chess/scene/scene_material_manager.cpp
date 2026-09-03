@@ -21,16 +21,16 @@
 
 namespace {
 
-struct material_data
+struct material_data  // scalar layout
 {
-    alignas(16) glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
-    uint32_t texture_index                 = std::numeric_limits<uint32_t>::max();
-    alignas(16) glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
-    float roughness                        = 0.5f;
-    alignas(16) float metallic             = 0.0f;
-    float opacity                          = 1.0f;
-    float ior                              = 1.5f;
-    float transmission                     = 0.0f;
+    glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
+    uint32_t  texture_index    = std::numeric_limits<uint32_t>::max();
+    glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
+    float     roughness        = 0.5f;
+    float     metallic         = 0.0f;
+    float     opacity          = 1.0f;
+    float     ior              = 1.5f;
+    float     transmission     = 0.0f;
 };
 
 [[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_and_compress_to_ktx2(const std::filesystem::path& _source_path, bool _is_hdr)
@@ -373,6 +373,16 @@ void scene_material_manager::clear()
 void scene_material_manager::need_update() noexcept
 {
     is_dirty = true;
+}
+
+size_t scene_material_manager::get_materials_size() const noexcept
+{
+    return materials.size();
+}
+
+size_t scene_material_manager::get_textures_size() const noexcept
+{
+    return images.size();
 }
 
 const vulkan_buffer& scene_material_manager::get_ssbo_buffer() const noexcept

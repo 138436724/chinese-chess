@@ -28,9 +28,9 @@ public:
 
     void need_update() noexcept;
 
+    [[nodiscard]] size_t               get_lights_size() const noexcept;
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
 
-    [[nodiscard]] const std::vector<std::weak_ptr<scene_light>>& get_lights() const noexcept;
 
 private:
     void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);

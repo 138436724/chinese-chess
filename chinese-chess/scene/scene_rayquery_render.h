@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan_core/vulkan_buffer.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_pipeline.h"
 
@@ -45,15 +46,6 @@ private:
     void update_descriptor();
 
 private:
-    struct push_constant
-    {
-        alignas(16) glm::mat4x4 proj_inv_matrix;
-        alignas(16) glm::mat4x4 view_inv_matrix;
-        alignas(16) uint32_t hdr_skybox_id = std::numeric_limits<uint32_t>::max();
-        uint32_t light_count               = 0;
-        uint32_t frame_index               = 0;
-    };
-
     const vma::raii::Allocator&     allocator;
     const vk::raii::PhysicalDevice& physical_device;
     const vk::raii::Device&         device;
@@ -73,6 +65,9 @@ private:
     uint32_t height        = 0;
     uint32_t current_frame = 0;
     uint32_t frame_index   = 0;
+
+    vk::DeviceSize ubo_offset = 0;
+    vulkan_buffer  ubo;
 
     vulkan_pipeline                      pipeline;
     vk::raii::DescriptorPool             descriptor_pool = nullptr;

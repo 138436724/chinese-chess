@@ -10,16 +10,16 @@
 #include <utility>
 
 namespace {
-struct light_data
+struct light_data  // scalar layout
 {
-    alignas(16) glm::vec3 color        = glm::vec3(1.f);
-    uint32_t active_type               = std::to_underlying(light_type::directional);
-    alignas(16) glm::vec3 direction    = glm::vec3(0.f, -1.f, 0.f);
-    float intensity                    = 1.f;
-    alignas(16) glm::vec3 position     = glm::vec3(0.f);
-    float range                        = 10.f;
-    alignas(16) float inner_cone_angle = glm::radians(15.f);
-    float outer_cone_angle             = glm::radians(30.f);
+    glm::vec3 color            = glm::vec3(1.f);
+    uint32_t  active_type      = std::to_underlying(light_type::directional);
+    glm::vec3 direction        = glm::vec3(0.f, -1.f, 0.f);
+    float     intensity        = 1.f;
+    glm::vec3 position         = glm::vec3(0.f);
+    float     range            = 10.f;
+    float     inner_cone_angle = glm::radians(15.f);
+    float     outer_cone_angle = glm::radians(30.f);
 };
 }  // namespace
 
@@ -79,14 +79,14 @@ void scene_light_manager::need_update() noexcept
     is_dirty = true;
 }
 
+size_t scene_light_manager::get_lights_size() const noexcept
+{
+    return lights.size();
+}
+
 const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
 {
     return ssbo;
-}
-
-const std::vector<std::weak_ptr<scene_light>>& scene_light_manager::get_lights() const noexcept
-{
-    return lights;
 }
 
 void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)

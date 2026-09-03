@@ -28,15 +28,10 @@ static const float PIECE_THICKNESS         = 0.04f;  // 棋子厚度（Beer-Lamb
 static const float JADE_BASE_ABSORPTION    = 12.0f;  // 玉石底吸收系数：T = exp(-density × thickness)；调大 = 更不透
 static const float JADE_ENGRAVE_ABSORPTION = 30.0f;  // 刻字区额外吸收（按 alpha 贴图权重叠加，刻痕更暗更实）
 
-[[vk::push_constant]]
-ConstantBuffer<rt_push_constant> push_const;                        // 相机逆矩阵 + 场景信息（scene_data.slang）
-RaytracingAccelerationStructure  top_level_acceleration_structure;  // 场景加速结构
-RWTexture2D<float4>              render_output;                     // 输出图像（时域累积）
-StructuredBuffer<model_data>     models;                            // 模型运行时数据（binding 2）
-StructuredBuffer<material_data>  materials;                         // 材质数据（binding 3）
-StructuredBuffer<light_data>     lights;                            // 灯光数据（binding 4）
-Sampler2D[] samplers;                                               // bindless 纹理数组（binding 5）
-// 注意：SSBO 默认 std430 布局，UBO 为 std140。
+RaytracingAccelerationStructure top_level_acceleration_structure;  // b0
+RWTexture2D<float4>             render_output;                     // b1(时域累积输出)
+ConstantBuffer<rt_scene_data> scene_params;
+Sampler2D[] samplers;                                              // b2(bindless 纹理数组)
 
 // ---- 光线载荷：沿路径传递累积辐射度与吞吐量 ----
 struct HitPayload
@@ -62,19 +57,19 @@ void rayGenMain()
   const uint rayFlags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
 
   // 初始化 RNG 种子：像素 + 帧号（必须在子像素抖动前）
-  uint seed = wang_hash(launchID.x * 1664525u + launchID.y * 1013904223u + push_const.frame_index * 0x9e3779b9u);
+  uint seed = wang_hash(launchID.x * 1664525u + launchID.y * 1013904223u + scene_params.frame_index * 0x9e3779b9u);
 
   // 子像素抖动：每帧随机偏移 [0,1) 像素，时域累积实现抗锯齿
   float2 clipCoords = (float2(launchID) + random_float2(seed)) / launchSize * 2.f - 1.f;
 
   // 近/远平面逆投影（Vulkan NDC 深度 [0,1]）
-  float4 nearPointV = mul(push_const.proj_inv_matrix, float4(clipCoords, 0.f, 1.f));
-  float4 farPointV  = mul(push_const.proj_inv_matrix, float4(clipCoords, 1.f, 1.f));
+  float4 nearPointV = mul(scene_params.proj_inv_matrix, float4(clipCoords, 0.f, 1.f));
+  float4 farPointV  = mul(scene_params.proj_inv_matrix, float4(clipCoords, 1.f, 1.f));
   nearPointV /= nearPointV.w;
   farPointV /= farPointV.w;
 
-  float3 worldNear = mul(push_const.view_inv_matrix, nearPointV).xyz;
-  float3 worldFar  = mul(push_const.view_inv_matrix, farPointV).xyz;
+  float3 worldNear = mul(scene_params.view_inv_matrix, nearPointV).xyz;
+  float3 worldFar  = mul(scene_params.view_inv_matrix, farPointV).xyz;
 
   RayDesc ray;
   ray.Origin    = worldNear;
@@ -99,7 +94,7 @@ void rayGenMain()
   // Firefly 钳制：新采样亮度不超过已累积均值 × 4。
   // 仅在累积帧生效（frame_index > 0）：重置后的首帧 alpha=1 整帧替换，
   // 此时 render_output 仍是旧视角画面，拿陈旧均值钳制会把新采样错误压暗。
-  if(push_const.frame_index > 0u)
+  if(scene_params.frame_index > 0u)
   {
     float prev_lum = max(luminance(prev_color), 0.01f);
     float new_lum  = luminance(payload.color);
@@ -111,7 +106,7 @@ void rayGenMain()
 
   // 自适应混合：早期快速收敛（近 EMA），后期接近算术平均
   // alpha = 1 / (1 + N/2)
-  float  alpha       = 1.0f / (1.0f + float(push_const.frame_index) * 0.5f);
+  float  alpha       = 1.0f / (1.0f + float(scene_params.frame_index) * 0.5f);
   float3 final_color = lerp(prev_color, payload.color, alpha);
 
   render_output[int2(launchID)] = float4(final_color, 1.f);
@@ -127,7 +122,7 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
   uint32_t model_index = InstanceIndex();
   float2   bary        = attr.barycentrics;
 
-  model_data now_model = models[model_index];
+  model_data now_model = scene_params.models[model_index];
 
   uint32_t i0 = now_model.index_address[primitiveID * 3u + 0u];
   uint32_t i1 = now_model.index_address[primitiveID * 3u + 1u];
@@ -154,16 +149,18 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
   float  material_ior          = 1.5f;
   float  material_transmission = 0.0f;
 
-  if(now_model.material_index != 0xFFFFFFFFu)
+  // 材质守卫：material_index < material_count（计数上界；0xFFFFFFFF 无材质哨兵恒 ≥ count，
+  // 故单条比较同时覆盖"无材质"与"越界/悬空索引"，后者经 buffer address 解引用会直接 GPU 故障）
+  if(now_model.material_index < scene_params.material_count)
   {
-    material_data now_material = materials[now_model.material_index];
+    material_data now_material = scene_params.materials[now_model.material_index];
     material_roughness         = now_material.roughness;
     material_metallic          = now_material.metallic;
     material_opacity           = now_material.opacity;
     material_ior               = now_material.ior;
     material_transmission      = now_material.transmission;
 
-    if(now_material.texture_index != 0xFFFFFFFFu)
+    if(now_material.texture_index < scene_params.texture_count)
     {
       Sampler2D now_texture  = samplers[now_material.texture_index];
       float     weight       = now_texture.SampleLevel(uv, 0.f).x;
@@ -195,9 +192,9 @@ void rayClosestHitMain(inout HitPayload payload, in BuiltInTriangleIntersectionA
   float clamped_roughness = max(material_roughness, 0.04f);
 
   float3 direct_lighting = float3(0.f);
-  for(uint li = 0; li < push_const.light_count; li++)
+  for(uint li = 0; li < scene_params.light_count; li++)
   {
-    light_data light = lights[li];
+    light_data light = scene_params.lights[li];
     if(light.intensity <= 0.0f)
       continue;
 
@@ -362,10 +359,11 @@ void rayMissMain(inout HitPayload payload)
 {
   float3 sky_color = sample_sky(WorldRayDirection());
 
-  if(push_const.skybox_index != 0xFFFFFFFFu)
+  // 天空索引守卫：0xFFFFFFFF（无 HDR 天空）恒 ≥ texture_count → 走程序化天空回退
+  if(scene_params.skybox_index < scene_params.texture_count)
   {
     // 尝试 HDR 环境贴图；过暗时回退程序化天空，保证 MISS 路径有基础亮度
-    float3 hdr_color = sample_hdr_sky(WorldRayDirection(), samplers[push_const.skybox_index]);
+    float3 hdr_color = sample_hdr_sky(WorldRayDirection(), samplers[scene_params.skybox_index]);
     float  hdr_lum   = luminance(hdr_color);
     sky_color        = (hdr_lum > 0.02f) ? hdr_color : sky_color;
   }
@@ -397,16 +395,19 @@ void rayShadowMissMain(inout shadow_payload payload)
 [shader("anyhit")]
 void rayShadowAnyHitMain(inout shadow_payload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
-  uint32_t   model_index = InstanceIndex();
-  model_data now_model   = models[model_index];
-  if(now_model.material_index != 0xFFFFFFFFu)
+  // 阴影只判半透明:按需取字段,避免整拷 model_data / material_data
+  // (阴影 any-hit 是调用最频繁的入口之一)
+  float    opacity        = 1.f;
+  uint32_t material_index = scene_params.models[InstanceIndex()].material_index;
+  // 计数上界守卫：0xFFFFFFFF（无材质）与越界/悬空索引都按不透明处理
+  if(material_index < scene_params.material_count)
   {
-    material_data now_material = materials[now_model.material_index];
-    if(now_material.opacity < 1.f && random_float(payload.seed) >= now_material.opacity)
-    {
-      IgnoreHit();  // 概率穿过：本表面不遮挡
-      return;
-    }
+    opacity = scene_params.materials[material_index].opacity;
+  }
+  if(opacity < 1.f && random_float(payload.seed) >= opacity)
+  {
+    IgnoreHit();  // 概率穿过：本表面不遮挡
+    return;
   }
   payload.is_shadowed = true;
   AcceptHitAndEndSearch();

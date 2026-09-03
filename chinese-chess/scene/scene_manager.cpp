@@ -55,9 +55,9 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
 
     scene_renders.insert_or_assign(render_mode::rasterization,
                                    pro::make_proxy<manager_render, scene_rasterization_render>(
-                                       app.get_allocator(), *app.get_device(), *app.get_pipeline_cache(), recycle_bin,
-                                       semaphore, graphic_queue, compute_queue, transfer_queue, model_manager,
-                                       material_manager, light_manager, render_output, color_format));
+                                       app.get_allocator(), *app.get_physical_device(), *app.get_device(),
+                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, compute_queue, transfer_queue,
+                                       model_manager, material_manager, light_manager, render_output, color_format));
 
     scene_renders.insert_or_assign(render_mode::ray_tracing,
                                    pro::make_proxy<manager_render, scene_raytracing_render>(

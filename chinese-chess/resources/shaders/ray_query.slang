@@ -28,17 +28,14 @@ static const float JADE_BASE_ABSORPTION    = 12.0f;
 static const float JADE_ENGRAVE_ABSORPTION = 30.0f;
 static const float MAX_THROUGHPUT          = 10.0f;  // 路径钳制（与 ray_tracing.slang 同值）
 
-// 与 RT pipeline 共用 rt_push_constant（scene_data.slang，144B：invProj/invView/skybox/light_count/frame_index）
-[[vk::push_constant]]
-ConstantBuffer<rt_push_constant> push_const;
-
 // ---- 描述符布局（与 scene_rayquery_render.cpp 一致）----
 RaytracingAccelerationStructure top_level_acceleration_structure;  // b0
-RWTexture2D<float4>             render_output;                    // b1
-StructuredBuffer<model_data>    models;                           // b2
-StructuredBuffer<material_data> materials;                        // b3
-StructuredBuffer<light_data>    lights;                           // b4
-Sampler2D[]                     samplers;                         // b5（bindless 纹理）
+RWTexture2D<float4> render_output;                                 // b1
+ConstantBuffer<rt_scene_data> scene_params;
+Sampler2D[]                     samplers;                         // b2(bindless 纹理数组)
+// b3: 场景参数 UBO(声明序自动分配)→ 相机逆矩阵 + models/materials/lights 基址 + 计数
+// models/materials/lights 不再单独绑定:经 scene_params.scene_params.models[i] 等指针(设备地址)直接解引用;
+// push constant 已废弃(原 rt_push_constant 144B 超规范下限 → 见 Known #1/H2)
 
 // ============================================================================
 // 实验发现（2026.7.1 版 Slang，slangc + SPIR-V 反汇编 + 运行时诊断证实）：
@@ -57,9 +54,10 @@ Sampler2D[]                     samplers;                         // b5（bindle
 float3 sample_sky_color(float3 direction)
 {
   float3 sky_color = sample_sky(direction);
-  if(push_const.skybox_index != 0xFFFFFFFFu)
+  // 天空索引守卫：0xFFFFFFFF（无 HDR 天空）恒 ≥ texture_count → 程序化回退
+  if(scene_params.skybox_index < scene_params.texture_count)
   {
-    float3 hdr_color = sample_hdr_sky(direction, samplers[push_const.skybox_index]);
+    float3 hdr_color = sample_hdr_sky(direction, samplers[scene_params.skybox_index]);
     if(luminance(hdr_color) > 0.02f)
       sky_color = hdr_color;
   }
@@ -112,11 +110,13 @@ bool shadow_ray(RaytracingAccelerationStructure tlas, float3 origin, float3 dire
   if(model_index == 0xFFFFFFFFu)
     return false;
 
-  float opacity = 1.0f;
-  model_data now_model = models[model_index];
-  if(now_model.material_index != 0xFFFFFFFFu)
+  // 阴影只读材质不透明度:按需取字段,避免整拷 model_data(阴影光线频率高)
+  float    opacity        = 1.0f;
+  uint32_t material_index = scene_params.models[model_index].material_index;
+  // 计数上界守卫：0xFFFFFFFF（无材质）与越界/悬空索引都按不透明处理
+  if(material_index < scene_params.material_count)
   {
-    opacity = materials[now_model.material_index].opacity;
+    opacity = scene_params.materials[material_index].opacity;
   }
   return random_float(seed) < opacity;  // 遮挡概率 = opacity（与 rayShadowAnyHitMain 一致）
 }
@@ -131,20 +131,20 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
   const float2 launch_size = float2(image_width, image_height);
 
   // RNG 种子（SPIR-V 1.6 整数点积 OpUDot；与 raygen 的像素+帧号种子等价）
-  uint seed = wang_hash(dot(uint3(dispatch_thread_id.x, dispatch_thread_id.y, push_const.frame_index),
+  uint seed = wang_hash(dot(uint3(dispatch_thread_id.x, dispatch_thread_id.y, scene_params.frame_index),
                             uint3(1664525u, 1013904223u, 0x9e3779b9u)));
 
   // 子像素抖动（与 raygen 一致，时域累积抗锯齿）
   float2 clip_coords = (launch_id + random_float2(seed)) / launch_size * 2.f - 1.f;
 
-  float4 near_point_v = mul(push_const.proj_inv_matrix, float4(clip_coords, 0.0f, 1.0f));
-  float4 far_point_v  = mul(push_const.proj_inv_matrix, float4(clip_coords, 1.0f, 1.0f));
+  float4 near_point_v = mul(scene_params.proj_inv_matrix, float4(clip_coords, 0.0f, 1.0f));
+  float4 far_point_v  = mul(scene_params.proj_inv_matrix, float4(clip_coords, 1.0f, 1.0f));
   near_point_v /= near_point_v.w;
   far_point_v  /= far_point_v.w;
 
   RayDesc ray;
-  ray.Origin    = mul(push_const.view_inv_matrix, near_point_v).xyz;
-  ray.Direction = normalize(mul(push_const.view_inv_matrix, far_point_v).xyz - ray.Origin);
+  ray.Origin    = mul(scene_params.view_inv_matrix, near_point_v).xyz;
+  ray.Direction = normalize(mul(scene_params.view_inv_matrix, far_point_v).xyz - ray.Origin);
   ray.TMin      = 0.001f;
   ray.TMax      = 1e23f;
 
@@ -177,7 +177,7 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
       break;
     }
 
-    model_data now_model = models[model_index];
+    model_data now_model = scene_params.models[model_index];
 
     uint i0 = now_model.index_address[primitive_id * 3u + 0u];
     uint i1 = now_model.index_address[primitive_id * 3u + 1u];
@@ -191,7 +191,8 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
     float3 world_normal   = normalize(mul(now_model.model_matrix, float4(interpolate(bary, v0.normal, v1.normal, v2.normal), 0.0f)).xyz);
     float2 uv             = interpolate(bary, v0.uv, v1.uv, v2.uv);
 
-    // ---- 材质解析（与 rayClosestHitMain 一致）----
+    // ---- 材质解析（与 rayClosestHitMain 一致；material_index < material_count 守卫，
+    // 覆盖 0xFFFFFFFF 无材质哨兵与越界/悬空索引）----
     float3 material_color        = float3(0.f);
     float  material_roughness    = 0.5f;
     float  material_metallic     = 0.0f;
@@ -200,15 +201,15 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
     float  material_transmission = 0.0f;
     float  texture_weight        = 0.f;
 
-    if(now_model.material_index != 0xFFFFFFFFu)
+    if(now_model.material_index < scene_params.material_count)
     {
-      material_data now_material = materials[now_model.material_index];
+      material_data now_material = scene_params.materials[now_model.material_index];
       material_roughness         = now_material.roughness;
       material_metallic          = now_material.metallic;
       material_opacity           = now_material.opacity;
       material_ior               = now_material.ior;
       material_transmission      = now_material.transmission;
-      if(now_material.texture_index != 0xFFFFFFFFu)
+      if(now_material.texture_index < scene_params.texture_count)
       {
         float weight   = samplers[now_material.texture_index].SampleLevel(uv, 0.0f).x;
         material_color = lerp(now_material.background_color, now_material.foreground_color, weight);
@@ -237,9 +238,9 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
     float  clamped_roughness = max(material_roughness, 0.04f);
 
     float3 direct_lighting = float3(0.f);
-    for(uint li = 0; li < push_const.light_count; li++)
+    for(uint li = 0; li < scene_params.light_count; li++)
     {
-      light_data light = lights[li];
+      light_data light = scene_params.lights[li];
       if(light.intensity <= 0.0f)
         continue;
 
@@ -365,7 +366,7 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
   // ---- 时域累积（与 rayGenMain 一致；firefly 钳制仅在累积帧生效，见 ray_tracing.slang）----
   float3 prev_color = render_output[int2(launch_id)].rgb;
 
-  if(push_const.frame_index > 0u)
+  if(scene_params.frame_index > 0u)
   {
     float prev_lum = max(luminance(prev_color), 0.01f);
     float new_lum  = luminance(radiance);
@@ -375,7 +376,7 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
     }
   }
 
-  float  alpha       = 1.0f / (1.0f + float(push_const.frame_index) * 0.5f);
+  float  alpha       = 1.0f / (1.0f + float(scene_params.frame_index) * 0.5f);
   float3 final_color = lerp(prev_color, radiance, alpha);
 
   render_output[int2(launch_id)] = float4(final_color, 1.f);

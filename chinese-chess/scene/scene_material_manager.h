@@ -48,6 +48,8 @@ public:
 
     [[nodiscard]] bool reload_textures(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
 
+    [[nodiscard]] size_t               get_materials_size() const noexcept;
+    [[nodiscard]] size_t               get_textures_size() const noexcept;
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
     [[nodiscard]] std::optional<uint32_t> get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept;
     [[nodiscard]] std::optional<uint32_t> get_texture_index(const std::weak_ptr<scene_image>& _texture) const noexcept;

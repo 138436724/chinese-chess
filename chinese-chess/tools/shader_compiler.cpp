@@ -84,35 +84,27 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
     Slang::ComPtr<slang::IComponentType> composed_program;
     auto result = _session->createCompositeComponentType(component_types.data(), component_types.size(),
                                                          composed_program.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
     if (!SLANG_SUCCEEDED(result))
     {
         return std::unexpected(get_diagnostics(_diagnostics_blob));
-    }
-    else
-    {
-        diagnose_if_needed(_diagnostics_blob);
     }
 
     Slang::ComPtr<slang::IComponentType> linked_program;
     result = composed_program->link(linked_program.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
     if (!SLANG_SUCCEEDED(result))
     {
         return std::unexpected(get_diagnostics(_diagnostics_blob));
-    }
-    else
-    {
-        diagnose_if_needed(_diagnostics_blob);
     }
 
     result = linked_program->getTargetCode(0, spirv_code.writeRef(), _diagnostics_blob.writeRef());
+    diagnose_if_needed(_diagnostics_blob);
     if (!SLANG_SUCCEEDED(result))
     {
         return std::unexpected(get_diagnostics(_diagnostics_blob));
     }
-    else
-    {
-        diagnose_if_needed(_diagnostics_blob);
-    }
+
     print_entrypoint_hashes(static_cast<int>(_entry_name.size()), 1, composed_program);
 
     return spirv_code;
@@ -327,14 +319,11 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
     Slang::ComPtr<slang::IModule> slang_module =
         Slang::ComPtr<slang::IModule>(session->loadModule(module_name.c_str(), diagnostics_blob.writeRef()));
 
+    diagnose_if_needed(diagnostics_blob);
     if (!slang_module)
     {
         return std::unexpected(get_diagnostics(diagnostics_blob).empty() ? "Failed to load shader module" :
                                                                            get_diagnostics(diagnostics_blob));
-    }
-    else
-    {
-        diagnose_if_needed(diagnostics_blob);
     }
 
     auto [dependence, fingerprint] = get_dependencies_and_fingerprint(slang_module);
@@ -370,14 +359,11 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
     Slang::ComPtr<slang::IModule> slang_module = Slang::ComPtr<slang::IModule>(
         session->loadModuleFromSourceString("shaders", "memory:shader", _shader_string.c_str(), diagnostics_blob.writeRef()));
 
+    diagnose_if_needed(diagnostics_blob);
     if (!slang_module)
     {
         return std::unexpected(get_diagnostics(diagnostics_blob).empty() ? "Failed to load shader module" :
                                                                            get_diagnostics(diagnostics_blob));
-    }
-    else
-    {
-        diagnose_if_needed(diagnostics_blob);
     }
 
     auto spirv_code = slang_module_to_spv(session, diagnostics_blob, slang_module, _entry_name);
