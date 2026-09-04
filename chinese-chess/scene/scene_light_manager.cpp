@@ -58,8 +58,6 @@ bool scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
         return false;
     }
 
-    recycle_bin.retire(std::move(ssbo), "scene light manager old ssbo.");
-
     update_ssbo(_waited_infos);
 
     is_dirty = false;
@@ -109,6 +107,7 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            std::span(reinterpret_cast<const uint8_t*>(lights_ssbo.data()), sizeof(lights_ssbo.front()) * lights_ssbo.size())));
+            std::span(reinterpret_cast<const uint8_t*>(lights_ssbo.data()), sizeof(lights_ssbo.front()) * lights_ssbo.size()),
+            "light_ssbo"));
     }
 }

@@ -22,7 +22,8 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFla
                                                 const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
                                                 void*)
 {
-    if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
+    if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+        || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo)
     {
         std::println("{}: {} {} {}\n", vk::to_string(_type), _callback_data->messageIdNumber,
                      _callback_data->pMessageIdName, _callback_data->pMessage);
@@ -35,7 +36,7 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFla
 
 vulkan_application::~vulkan_application()
 {
-    wait();
+    wait_idle();
     descriptor.clear_descriptor_info();
 }
 
@@ -168,14 +169,19 @@ void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, 
 
     commandbuffer.end_record();
 
-    commandbuffer.submit(false);
+    commandbuffer.submit();
 
     swapchain.present_image();
 
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
-void vulkan_application::wait() const
+void vulkan_application::wait_frame() const
+{
+    commandbuffers.at(current_frame).wait();
+}
+
+void vulkan_application::wait_idle() const
 {
     (*device).waitIdle();
 }

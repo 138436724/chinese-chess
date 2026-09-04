@@ -59,10 +59,11 @@ private:
     const vulkan_queue&             transfer_queue;
     scene_material_manager&         material_manager;
 
-    bool is_dirty = true;
+    bool is_dirty     = true;
+    bool meshes_dirty = true;
 
     std::vector<std::weak_ptr<scene_model>>                                     models;
-    std::vector<std::weak_ptr<model_information>>                               meshes;        // submit to gpu in order
+    std::vector<std::shared_ptr<model_information>>                             meshes;        // submit to gpu in order
     std::unordered_map<std::filesystem::path, std::weak_ptr<model_information>> models_cache;  // no need order
 
     vulkan_buffer vertices_buffer;

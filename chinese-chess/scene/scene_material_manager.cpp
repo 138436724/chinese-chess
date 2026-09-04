@@ -354,8 +354,8 @@ bool scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waite
         return false;
     }
 
-    recycle_bin.retire(std::move(ssbo), "scene material manager old ssbo.");
     update_ssbo(_waited_infos);
+
     is_dirty = false;
 
     return true;

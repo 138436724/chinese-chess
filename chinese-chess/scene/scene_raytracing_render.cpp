@@ -228,7 +228,7 @@ void scene_raytracing_render::create_pipeline_and_sbt()
                                      static_cast<uint32_t>(shader_stages.size()), graphic_queue.get_index());
 
     commandbuffer.end_record();
-    commandbuffer.submit(false);
+    commandbuffer.submit();
 
     recycle_bin.retire(std::move(staging_buffer), "ray tracing staging buffer to create sbt.");
     recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create sbt.");

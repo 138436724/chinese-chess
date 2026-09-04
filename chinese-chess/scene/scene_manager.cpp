@@ -19,7 +19,7 @@
 
 scene_manager::~scene_manager()
 {
-    app.wait();
+    app.wait_idle();
 }
 
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
@@ -139,7 +139,7 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     active_render->render(active_camera, *commandbuffer, skybox_index);
 
     commandbuffer.end_record();
-    commandbuffer.submit(false);
+    commandbuffer.submit();
 
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 

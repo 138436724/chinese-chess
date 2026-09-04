@@ -29,7 +29,7 @@ constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)
 
 ui_manager::~ui_manager()
 {
-    app.wait();
+    app.wait_idle();
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -202,7 +202,7 @@ vk::SemaphoreSubmitInfo ui_manager::render()
 
 
     commandbuffer.end_record();
-    commandbuffer.submit(false);
+    commandbuffer.submit();
 
     if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {

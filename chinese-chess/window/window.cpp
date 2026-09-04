@@ -68,7 +68,7 @@ glfw_window::glfw_window()
 
 glfw_window::~glfw_window()
 {
-    app->wait();
+    app->wait_idle();
     app->get_pipeline_cache().save();
 
     // delete before destroy window
@@ -93,6 +93,8 @@ void glfw_window::render()
         glfwPollEvents();
 
         const auto start = std::chrono::high_resolution_clock::now();
+
+        app->wait_frame();
 
         ui->update();
 
@@ -171,7 +173,7 @@ void glfw_window::resize_callback(GLFWwindow* /*_window*/, int _width, int _heig
 {
     if (_width > 0 && _height > 0)
     {
-        app->wait();
+        app->wait_idle();
 
         app->resize(static_cast<uint32_t>(_width), static_cast<uint32_t>(_height));
         scene->resize(static_cast<uint32_t>(_width), static_cast<uint32_t>(_height));

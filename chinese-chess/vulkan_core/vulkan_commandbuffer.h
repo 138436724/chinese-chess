@@ -23,7 +23,7 @@ public:
 
     void begin_record(vk::CommandBufferUsageFlags _usage);
     void end_record() const;
-    void submit(bool _immediately);
+    void submit();
     void wait() const;
 
     void add_waited_info(const vk::SemaphoreSubmitInfo& _submit_info);

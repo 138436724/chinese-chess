@@ -30,6 +30,7 @@ public:
     [[nodiscard]] uint32_t                   get_queue() const noexcept;
     [[nodiscard]] const vk::raii::Buffer&    get_buffer() const noexcept;
     [[nodiscard]] vk::DeviceOrHostAddressKHR get_buffer_address() const noexcept;
+    [[nodiscard]] vk::DeviceSize             get_size() const noexcept;
 
     static void copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
                                       const vk::Buffer&              _src_buffer,
@@ -46,5 +47,6 @@ private:
     uint32_t                queue  = vk::QueueFamilyIgnored;
 
     vma::raii::Buffer          buffer         = nullptr;
+    vk::DeviceSize             buffer_size    = 0;
     vk::DeviceOrHostAddressKHR buffer_address = nullptr;
 };

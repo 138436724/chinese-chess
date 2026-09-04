@@ -35,7 +35,8 @@ public:
     void create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height);
     void resize(uint32_t _width, uint32_t _height);
     void render(const vk::SemaphoreSubmitInfo& _ui_waited_info, const vk::SemaphoreSubmitInfo& _scene_waited_info);
-    void wait() const;
+    void wait_frame() const;
+    void wait_idle() const;
 
     // frame
     void bind_image(vulkan_image& _scene_image, vulkan_image& _ui_image);

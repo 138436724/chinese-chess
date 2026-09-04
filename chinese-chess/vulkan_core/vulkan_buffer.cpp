@@ -13,6 +13,7 @@ vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
     , access(std::exchange(_other.access, {}))
     , queue(std::exchange(_other.queue, vk::QueueFamilyIgnored))
     , buffer(std::exchange(_other.buffer, nullptr))
+    , buffer_size(std::exchange(_other.buffer_size, 0))
     , buffer_address(std::exchange(_other.buffer_address, {}))
 {
 }
@@ -25,6 +26,7 @@ vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
         std::ranges::swap(access, _other.access);
         std::ranges::swap(queue, _other.queue);
         std::ranges::swap(buffer, _other.buffer);
+        std::ranges::swap(buffer_size, _other.buffer_size);
         std::ranges::swap(buffer_address, _other.buffer_address);
     }
     return *this;
@@ -41,7 +43,8 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
         throw std::runtime_error("Only support Exclusive mode!");
     }
 
-    queue = *_buffer_info.pQueueFamilyIndices;
+    queue       = *_buffer_info.pQueueFamilyIndices;
+    buffer_size = _buffer_info.size;
 
     vma::AllocationCreateInfo create_info{};
     create_info.setUsage(_usage);
@@ -123,6 +126,11 @@ const vk::raii::Buffer& vulkan_buffer::get_buffer() const noexcept
 vk::DeviceOrHostAddressKHR vulkan_buffer::get_buffer_address() const noexcept
 {
     return buffer_address;
+}
+
+vk::DeviceSize vulkan_buffer::get_size() const noexcept
+{
+    return buffer_size;
 }
 
 void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,

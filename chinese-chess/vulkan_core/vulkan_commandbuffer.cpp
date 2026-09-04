@@ -53,8 +53,6 @@ std::vector<vulkan_commandbuffer> vulkan_commandbuffer::create(const vk::raii::D
 
 void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage)
 {
-    wait();
-
     commandbuffer.reset();
 
     const vk::CommandBufferInheritanceInfo info;
@@ -66,7 +64,7 @@ void vulkan_commandbuffer::end_record() const
     commandbuffer.end();
 }
 
-void vulkan_commandbuffer::submit(bool _immediately)
+void vulkan_commandbuffer::submit()
 {
     const vk::CommandBufferSubmitInfo commandbuffer_submit_info(*commandbuffer, 0);
 
@@ -78,11 +76,6 @@ void vulkan_commandbuffer::submit(bool _immediately)
 
     waited_info.clear();
     signal_info.clear();
-
-    if (_immediately)
-    {
-        wait();
-    }
 }
 
 void vulkan_commandbuffer::wait() const
@@ -122,8 +115,7 @@ const vk::raii::CommandBuffer& vulkan_commandbuffer::operator*() const noexcept
 
 void vulkan_commandbuffer::create(vk::raii::CommandBuffer&& _commandbuffer, const vulkan_queue* _queue, vulkan_semaphore* _semaphore) noexcept
 {
-    commandbuffer   = std::move(_commandbuffer);
-    queue           = _queue;
-    semaphore       = _semaphore;
-    semaphore_value = _semaphore->get_cpu_value();
+    commandbuffer = std::move(_commandbuffer);
+    queue         = _queue;
+    semaphore     = _semaphore;
 }
