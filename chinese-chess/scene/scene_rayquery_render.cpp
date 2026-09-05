@@ -74,7 +74,7 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eCpuToGpu, "ray query ubo");
 
-    create_pipeline();
+    pipeline = create_pipeline();
 }
 
 void scene_rayquery_render::resize(uint32_t _width, uint32_t _height)
@@ -91,8 +91,9 @@ void scene_rayquery_render::update()
 
 void scene_rayquery_render::recreate()
 {
+    vulkan_pipeline new_pipeline = create_pipeline();
     recycle_bin.retire(std::move(pipeline), "old ray query compute pipeline on reload.");
-    create_pipeline();
+    pipeline = std::move(new_pipeline);
 }
 
 void scene_rayquery_render::reset_accumulation() noexcept
@@ -152,8 +153,10 @@ void scene_rayquery_render::render(const scene_camera& _camera, const vk::raii::
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
-void scene_rayquery_render::create_pipeline()
+vulkan_pipeline scene_rayquery_render::create_pipeline()
 {
+    vulkan_pipeline new_pipeline;
+
     constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
@@ -163,8 +166,10 @@ void scene_rayquery_render::create_pipeline()
 
     constexpr std::array shader_stages = {shader_stage_info{RAY_QUERY_ENTRY_NAME, vk::ShaderStageFlagBits::eCompute}};
 
-    pipeline.create_from_shader(device, pipeline_cache, bindings, {},
-                                std::filesystem::path(SHADERS_PATH) / "ray_query.slang", shader_stages);
+    new_pipeline.create_from_shader(device, pipeline_cache, bindings, {},
+                                    std::filesystem::path(SHADERS_PATH) / "ray_query.slang", shader_stages);
+
+    return new_pipeline;
 }
 
 void scene_rayquery_render::update_descriptor()

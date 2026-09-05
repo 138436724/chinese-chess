@@ -41,8 +41,8 @@ public:
     void reset_accumulation() noexcept;
 
 private:
-    void create_pipeline(vk::Format _color_format);
-    void update_descriptor();
+    [[nodiscard]] vulkan_pipeline create_pipeline(vk::Format _color_format);
+    void                          update_descriptor();
 
 private:
     const vma::raii::Allocator&     allocator;

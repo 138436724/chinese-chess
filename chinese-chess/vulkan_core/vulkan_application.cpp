@@ -183,6 +183,11 @@ void vulkan_application::wait_frame() const
 
 void vulkan_application::wait_idle() const
 {
+    if (!device)
+    {
+        return;
+    }
+
     (*device).waitIdle();
 }
 

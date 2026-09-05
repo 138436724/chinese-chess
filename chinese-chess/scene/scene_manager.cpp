@@ -151,8 +151,15 @@ void scene_manager::handle(int _glfw_key)
     switch (_glfw_key)
     {
         case GLFW_KEY_F5:
-            active_render->recreate();
-            active_render->update();
+            try
+            {
+                active_render->recreate();
+                active_render->update();
+            }
+            catch (const std::exception& _error)
+            {
+                std::println(std::cerr, "recreate failed, keep pipeline: {}", _error.what());
+            }
             break;
         case GLFW_KEY_F6:
             if (material_manager.reload_textures(waited_infos))

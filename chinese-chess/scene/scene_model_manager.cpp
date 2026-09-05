@@ -272,8 +272,30 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
 {
     if (models.empty())
     {
-        recycle_bin.retire(std::move(tlas), "ray tracing clear tlas.");
+        // create a empty tlas
+        recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
+        recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
+
+        vulkan_commandbuffer commandbuffer =
+            std::move(vulkan_commandbuffer::create(device,
+                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
+                                                                                 vk::CommandBufferLevel::ePrimary, 1),
+                                                   &graphic_queue, &semaphore)
+                          .front());
+        commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+        tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(physical_device, device, allocator, *commandbuffer,
+                                                                           0, {}, graphic_queue.get_index());
+
         tlas_instance_count = 0;
+
+        commandbuffer.end_record();
+        commandbuffer.submit();
+
+        _waited_infos.push_back(commandbuffer.get_submit_info());
+
+        recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
+
         return;
     }
 

@@ -49,6 +49,7 @@ if(WIN32)
         VK_USE_PLATFORM_WIN32_KHR
     )
     add_compile_options(/utf-8)
+    target_compile_options(chinese-chess PRIVATE /W4)
     # target_link_libraries(chinese-chess PRIVATE comdlg32)
 endif()
 

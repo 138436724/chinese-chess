@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 #include <limits>
+#include <utility>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -42,8 +43,8 @@ public:
     void reset_accumulation() noexcept;
 
 private:
-    void create_pipeline_and_sbt();
-    void update_descriptor();
+    [[nodiscard]] std::pair<vulkan_pipeline, vulkan_shader_binding_table> create_pipeline_and_sbt();
+    void                                                                  update_descriptor();
 
 private:
     const vma::raii::Allocator&     allocator;

@@ -44,3 +44,8 @@ const vk::raii::Device& vulkan_device::operator*() const noexcept
 {
     return device;
 }
+
+vulkan_device::operator bool() const noexcept
+{
+    return device != nullptr;
+}

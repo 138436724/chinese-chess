@@ -85,7 +85,9 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eCpuToGpu, "ray tracing ubo");
 
-    create_pipeline_and_sbt();
+    auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
+    pipeline                     = std::move(new_pipeline);
+    sbt                          = std::move(new_sbt);
 }
 
 void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
@@ -107,9 +109,11 @@ void scene_raytracing_render::update()
 
 void scene_raytracing_render::recreate()
 {
+    auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
     recycle_bin.retire(std::move(pipeline), "old ray tracing pipeline on reload.");
     recycle_bin.retire(std::move(sbt), "old ray tracing sbt on reload.");
-    create_pipeline_and_sbt();
+    pipeline = std::move(new_pipeline);
+    sbt      = std::move(new_sbt);
 }
 
 void scene_raytracing_render::reset_accumulation() noexcept
@@ -172,8 +176,11 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
-void scene_raytracing_render::create_pipeline_and_sbt()
+std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render::create_pipeline_and_sbt()
 {
+    vulkan_pipeline             new_pipeline;
+    vulkan_shader_binding_table new_sbt;
+
     // create pipeline
     constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eAll, nullptr),
@@ -209,8 +216,8 @@ void scene_raytracing_render::create_pipeline_and_sbt()
     const auto props = physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
                                                       vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
     const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
-                                shader_stages, shader_groups, properties.maxRayRecursionDepth);
+    new_pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
+                                    shader_stages, shader_groups, properties.maxRayRecursionDepth);
 
 
     // create shader binding table
@@ -222,14 +229,16 @@ void scene_raytracing_render::create_pipeline_and_sbt()
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 
-    auto staging_buffer = sbt.create(physical_device, device, allocator, *commandbuffer, pipeline.get_pipeline(),
-                                     static_cast<uint32_t>(shader_stages.size()), graphic_queue.get_index());
+    auto staging_buffer = new_sbt.create(physical_device, device, allocator, *commandbuffer, new_pipeline.get_pipeline(),
+                                         static_cast<uint32_t>(shader_stages.size()), graphic_queue.get_index());
 
     commandbuffer.end_record();
     commandbuffer.submit();
 
     recycle_bin.retire(std::move(staging_buffer), "ray tracing staging buffer to create sbt.");
     recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create sbt.");
+
+    return std::make_pair(std::move(new_pipeline), std::move(new_sbt));
 }
 
 void scene_raytracing_render::update_descriptor()

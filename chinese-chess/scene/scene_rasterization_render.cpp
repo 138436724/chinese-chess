@@ -68,7 +68,7 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eCpuToGpu, "ray tracing ubo");
 
-    create_pipeline(color_format);
+    pipeline = create_pipeline(color_format);
 }
 
 void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
@@ -195,14 +195,17 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
 
 void scene_rasterization_render::recreate()
 {
+    vulkan_pipeline new_pipeline = create_pipeline(color_format);
     recycle_bin.retire(std::move(pipeline), "old rasterization pipeline on reload.");
-    create_pipeline(color_format);
+    pipeline = std::move(new_pipeline);
 }
 
 void scene_rasterization_render::reset_accumulation() noexcept {}
 
-void scene_rasterization_render::create_pipeline(vk::Format _color_format)
+vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {
+    vulkan_pipeline new_pipeline;
+
     constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1,
                                        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
@@ -216,11 +219,13 @@ void scene_rasterization_render::create_pipeline(vk::Format _color_format)
         shader_stage_info{FRAG_ENTRY_NAME, vk::ShaderStageFlagBits::eFragment},
     };
 
-    pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::span(&binding, 1), attribute,
-                                std::filesystem::path(SHADERS_PATH) / "rasterization.slang", shader_stages,
-                                vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
-                                vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
-                                std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
+    new_pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::span(&binding, 1), attribute,
+                                    std::filesystem::path(SHADERS_PATH) / "rasterization.slang", shader_stages,
+                                    vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
+                                    vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
+                                    std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
+
+    return new_pipeline;
 }
 
 void scene_rasterization_render::update_descriptor()

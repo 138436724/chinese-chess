@@ -19,6 +19,7 @@ public:
                 const vk::PhysicalDeviceFeatures2& _features);
 
     [[nodiscard]] const vk::raii::Device& operator*() const noexcept;
+    [[nodiscard]] explicit                operator bool() const noexcept;
 
 private:
     vk::raii::Device device = nullptr;

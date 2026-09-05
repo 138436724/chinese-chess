@@ -89,11 +89,13 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
         std::clamp<uint32_t>(_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width),
         std::clamp<uint32_t>(_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height));
 
-    const auto max_count = std::min(std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount),
-                                    surface_capabilities.maxImageCount);
+    const auto requested_count = std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
+    const auto image_count     = surface_capabilities.maxImageCount == 0 ?
+                                     requested_count :
+                                     std::min(requested_count, surface_capabilities.maxImageCount);
     const vk::SwapchainCreateInfoKHR swapchain_create_info(
-        {}, surface, max_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1, vk::ImageUsageFlagBits::eColorAttachment,
-        vk::SharingMode::eExclusive, 0, nullptr, surface_capabilities.currentTransform,
+        {}, surface, image_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1,
+        vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0, nullptr, surface_capabilities.currentTransform,
         vk::CompositeAlphaFlagBitsKHR::eOpaque, present_mode, vk::True, swapchain, nullptr);
 
     swapchain = vk::raii::SwapchainKHR(_device, swapchain_create_info);
