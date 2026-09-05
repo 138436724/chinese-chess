@@ -5,7 +5,6 @@
 #include <format>
 #include <freetype/freetype.h>
 #include <memory>
-#include <type_traits>
 
 std::expected<std::vector<character_info>, std::string> font_loader::load_font(const std::filesystem::path& _font_path,
                                                                                uint32_t                     _font_size,

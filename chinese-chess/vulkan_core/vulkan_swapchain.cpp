@@ -3,7 +3,6 @@
 #include "vulkan_common.h"
 
 #include <algorithm>
-#include <array>
 #include <limits>
 #include <print>
 #include <utility>

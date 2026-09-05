@@ -48,7 +48,6 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
                                              vulkan_recycle_bin&             _recycle_bin,
                                              vulkan_semaphore&               _semaphore,
                                              const vulkan_queue&             _graphic_queue,
-                                             const vulkan_queue&             _compute_queue,
                                              const vulkan_queue&             _transfer_queue,
                                              const scene_model_manager&      _model_manager,
                                              const scene_material_manager&   _material_manager,
@@ -61,7 +60,6 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
     , recycle_bin(_recycle_bin)
     , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
-    , compute_queue(_compute_queue)
     , transfer_queue(_transfer_queue)
     , model_manager(_model_manager)
     , material_manager(_material_manager)
@@ -180,8 +178,7 @@ void scene_rayquery_render::update_descriptor()
         vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
 
-    vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
-                                                      | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind,
+    vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
                                                   vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(device, pool_create_info);
 

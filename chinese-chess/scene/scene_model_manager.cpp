@@ -30,7 +30,6 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
                                          vulkan_recycle_bin&             _recycle_bin,
                                          vulkan_semaphore&               _semaphore,
                                          const vulkan_queue&             _graphic_queue,
-                                         const vulkan_queue&             _compute_queue,
                                          const vulkan_queue&             _transfer_queue,
                                          scene_material_manager&         _material_manager) noexcept
     : allocator(_allocator)
@@ -39,7 +38,6 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
     , recycle_bin(_recycle_bin)
     , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
-    , compute_queue(_compute_queue)
     , transfer_queue(_transfer_queue)
     , material_manager(_material_manager)
 {

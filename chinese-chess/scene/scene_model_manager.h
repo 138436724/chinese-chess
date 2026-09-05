@@ -24,7 +24,6 @@ public:
                         vulkan_recycle_bin&             _recycle_bin,
                         vulkan_semaphore&               _semaphore,
                         const vulkan_queue&             _graphic_queue,
-                        const vulkan_queue&             _compute_queue,
                         const vulkan_queue&             _transfer_queue,
                         scene_material_manager&         _material_manager) noexcept;
     ~scene_model_manager() = default;
@@ -55,7 +54,6 @@ private:
     vulkan_recycle_bin&             recycle_bin;
     vulkan_semaphore&               semaphore;
     const vulkan_queue&             graphic_queue;
-    const vulkan_queue&             compute_queue;
     const vulkan_queue&             transfer_queue;
     scene_material_manager&         material_manager;
 

@@ -1,6 +1,5 @@
 #include "vulkan_sampler.h"
 
-#include <concepts>
 #include <utility>
 
 namespace {

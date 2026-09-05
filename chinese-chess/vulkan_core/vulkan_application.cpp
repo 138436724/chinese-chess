@@ -336,20 +336,17 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
                                                        vk::KHRRayTracingPipelineExtensionName,
                                                        vk::KHRDeferredHostOperationsExtensionName,
                                                        vk::KHRBufferDeviceAddressExtensionName,
-                                                       vk::KHRPushDescriptorExtensionName,
                                                        vk::KHRRayQueryExtensionName};
 
     const auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device) static {
-        auto features = _physical_device.template getFeatures2<
-            vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
-            vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR>();
+        auto features =
+            _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
+                                                   vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                                                   vk::PhysicalDeviceRayTracingPipelineFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR>();
 
         return features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
-               && features.get<vk::PhysicalDeviceFeatures2>().features.fillModeNonSolid
                && features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
                && features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64
-               && features.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor
                && features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
                && features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
                && features.get<vk::PhysicalDeviceVulkan13Features>().shaderIntegerDotProduct
@@ -358,12 +355,8 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
                && features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
                && features.get<vk::PhysicalDeviceVulkan12Features>().timelineSemaphore
                && features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters
-               && features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState
                && features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
-               && features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructureCaptureReplay
-               && features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().descriptorBindingAccelerationStructureUpdateAfterBind
                && features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline
-               && features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipelineTraceRaysIndirect
                && features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTraversalPrimitiveCulling
                && features.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
     };
@@ -371,16 +364,11 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
 
     const auto present_index = physical_device.create(instance, required_device_extensions, has_all_required_features, _surface);
 
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan14Features, vk::PhysicalDeviceVulkan13Features,
-                       vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
                        vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR>
         feature_pnext_chain(
-            vk::PhysicalDeviceFeatures2().setFeatures(vk::PhysicalDeviceFeatures()
-                                                          .setSamplerAnisotropy(vk::True)
-                                                          .setFillModeNonSolid(vk::True)
-                                                          .setMultiDrawIndirect(vk::True)
-                                                          .setShaderInt64(vk::True)),
-            vk::PhysicalDeviceVulkan14Features().setPushDescriptor(vk::True),
+            vk::PhysicalDeviceFeatures2().setFeatures(
+                vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setMultiDrawIndirect(vk::True).setShaderInt64(vk::True)),
             vk::PhysicalDeviceVulkan13Features().setDynamicRendering(vk::True).setSynchronization2(vk::True).setShaderIntegerDotProduct(
                 vk::True),
             vk::PhysicalDeviceVulkan12Features()
@@ -389,15 +377,8 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
                 .setScalarBlockLayout(vk::True)
                 .setTimelineSemaphore(vk::True),
             vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
-            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT().setExtendedDynamicState(vk::True),
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR()
-                .setAccelerationStructure(vk::True)
-                .setAccelerationStructureCaptureReplay(vk::True)
-                .setDescriptorBindingAccelerationStructureUpdateAfterBind(vk::True),
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR()
-                .setRayTracingPipeline(vk::True)
-                .setRayTracingPipelineTraceRaysIndirect(vk::True)
-                .setRayTraversalPrimitiveCulling(vk::True),
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True),
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR().setRayTracingPipeline(vk::True).setRayTraversalPrimitiveCulling(vk::True),
             vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True));
 
     const std::array queues = {physical_device.get_queue_index(vk::QueueFlagBits::eGraphics),

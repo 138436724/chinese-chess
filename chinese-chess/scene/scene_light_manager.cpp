@@ -91,7 +91,7 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
 {
     if (!lights.empty())
     {
-        const auto lights_ssbo = lights | std::views::transform([this](const auto& p) {
+        const auto lights_ssbo = lights | std::views::transform([](const auto& p) static {
                                      const auto sp = p.lock();
                                      return light_data{.color            = sp->color,
                                                        .active_type      = std::to_underlying(sp->active_type),

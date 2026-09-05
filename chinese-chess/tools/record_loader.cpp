@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
-#include <iterator>
 #include <limits>
 #include <ranges>
 #include <unicode/unistr.h>
