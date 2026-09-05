@@ -82,6 +82,8 @@ inline constexpr bool                    USE_OCIO             = true;
                                                     const vulkan_queue&            _transfer_queue,
                                                     vulkan_buffer&                 _buffer,
                                                     vk::BufferUsageFlags           _usage,
+                                                    vk::PipelineStageFlags2        _consumer_stages,
+                                                    vk::AccessFlags2               _consumer_access,
                                                     const std::span<const uint8_t> _data,
                                                     const std::string&             _buffer_name = "");
 
@@ -96,6 +98,8 @@ inline constexpr bool                    USE_OCIO             = true;
                                                    vk::Format                     _image_format,
                                                    const vk::Extent3D&            _image_extent,
                                                    vulkan_image&                  _image,
+                                                   vk::PipelineStageFlags2        _consumer_stages,
+                                                   vk::AccessFlags2               _consumer_access,
                                                    const std::span<const uint8_t> _data,
                                                    const std::string&             _image_name = "");
 

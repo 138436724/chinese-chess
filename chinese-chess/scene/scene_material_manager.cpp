@@ -214,10 +214,11 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         r8_fallback   = std::move(*r8);
         upload_buffer = &r8_fallback.buffer;
     }
-    _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
-                                                        transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
-                                                        vk::Format::eR8Unorm, vk::Extent3D(atlas_width, atlas_height, 1),
-                                                        image->image, *upload_buffer, "font-atlas"));
+    _waited_infos.push_back(vulkan_common::upload_image(
+        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+        vk::ImageViewType::e2D, vk::Format::eR8Unorm, vk::Extent3D(atlas_width, atlas_height, 1), image->image,
+        vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
+        vk::AccessFlagBits2::eShaderSampledRead, *upload_buffer, "font-atlas"));
 
     images.emplace_back(image);
     images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters / std::to_wstring(_padding),
@@ -303,6 +304,9 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         _waited_infos.push_back(vulkan_common::upload_image(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), image->image,
+            vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                | vk::PipelineStageFlagBits2::eComputeShader,
+            vk::AccessFlagBits2::eShaderSampledRead,
             std::span(reinterpret_cast<const uint8_t*>(image_data.buffer.data()),
                       image_data.buffer.size() * sizeof(image_data.buffer.front())),
             "material_texture"));
@@ -318,10 +322,12 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         }
 
         const auto& image_data = *image_data_result;
-        _waited_infos.push_back(vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue,
-                                                            transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
-                                                            image_format, vk::Extent3D(image_data.width, image_data.height, 1),
-                                                            image->image, image_data.buffer, "material_texture"));
+        _waited_infos.push_back(vulkan_common::upload_image(
+            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+            vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), image->image,
+            vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                | vk::PipelineStageFlagBits2::eComputeShader,
+            vk::AccessFlagBits2::eShaderSampledRead, image_data.buffer, "material_texture"));
     }
 
     images.emplace_back(image);
@@ -487,6 +493,9 @@ bool scene_material_manager::reload_textures(std::vector<vk::SemaphoreSubmitInfo
                     vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue,
                                                 vk::ImageType::e2D, vk::ImageViewType::e2D, vk::Format::eR16G16B16A16Sfloat,
                                                 vk::Extent3D(image_data->width, image_data->height, 1), new_image,
+                                                vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                                                    | vk::PipelineStageFlagBits2::eComputeShader,
+                                                vk::AccessFlagBits2::eShaderSampledRead,
                                                 std::span(reinterpret_cast<const uint8_t*>(image_data->buffer.data()),
                                                           image_data->buffer.size() * sizeof(image_data->buffer.front())),
                                                 "material texture reload"));
@@ -502,11 +511,12 @@ bool scene_material_manager::reload_textures(std::vector<vk::SemaphoreSubmitInfo
             auto image_data = image_helper::read_image<uint8_t>(source_path, 4);
             if (image_data)
             {
-                _waited_infos.push_back(
-                    vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                                vk::ImageType::e2D, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm,
-                                                vk::Extent3D(image_data->width, image_data->height, 1), new_image,
-                                                image_data->buffer, "material texture reload"));
+                _waited_infos.push_back(vulkan_common::upload_image(
+                    allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
+                    vk::Format::eR8G8B8A8Unorm, vk::Extent3D(image_data->width, image_data->height, 1), new_image,
+                    vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                        | vk::PipelineStageFlagBits2::eComputeShader,
+                    vk::AccessFlagBits2::eShaderSampledRead, image_data->buffer, "material texture reload"));
                 load_result = {};
             }
             else
@@ -547,11 +557,11 @@ std::expected<void, std::string> scene_material_manager::upload_ktx2(const ktx2_
         }
         else if (_target_format == vk::Format::eBc4UnormBlock)
         {
-            transcode_format = KTX_TTF_BC4_R;  // 灰度（桌面）：单通道 BC4
+            transcode_format = KTX_TTF_BC4_R;
         }
         else if (_target_format == vk::Format::eEacR11UnormBlock)
         {
-            transcode_format = KTX_TTF_ETC2_EAC_R11;  // 灰度（移动端）：EAC R11
+            transcode_format = KTX_TTF_ETC2_EAC_R11;
         }
         else
         {
@@ -580,8 +590,10 @@ std::expected<void, std::string> scene_material_manager::upload_ktx2(const ktx2_
     const auto  size = _ktx2->dataSize - offset;
 
     _waited_infos.push_back(vulkan_common::upload_image(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
-        _target_format, vk::Extent3D(_ktx2->baseWidth, _ktx2->baseHeight, 1), _image, std::span(data, size), _name));
+        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+        vk::ImageViewType::e2D, _target_format, vk::Extent3D(_ktx2->baseWidth, _ktx2->baseHeight, 1), _image,
+        vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
+        vk::AccessFlagBits2::eShaderSampledRead, std::span(data, size), _name));
 
     return {};
 }
@@ -608,6 +620,9 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                | vk::PipelineStageFlagBits2::eComputeShader,
+            vk::AccessFlagBits2::eShaderRead,
             std::span(reinterpret_cast<const uint8_t*>(materials_ssbo.data()),
                       sizeof(materials_ssbo.front()) * materials_ssbo.size()),
             "material_ssbo"));

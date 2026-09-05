@@ -89,7 +89,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1,
                                           vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                                           vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-                                              | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage /*for ray tracing*/,
+                                              | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage,
                                           vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);

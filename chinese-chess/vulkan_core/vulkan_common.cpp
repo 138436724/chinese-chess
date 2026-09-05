@@ -22,6 +22,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
                                                      const vulkan_queue&            _transfer_queue,
                                                      vulkan_buffer&                 _buffer,
                                                      vk::BufferUsageFlags           _usage,
+                                                     vk::PipelineStageFlags2        _consumer_stages,
+                                                     vk::AccessFlags2               _consumer_access,
                                                      const std::span<const uint8_t> _data,
                                                      const std::string&             _buffer_name)
 {
@@ -57,11 +59,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
         (*commandbuffer).updateBuffer(*_buffer.get_buffer(), 0, data_size, _data.data());
 
         const auto inline_end_barrier =
-            vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(),
-                                     vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
-                                         | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
-                                     vk::AccessFlagBits2::eShaderRead, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored,
-                                     _buffer.get_buffer(), 0, vk::WholeSize);
+            vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), _consumer_stages, _consumer_access,
+                                     vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, _buffer.get_buffer(), 0, vk::WholeSize);
         _buffer.set_info(inline_end_barrier);
         (*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, inline_end_barrier, {}));
 
@@ -147,11 +146,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
 
     // create barrier to owner read
     const auto ssbo_owner_barrier =
-        vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(),
-                                 vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
-                                     | vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-                                 vk::AccessFlagBits2::eShaderRead, _transfer_queue.get_index(), _buffer.get_queue(),
-                                 _buffer.get_buffer(), 0, vk::WholeSize);
+        vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), _consumer_stages, _consumer_access,
+                                 _transfer_queue.get_index(), _buffer.get_queue(), _buffer.get_buffer(), 0, vk::WholeSize);
     _buffer.set_info(ssbo_owner_barrier);
     const std::array owner_barrier = {ssbo_owner_barrier};
     (*owner_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, owner_barrier, {}));
@@ -180,6 +176,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                                     vk::Format                     _image_format,
                                                     const vk::Extent3D&            _image_extent,
                                                     vulkan_image&                  _image,
+                                                    vk::PipelineStageFlags2        _consumer_stages,
+                                                    vk::AccessFlags2               _consumer_access,
                                                     const std::span<const uint8_t> _data,
                                                     const std::string&             _image_name)
 {
@@ -297,10 +295,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
 
     // create barrier to get the ownership and transition layout for sampler
     const auto image_owner_barrier2 =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(),
-                                vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
-                                    | vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-                                vk::AccessFlagBits2::eShaderRead, _image.get_layout(),
+        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), _consumer_stages, _consumer_access, _image.get_layout(),
                                 vk::ImageLayout::eShaderReadOnlyOptimal, _transfer_queue.get_index(), _image.get_queue(),
                                 _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     _image.set_info(image_owner_barrier2);

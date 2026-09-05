@@ -339,6 +339,7 @@ uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _s
                                                        vk::KHRSynchronization2ExtensionName,
                                                        vk::KHRAccelerationStructureExtensionName,
                                                        vk::KHRRayTracingPipelineExtensionName,
+                                                       vk::KHRRayQueryExtensionName,
                                                        vk::KHRDeferredHostOperationsExtensionName,
                                                        vk::KHRBufferDeviceAddressExtensionName,
                                                        vk::KHRRayQueryExtensionName};
@@ -433,7 +434,7 @@ void vulkan_application::create_pipeline()
             commandbuffer.add_waited_info(vulkan_common::upload_buffer(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, ocio_ubo,
                 vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer,
-                buffer, "ocio_ubo"));
+                vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead, buffer, "ocio_ubo"));
 
             bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eUniformBuffer,
                                                                  1, vk::ShaderStageFlagBits::eFragment, nullptr));
@@ -493,8 +494,8 @@ void vulkan_application::create_pipeline()
 
             vulkan_image image;
             commandbuffer.add_waited_info(vulkan_common::upload_image(
-                allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, image_type, image_view_type,
-                format, vk::Extent3D(width, height, 1), image,
+                allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, image_type, image_view_type, format,
+                vk::Extent3D(width, height, 1), image, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
                 "ocio_lut"));
             ocio_images.push_back(std::move(image));
@@ -553,7 +554,8 @@ void vulkan_application::create_pipeline()
             vulkan_image image;
             commandbuffer.add_waited_info(vulkan_common::upload_image(
                 allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e3D,
-                vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len), image,
+                vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len),
+                image, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(rgba_values.front())),
                 "ocio_lut"));
             ocio_images.push_back(std::move(image));

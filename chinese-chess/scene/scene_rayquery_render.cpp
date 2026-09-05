@@ -125,11 +125,11 @@ void scene_rayquery_render::render(const scene_camera& _camera, const vk::raii::
 
 
     // render
-    const auto image_begin_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eComputeShader,
-                                vk::AccessFlagBits2::eShaderStorageWrite, render_output.get_layout(), vk::ImageLayout::eGeneral,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    const auto image_begin_barrier = vk::ImageMemoryBarrier2(
+        render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eComputeShader,
+        vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite, render_output.get_layout(),
+        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     render_output.set_info(image_begin_barrier);
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, image_begin_barrier));
 
@@ -141,11 +141,11 @@ void scene_rayquery_render::render(const scene_camera& _camera, const vk::raii::
     const uint32_t group_y = (height + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
     _commandbuffer.dispatch(group_x, group_y, 1);
 
-    const auto image_end_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eComputeShader,
-                                vk::AccessFlagBits2::eShaderStorageRead, render_output.get_layout(), vk::ImageLayout::eGeneral,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    const auto image_end_barrier = vk::ImageMemoryBarrier2(
+        render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eComputeShader,
+        vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite, render_output.get_layout(),
+        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     render_output.set_info(image_end_barrier);
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, image_end_barrier));
 

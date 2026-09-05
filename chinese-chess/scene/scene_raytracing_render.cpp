@@ -145,12 +145,11 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
 
 
     // render
-    const auto image_begin_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
-                                vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderStorageWrite,
-                                render_output.get_layout(), vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored,
-                                vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    const auto image_begin_barrier = vk::ImageMemoryBarrier2(
+        render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite, render_output.get_layout(),
+        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     render_output.set_info(image_begin_barrier);
     const std::array begin_barrier = {image_begin_barrier};
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
@@ -162,12 +161,11 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
     _commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(),
                                 sbt.get_callable_region(), width, height, 1);
 
-    const auto image_end_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
-                                vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::AccessFlagBits2::eShaderStorageRead,
-                                render_output.get_layout(), vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored,
-                                vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    const auto image_end_barrier = vk::ImageMemoryBarrier2(
+        render_output.get_stage(), render_output.get_access(), vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite, render_output.get_layout(),
+        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     render_output.set_info(image_end_barrier);
     const std::array end_barrier = {image_end_barrier};
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));

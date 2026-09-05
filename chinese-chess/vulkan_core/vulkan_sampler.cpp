@@ -23,7 +23,6 @@ constexpr sampler_settings get_sampler_settings(sampler_type _type) noexcept
         case sampler_type::normal:
         case sampler_type::roughness:
         case sampler_type::metallic:
-            // 可平铺的材质贴图：线性过滤 + 各向异性，repeat 支持无缝平铺
             return {vk::Filter::eLinear,
                     vk::Filter::eLinear,
                     vk::SamplerMipmapMode::eLinear,
@@ -32,10 +31,8 @@ constexpr sampler_settings get_sampler_settings(sampler_type _type) noexcept
                     0.f,
                     vk::LodClampNone};
         case sampler_type::font:
-            // 字体图集为单层 mip（min/maxLod 锁定 0），clamp 防止字形边缘渗色
             return {vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToBorder, false, 0.f, 0.f};
         case sampler_type::sky_box:
-            // HDR 天空盒 clamp 避免接缝伪影
             return {vk::Filter::eLinear,
                     vk::Filter::eLinear,
                     vk::SamplerMipmapMode::eLinear,
@@ -44,7 +41,6 @@ constexpr sampler_settings get_sampler_settings(sampler_type _type) noexcept
                     0.f,
                     vk::LodClampNone};
         case sampler_type::screen:
-            // 全屏合成输出（scene/UI 图像，单层 mip）：clamp 防止边缘采样越界
             return {vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eClampToEdge, false, 0.f, 0.f};
         default:
             std::unreachable();

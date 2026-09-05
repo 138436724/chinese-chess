@@ -209,6 +209,9 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vertices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::PipelineStageFlagBits2::eVertexAttributeInput | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                | vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+            vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eAccelerationStructureReadKHR,
             staging_vertex, "model_vertex");
         _waited_infos.push_back(vertex_upload);
 
@@ -230,6 +233,9 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, indices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::PipelineStageFlagBits2::eIndexInput | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                | vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+            vk::AccessFlagBits2::eIndexRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eAccelerationStructureReadKHR,
             staging_index, "model_index");
         _waited_infos.push_back(index_upload);
 
@@ -317,6 +323,7 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
+            vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
             "tlas_instance"));
 
@@ -336,6 +343,7 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
+            vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
             std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
             "tlas_instance"));
 
@@ -380,6 +388,7 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, draw_commands,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::PipelineStageFlagBits2::eDrawIndirect, vk::AccessFlagBits2::eIndirectCommandRead,
             std::span(reinterpret_cast<const uint8_t*>(all_draw_commands.data()),
                       sizeof(all_draw_commands.front()) * all_draw_commands.size()),
             "draw_commands"));
@@ -407,6 +416,9 @@ void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+            vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
+                | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
+            vk::AccessFlagBits2::eShaderRead,
             std::span(reinterpret_cast<const uint8_t*>(models_ssbo.data()), sizeof(models_ssbo.front()) * models_ssbo.size()),
             "model_ssbo"));
     }
