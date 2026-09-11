@@ -92,13 +92,13 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
                                            vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eTransferDst
                                                | vk::BufferUsageFlagBits::eShaderDeviceAddress,
                                            vk::SharingMode::eExclusive, 1, &_queue),
-                      vma::MemoryUsage::eGpuOnly, "sbt");
+                      vma::MemoryUsage::eAutoPreferDevice, {}, "sbt");
 
     vulkan_buffer staging_buffer;
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, 1, &_queue),
-                          vma::MemoryUsage::eCpuToGpu, "sbt_staging");
+                          vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "sbt_staging");
 
     const std::vector<uint8_t> shader_handles =
         _pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, _group_count, static_cast<size_t>(handle_size) * _group_count);

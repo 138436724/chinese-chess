@@ -31,7 +31,7 @@ inline constexpr bool                    USE_OCIO             = true;
                                                                                   vk::FormatFeatureFlags _features)
 {
     const auto format_iter = std::ranges::find_if(_candidates, [&](const auto& format) {
-        vk::FormatProperties props = _physical_device.getFormatProperties(format);
+        vk::FormatProperties props = _physical_device.getFormatProperties2(format).formatProperties;
         return (_tiling == vk::ImageTiling::eLinear && (props.linearTilingFeatures & _features) == _features)
                || (_tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & _features) == _features);
     });
@@ -57,21 +57,6 @@ inline constexpr bool                    USE_OCIO             = true;
     vk::TransformMatrixKHR t;
     std::memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
     return t;
-}
-
-[[nodiscard]] inline constexpr bool is_host_accessible_usage(vma::MemoryUsage _usage) noexcept
-{
-    switch (_usage)
-    {
-        case vma::MemoryUsage::eCpuOnly:
-        case vma::MemoryUsage::eCpuToGpu:
-        case vma::MemoryUsage::eGpuToCpu:
-        case vma::MemoryUsage::eCpuCopy:
-        case vma::MemoryUsage::eAutoPreferHost:
-            return true;
-        default:
-            return false;
-    }
 }
 
 [[nodiscard]] vk::SemaphoreSubmitInfo upload_buffer(const vma::raii::Allocator&    _allocator,

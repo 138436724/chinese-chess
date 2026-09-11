@@ -32,7 +32,12 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/chinese-chess"
 
 add_executable(chinese-chess ${MY_SOURCES} ${MY_HEADERS})
 
-target_compile_features(chinese-chess PRIVATE cxx_std_23)
+if(MSVC)
+    target_compile_options(chinese-chess PRIVATE /std:c++23preview /utf-8 /W4 /WX)
+else()
+    target_compile_features(chinese-chess PRIVATE cxx_std_23)
+endif()
+
 target_include_directories(chinese-chess PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/chinese-chess)
 target_compile_definitions(chinese-chess PRIVATE
     GLFW_INCLUDE_VULKAN
@@ -48,9 +53,6 @@ if(WIN32)
         _UNICODE
         VK_USE_PLATFORM_WIN32_KHR
     )
-    add_compile_options(/utf-8)
-    target_compile_options(chinese-chess PRIVATE /W4)
-    # target_link_libraries(chinese-chess PRIVATE comdlg32)
 endif()
 
 

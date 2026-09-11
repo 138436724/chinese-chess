@@ -27,12 +27,13 @@ renderdoc_capture::renderdoc_capture()
     }
 
     // Request the latest API version. RenderDoc may return a newer version if backward-compatible.
-    const int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, reinterpret_cast<void**>(&m_api));
-    if (ret != 1 || !m_api)
+    void*     api = nullptr;
+    const int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_7_0, &api);
+    if (ret != 1 || !api)
     {
-        m_api = nullptr;
         return;
     }
+    m_api = static_cast<RENDERDOC_API_1_7_0*>(api);
 
     // Set a default capture file path so captures go to a known location.
     m_api->SetCaptureFilePathTemplate(CAPTURES_PATH.data());

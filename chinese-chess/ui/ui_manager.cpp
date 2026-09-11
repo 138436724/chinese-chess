@@ -13,17 +13,29 @@
 #include <array>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
+#include <iostream>
+#include <print>
 #include <string_view>
 #include <utility>
 
 
 namespace {
+
 constexpr std::string_view SCENE_SETTING             = "场景设置";
 constexpr std::string_view SCENE_MANAGER             = "场景管理";
 constexpr std::string_view RENDER_MODE               = "渲染模式";
 constexpr std::string_view RENDER_MODE_RASTERIZATION = "光栅化";
 constexpr std::string_view RENDER_MODE_RAY_TRACING   = "光线追踪 (RT Pipeline)";
 constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)";
+
+void imgui_callback(VkResult _result) noexcept
+{
+    if (_result != VK_SUCCESS) [[unlikely]]
+    {
+        std::println(std::cerr, "imgui error: {}", vk::to_string(static_cast<vk::Result>(_result)));
+    }
+}
+
 }  // namespace
 
 
@@ -73,9 +85,13 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
 
     graphic_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eGraphics));
 
-    constexpr std::array               pool_size{vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, 1),
-                                                 vk::DescriptorPoolSize(vk::DescriptorType::eSampler, 1)};
-    const vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 4, pool_size);
+    constexpr std::array pool_size{
+        vk::DescriptorPoolSize(vk::DescriptorType::eSampledImage, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE),
+        vk::DescriptorPoolSize(vk::DescriptorType::eSampler, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE)};
+    const vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                                 (IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE + IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE)
+                                                     * vulkan_common::MAX_FRAMES_IN_FLIGHT,
+                                                 pool_size);
     descriptor_pool = vk::raii::DescriptorPool(*app.get_device(), pool_info);
 
     color_format                                    = app.get_swapchain().get_format();
@@ -97,6 +113,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
         .ImageCount          = vulkan_common::MAX_FRAMES_IN_FLIGHT,
         .PipelineInfoMain    = create_info,
         .UseDynamicRendering = true,
+        .CheckVkResultFn     = imgui_callback,
     };
     ImGui_ImplVulkan_Init(&init_info);
 
@@ -122,7 +139,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
-                         vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+                         vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
     // msaa color
     recycle_bin.retire(std::move(color_image), "ui old color image.");
@@ -132,7 +149,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     color_image.create(app.get_allocator(), *app.get_device(), color_image_info, color_view_info,
-                       vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
+                       vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
 
     std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });

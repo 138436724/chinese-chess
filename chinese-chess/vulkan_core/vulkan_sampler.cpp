@@ -64,15 +64,13 @@ vulkan_sampler& vulkan_sampler::operator=(vulkan_sampler&& _other) noexcept
 
 void vulkan_sampler::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, sampler_type _type)
 {
-    const vk::PhysicalDeviceProperties properties = _physical_device.getProperties();
-    const sampler_settings             settings   = get_sampler_settings(_type);
+    const sampler_settings settings = get_sampler_settings(_type);
 
-    const vk::SamplerCreateInfo sampler_info({}, settings.mag_filter, settings.min_filter, settings.mipmap_mode,
-                                             settings.address_mode, settings.address_mode, settings.address_mode, 0.f,
-                                             settings.enable_anisotropy,
-                                             (settings.enable_anisotropy ? properties.limits.maxSamplerAnisotropy : 1.f),
-                                             vk::False, vk::CompareOp::eAlways, settings.min_lod, settings.max_lod,
-                                             vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
+    const vk::SamplerCreateInfo sampler_info(
+        {}, settings.mag_filter, settings.min_filter, settings.mipmap_mode, settings.address_mode,
+        settings.address_mode, settings.address_mode, 0.f, settings.enable_anisotropy,
+        (settings.enable_anisotropy ? _physical_device.getProperties2().properties.limits.maxSamplerAnisotropy : 1.f), vk::False,
+        vk::CompareOp::eAlways, settings.min_lod, settings.max_lod, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
 
     sampler = vk::raii::Sampler(_device, sampler_info);
 }

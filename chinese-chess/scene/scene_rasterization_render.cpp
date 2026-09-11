@@ -60,13 +60,14 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     , render_output(_render_output)
     , color_format(_color_format)
 {
-    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer), physical_device.getProperties().limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer),
+                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
                vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
-               vma::MemoryUsage::eCpuToGpu, "ray tracing ubo");
+               vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray tracing ubo");
 
     pipeline = create_pipeline(color_format);
 }
@@ -89,7 +90,7 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                                          vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, render_output.get_format(), {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-    color_image.create(allocator, device, color_image_info, color_view_info, vma::MemoryUsage::eGpuOnly,
+    color_image.create(allocator, device, color_image_info, color_view_info, vma::MemoryUsage::eAutoPreferDevice, {},
                        vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "rasterization_color");
 
     // depth
@@ -100,7 +101,7 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                                          vk::SharingMode::eExclusive, queue_array);
     vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {},
                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
-    depth_image.create(allocator, device, depth_image_info, depth_view_info, vma::MemoryUsage::eGpuOnly,
+    depth_image.create(allocator, device, depth_image_info, depth_view_info, vma::MemoryUsage::eAutoPreferDevice, {},
                        vk::ClearDepthStencilValue(1.f, 0), "rasterization_depth");
 }
 

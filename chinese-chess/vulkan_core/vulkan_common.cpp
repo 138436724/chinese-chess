@@ -38,7 +38,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
             _buffer.create(_allocator, _device,
                            vk::BufferCreateInfo({}, data_size, _usage | vk::BufferUsageFlagBits::eTransferDst,
                                                 vk::SharingMode::eExclusive, queue_array),
-                           vma::MemoryUsage::eGpuOnly, _buffer_name);
+                           vma::MemoryUsage::eAutoPreferDevice, {}, _buffer_name);
         }
 
         vulkan_commandbuffer commandbuffer =
@@ -85,7 +85,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
         _buffer.create(_allocator, _device,
                        vk::BufferCreateInfo({}, data_size, _usage | vk::BufferUsageFlagBits::eTransferDst,
                                             vk::SharingMode::eExclusive, queue_array),
-                       vma::MemoryUsage::eGpuOnly, _buffer_name);
+                       vma::MemoryUsage::eAutoPreferDevice, {}, _buffer_name);
     }
 
     // create staging buffer
@@ -93,7 +93,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, data_size, vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, queue_array),
-                          vma::MemoryUsage::eCpuToGpu, std::format("staging {}", _buffer_name));
+                          vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite,
+                          std::format("staging {}", _buffer_name));
 
 
     // begin a transfer commandbuffer
@@ -189,7 +190,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                                          vk::SharingMode::eExclusive, image_queue_array);
     vk::ImageViewCreateInfo view_info({}, {}, _image_view_type, _image_format, {},
                                       vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
-    _image.create(_allocator, _device, image_info, view_info, vma::MemoryUsage::eGpuOnly,
+    _image.create(_allocator, _device, image_info, view_info, vma::MemoryUsage::eAutoPreferDevice, {},
                   vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), _image_name);
 
     // create staging buffer
@@ -198,7 +199,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     staging_buffer.create(_allocator, _device,
                           vk::BufferCreateInfo({}, _data.size(), vk::BufferUsageFlagBits::eTransferSrc,
                                                vk::SharingMode::eExclusive, buffer_queue_array),
-                          vma::MemoryUsage::eCpuToGpu, std::format("staging {}", _image_name));
+                          vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite,
+                          std::format("staging {}", _image_name));
     std::memcpy(staging_buffer.get_buffer_address().hostAddress, _data.data(), _data.size());
     staging_buffer.flush();
 
@@ -338,7 +340,7 @@ vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator
     _buffer.create(_allocator, _device,
                    vk::BufferCreateInfo({}, static_cast<size_t>(image_width) * image_height * block_size,
                                         vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, queue_array),
-                   vma::MemoryUsage::eGpuToCpu, _buffer_name);
+                   vma::MemoryUsage::eAutoPreferHost, vma::AllocationCreateFlagBits::eHostAccessRandom, _buffer_name);
 
     // begin a owner commandbuffer
     vulkan_commandbuffer owner_commandbuffer = std::move(

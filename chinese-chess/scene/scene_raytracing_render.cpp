@@ -77,13 +77,14 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     , light_manager(_light_manager)
     , render_output(_render_output)
 {
-    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer), physical_device.getProperties().limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer),
+                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
                vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
-               vma::MemoryUsage::eCpuToGpu, "ray tracing ubo");
+               vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray tracing ubo");
 
     auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
     pipeline                     = std::move(new_pipeline);

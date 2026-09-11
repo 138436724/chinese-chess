@@ -18,6 +18,7 @@ public:
                 const vk::raii::Device&     _device,
                 const vk::BufferCreateInfo& _buffer_info,
                 vma::MemoryUsage            _usage,
+                vma::AllocationCreateFlags  _flags,
                 const std::string&          _name = "");
 
     void flush() const;

@@ -46,7 +46,7 @@ inline uint32_t vulkan_physical_device::create(const vk::raii::Instance&        
     auto all_physical_devices = _instance.enumeratePhysicalDevices();
     auto filtered_physical_devices =
         all_physical_devices | std::views::filter([&](const auto& _physical_device) {
-            bool support_vulkan_1_4 = _physical_device.getProperties().apiVersion >= vk::ApiVersion14;
+            bool support_vulkan_1_4 = _physical_device.getProperties2().properties.apiVersion >= vk::ApiVersion14;
 
             auto available_device_extensions = _physical_device.enumerateDeviceExtensionProperties();
             bool has_all_required_extensions =
@@ -62,15 +62,16 @@ inline uint32_t vulkan_physical_device::create(const vk::raii::Instance&        
 
     uint32_t present_index        = vk::QueueFamilyIgnored;
     auto     find_physical_device = std::ranges::find_if(filtered_physical_devices, [&](const auto& _physical_device) {
-        auto queue_family_properties = _physical_device.getQueueFamilyProperties();
+        auto queue_family_properties = _physical_device.getQueueFamilyProperties2();
 
         auto all_queue_supports =
             queue_family_properties | std::views::enumerate | std::views::transform([&](const auto& _pair) {
                 const auto& [queue_family_index, queue_family_property] = _pair;
-                bool support_graphics = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eGraphics);
-                bool support_compute = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eCompute);
-                bool support_transfer = static_cast<bool>(queue_family_property.queueFlags & vk::QueueFlagBits::eTransfer);
-                bool support_present =
+                const auto& queue_flags      = queue_family_property.queueFamilyProperties.queueFlags;
+                bool        support_graphics = static_cast<bool>(queue_flags & vk::QueueFlagBits::eGraphics);
+                bool        support_compute  = static_cast<bool>(queue_flags & vk::QueueFlagBits::eCompute);
+                bool        support_transfer = static_cast<bool>(queue_flags & vk::QueueFlagBits::eTransfer);
+                bool        support_present =
                     _physical_device.getSurfaceSupportKHR(static_cast<uint32_t>(queue_family_index), _surface) == vk::True;
                 return std::array{support_graphics, support_compute, support_transfer, support_present};
             });

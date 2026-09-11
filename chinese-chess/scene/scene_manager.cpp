@@ -94,7 +94,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
                                              vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
-                         vma::MemoryUsage::eGpuOnly, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
+                         vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
     active_render->resize(width, height);
     is_dirty        = true;

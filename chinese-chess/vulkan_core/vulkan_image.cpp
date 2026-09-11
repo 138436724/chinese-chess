@@ -40,6 +40,7 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
                           const vk::ImageCreateInfo&  _image_info,
                           vk::ImageViewCreateInfo&    _imageview_info,
                           vma::MemoryUsage            _usage,
+                          vma::AllocationCreateFlags  _flags,
                           const vk::ClearValue&       _clear_value,
                           const std::string&          _name)
 {
@@ -58,10 +59,7 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
 
     queue = *_image_info.pQueueFamilyIndices;
 
-    vma::AllocationCreateInfo create_info{};
-    create_info.setUsage(_usage);
-
-    image = _allocator.createImage(_image_info, create_info);
+    image = _allocator.createImage(_image_info, vma::AllocationCreateInfo(_flags, _usage));
 
     _imageview_info.image = image;
     imageview             = vk::raii::ImageView(_device, _imageview_info, _allocator.getAllocationCallbacks());

@@ -131,6 +131,8 @@ cmake --preset x64-debug     # 或 x64-release
 cmake --build out/build/x64-release
 ```
 
+需要手动修改vcpkg安装目录中`vk_mem_alloc.hpp`中的`vk_mem_alloc.h`为`vma/vk_mem_alloc.h`。
+
 Visual Studio 2026：打开项目文件夹后，在 CMakePresets 中选择 **x64-debug** / **x64-release** 生成即可。`CMakePresets.json` 只定义 configurePresets（无 buildPresets），附带的 x86 与 Linux/macOS 预设未维护，仅 **Windows x64** 经过测试。
 
 ### 3. 运行
@@ -385,7 +387,7 @@ blend_image.slang 自包含（无 import；ocio_conversion 桩函数体被 ocio_
 - **ImGui 多视口验证层误报**：1.92.8的BUG，拖出窗口外部时触发，与本项目无关。
 - **RenderDoc 不捕获第一帧**：捕获第一帧会导致无法启动，暂时未找到解决方案，故捕获时跳过第一帧。
 - **每帧一次 CPU 等待**：移除begin_record中的等待，改为由外部手动调用wait等待。
-- **VMA-HPP 的编译问题**：vcpkg安装的VMA-HPP查询不到VMA，需要手动修改`vk_mem_alloc.hpp`中的`vk_mem_alloc.h`为`vma/vk_mem_alloc.h`
+- **VMA-HPP 的编译问题**：vcpkg安装的VMA-HPP查询不到VMA，需要手动修改`vk_mem_alloc.hpp`中的`vk_mem_alloc.h`为`vma/vk_mem_alloc.h`。考虑到编译时报错也会提示，故不修改vcpkg或者cmake而是采取了手动修改文件的方式。
 - **bindless 1024 槽**：未启用 `ePartiallyBound`、未查询设备上限（部分移动/集成设备 layout 创建可能失败）；未写满尾部槽位靠 shader 双守卫规避。
 - **字体图集单层 mip**（设计选择）：`mipLevels=1` + `maxLod=0`，缩小欠采样闪烁；padding 和创建时清空缓存已隔离渗墨，如需平滑需加 mip 链。
 - **棋谱恢复整体置脏**（效率取舍）：回放"恢复局面"用整体 `need_update()`，每步棋/选择/加载都置脏三个 manager（实际只有模型 is_show/矩阵变化）。

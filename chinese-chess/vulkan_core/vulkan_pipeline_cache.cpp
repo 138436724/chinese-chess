@@ -1,5 +1,6 @@
 #include "vulkan_pipeline_cache.h"
 
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -58,15 +59,17 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
         return false;
     }
 
-    const auto* const header = reinterpret_cast<const vk::PipelineCacheHeaderVersionOne*>(_data.data());
-    if (header->headerVersion != vk::PipelineCacheHeaderVersion::eOne || header->headerSize < sizeof(vk::PipelineCacheHeaderVersionOne))
+    vk::PipelineCacheHeaderVersionOne header{};
+    std::memcpy(&header, _data.data(), sizeof(header));
+
+    if (header.headerVersion != vk::PipelineCacheHeaderVersion::eOne || header.headerSize < sizeof(vk::PipelineCacheHeaderVersionOne))
     {
         return false;
     }
 
-    const auto properties = _physical_device.getProperties();
-    return header->vendorID == properties.vendorID && header->deviceID == properties.deviceID
-           && header->pipelineCacheUUID == properties.pipelineCacheUUID;
+    const auto properties = _physical_device.getProperties2().properties;
+    return header.vendorID == properties.vendorID && header.deviceID == properties.deviceID
+           && header.pipelineCacheUUID == properties.pipelineCacheUUID;
 }
 
 }  // namespace

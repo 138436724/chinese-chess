@@ -66,13 +66,14 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
     , light_manager(_light_manager)
     , render_output(_render_output)
 {
-    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer), physical_device.getProperties().limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer),
+                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
                vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
-               vma::MemoryUsage::eCpuToGpu, "ray query ubo");
+               vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray query ubo");
 
     pipeline = create_pipeline();
 }

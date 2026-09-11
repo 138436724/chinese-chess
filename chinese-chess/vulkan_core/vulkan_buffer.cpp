@@ -36,6 +36,7 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
                            const vk::raii::Device&     _device,
                            const vk::BufferCreateInfo& _buffer_info,
                            vma::MemoryUsage            _usage,
+                           vma::AllocationCreateFlags  _flags,
                            const std::string&          _name)
 {
     if (_buffer_info.queueFamilyIndexCount != 1 || _buffer_info.sharingMode != vk::SharingMode::eExclusive)
@@ -46,21 +47,13 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
     queue       = *_buffer_info.pQueueFamilyIndices;
     buffer_size = _buffer_info.size;
 
-    vma::AllocationCreateInfo create_info{};
-    create_info.setUsage(_usage);
+    const bool host_visible = static_cast<bool>(
+        _flags & (vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eHostAccessRandom));
 
-    if (vulkan_common::is_host_accessible_usage(_usage))
-    {
-        const vma::AllocationCreateFlagBits flags = _usage == vma::MemoryUsage::eGpuToCpu ?
-                                                        vma::AllocationCreateFlagBits::eHostAccessRandom :
-                                                        vma::AllocationCreateFlagBits::eHostAccessSequentialWrite;
+    buffer = _allocator.createBuffer(
+        _buffer_info, vma::AllocationCreateInfo(host_visible ? _flags | vma::AllocationCreateFlagBits::eMapped : _flags, _usage));
 
-        create_info.setFlags(flags | vma::AllocationCreateFlagBits::eMapped);
-    }
-
-    buffer = _allocator.createBuffer(_buffer_info, create_info);
-
-    if (vulkan_common::is_host_accessible_usage(_usage))
+    if (host_visible)
     {
         buffer_address = buffer.getAllocation().getInfo().pMappedData;
     }

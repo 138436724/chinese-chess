@@ -18,6 +18,7 @@ public:
                 const vk::ImageCreateInfo&  _image_info,
                 vk::ImageViewCreateInfo&    _imageview_info,
                 vma::MemoryUsage            _usage,
+                vma::AllocationCreateFlags  _flags,
                 const vk::ClearValue&       _clear_value,
                 const std::string&          _name = "");
 

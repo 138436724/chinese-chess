@@ -136,7 +136,8 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
                   vk::BufferCreateInfo({}, build_size.accelerationStructureSize,
                                        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
                                        vk::SharingMode::eExclusive, 1, &_queue),
-                  vma::MemoryUsage::eGpuOnly, _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas" : "tlas");
+                  vma::MemoryUsage::eAutoPreferDevice, {},
+                  _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas" : "tlas");
 
     vk::AccelerationStructureCreateInfoKHR create_info({}, buffer.get_buffer(), {},
                                                        build_size.accelerationStructureSize, _type, {});
@@ -164,7 +165,7 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
                                                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress
                                                    | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR,
                                                vk::SharingMode::eExclusive, 1, &_queue),
-                          vma::MemoryUsage::eGpuOnly,
+                          vma::MemoryUsage::eAutoPreferDevice, {},
                           _type == vk::AccelerationStructureTypeKHR::eBottomLevel ? "blas_scratch" : "tlas_scratch");
 
     build_info.dstAccelerationStructure  = acceleration_structure;

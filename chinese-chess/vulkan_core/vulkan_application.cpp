@@ -54,13 +54,8 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
     pick_depth_format();
 
     allocator = vma::raii::Allocator(instance, *device,
-                                     vma::AllocatorCreateInfo(
-#ifndef NDEBUG
-                                         vma::AllocatorCreateFlagBits::eBufferDeviceAddress | vma::AllocatorCreateFlagBits::eExtMemoryBudget,
-#else
-                                         vma::AllocatorCreateFlagBits::eBufferDeviceAddress,
-#endif  // !NDEBUG
-                                         *physical_device, {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
+                                     vma::AllocatorCreateInfo(vma::AllocatorCreateFlagBits::eBufferDeviceAddress, *physical_device,
+                                                              {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
 
     graphic_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eGraphics));
     transfer_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eTransfer));
@@ -274,8 +269,15 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     required_instance_layers     = _instance_layers;
     required_instance_extensions = _instance_extensions;
 
-    constexpr vk::ApplicationInfo app_info("Hello World", VK_MAKE_VERSION(1, 0, 0), "Little Engine",
-                                           VK_MAKE_VERSION(1, 0, 0), vk::ApiVersion14, nullptr);
+    const uint32_t loader_version = context.enumerateInstanceVersion();
+    if (loader_version < vk::ApiVersion14)
+    {
+        throw std::runtime_error(std::format("Vulkan loader {}.{}.{} is older than the required 1.4.", vk::apiVersionMajor(loader_version),
+                                             vk::apiVersionMinor(loader_version), vk::apiVersionPatch(loader_version)));
+    }
+
+    constexpr vk::ApplicationInfo app_info("Hello World", vk::makeApiVersion(0, 1, 0, 0), "Little Engine",
+                                           vk::makeApiVersion(0, 1, 0, 0), vk::ApiVersion14, nullptr);
 
     const auto layer_properties = context.enumerateInstanceLayerProperties();
     for (const auto& required_layer : required_instance_layers)
@@ -335,14 +337,9 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 
 uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _surface)
 {
-    constexpr std::array required_device_extensions = {vk::KHRSwapchainExtensionName,
-                                                       vk::KHRSynchronization2ExtensionName,
-                                                       vk::KHRAccelerationStructureExtensionName,
-                                                       vk::KHRRayTracingPipelineExtensionName,
-                                                       vk::KHRRayQueryExtensionName,
-                                                       vk::KHRDeferredHostOperationsExtensionName,
-                                                       vk::KHRBufferDeviceAddressExtensionName,
-                                                       vk::KHRRayQueryExtensionName};
+    constexpr std::array required_device_extensions = {vk::KHRSwapchainExtensionName, vk::KHRAccelerationStructureExtensionName,
+                                                       vk::KHRRayTracingPipelineExtensionName, vk::KHRRayQueryExtensionName,
+                                                       vk::KHRDeferredHostOperationsExtensionName};
 
     const auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device) static {
         auto features =
@@ -602,7 +599,7 @@ void vulkan_application::create_pipeline()
 
 void vulkan_application::pick_msaa_sample_count() const noexcept
 {
-    const auto                 physical_device_properties = (*physical_device).getProperties();
+    const auto                 physical_device_properties = (*physical_device).getProperties2().properties;
     const vk::SampleCountFlags counts = physical_device_properties.limits.framebufferColorSampleCounts
                                         & physical_device_properties.limits.framebufferDepthSampleCounts;
 
