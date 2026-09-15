@@ -37,12 +37,11 @@ public:
     [[nodiscard]] vk::SemaphoreSubmitInfo       get_signal_info() const noexcept;
 
 private:
-    vk::SurfaceCapabilitiesKHR       surface_capabilities = {};
-    vk::Format                       format               = vk::Format::eUndefined;
-    vk::Extent2D                     extent               = vk::Extent2D{0, 0};
-    vk::PresentModeKHR               present_mode         = vk::PresentModeKHR::eImmediate;
-    vk::raii::SurfaceKHR             surface              = nullptr;
-    vk::raii::SwapchainKHR           swapchain            = nullptr;
+    vk::Format                       format       = vk::Format::eUndefined;
+    vk::Extent2D                     extent       = vk::Extent2D{0, 0};
+    vk::PresentModeKHR               present_mode = vk::PresentModeKHR::eImmediate;
+    vk::raii::SurfaceKHR             surface      = nullptr;
+    vk::raii::SwapchainKHR           swapchain    = nullptr;
     std::vector<vk::Image>           images;
     std::vector<vk::raii::ImageView> imageviews;
 

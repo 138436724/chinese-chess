@@ -169,29 +169,36 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
 
             std::ranges::sort(the_pieces, [](const auto& _l, const auto& _r) static { return _l->y > _r->y; });
 
+            size_t position_index = 0;
             switch (result.charAt(0))
             {
                 case u'前':
-                    now_y = the_pieces.front()->y;
+                    position_index = 0;
                     break;
                 case u'中':
-                    now_y = the_pieces.at(1)->y;
-                    break;
-                case u'后':
-                    now_y = the_pieces.back()->y;
-                    break;
                 case u'二':
-                    now_y = the_pieces.at(1)->y;
+                    position_index = 1;
                     break;
                 case u'三':
-                    now_y = the_pieces.at(2)->y;
+                    position_index = 2;
                     break;
                 case u'四':
-                    now_y = the_pieces.at(3)->y;
+                    position_index = 3;
+                    break;
+                case u'后':
+                    position_index = the_pieces.size() - 1;
                     break;
                 default:
                     break;
             }
+
+            if (position_index >= the_pieces.size())
+            {
+                return std::unexpected(std::format("Record {} line {}: piece not leave on board but also used.",
+                                                   _record_path.generic_string(), the_board_state.size() + 1));
+            }
+
+            now_y = the_pieces.at(position_index)->y;
         }
 
         auto now_pieces = now_board.at(static_cast<size_t>(now_color)) | std::views::filter([&](const auto& _piece) {
@@ -209,6 +216,14 @@ std::expected<std::vector<all_board_state>, std::string> record_loader::load_rec
         auto& now_piece = now_pieces.front();
         const auto [new_x, new_y] =
             move_piece(now_type, now_piece.x, now_piece.y, result.charAt(2), get_digit(result.charAt(3)));
+
+        if (new_x < 1 || new_x > 9 || new_y > 9)
+        {
+            return std::unexpected(std::format("Record {} line {}: move leaves the board ({},{}).",
+                                               _record_path.generic_string(), the_board_state.size() + 1,
+                                               static_cast<uint32_t>(new_x), static_cast<uint32_t>(new_y)));
+        }
+
         now_piece.x = new_x;
         now_piece.y = new_y;
 

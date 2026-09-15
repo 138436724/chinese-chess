@@ -60,7 +60,7 @@ void ui_node::update()
     update_material();
 }
 
-void ui_node::handle(int /*_glfw_key*/) noexcept {}
+void ui_node::handle(int /*_key*/, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept {}
 
 void ui_node::update_material()
 {
@@ -134,7 +134,7 @@ void ui_node::update_material()
                 }
             }
 
-            if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.f, 1.f))
+            if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.04f, 1.f))
             {
                 manager.need_material_update();
             }

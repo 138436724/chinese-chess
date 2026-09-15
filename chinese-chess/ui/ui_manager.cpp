@@ -232,9 +232,9 @@ vk::SemaphoreSubmitInfo ui_manager::render()
     return commandbuffer.get_submit_info();
 }
 
-void ui_manager::handle(int _glfw_key) noexcept
+void ui_manager::handle(int _key, int _scancode, int _action, int _mods) noexcept
 {
-    std::ranges::for_each(ui_managers, [&](auto& m) { m->handle(_glfw_key); });
+    std::ranges::for_each(ui_managers, [&](auto& m) { m->handle(_key, _scancode, _action, _mods); });
 }
 
 vulkan_image& ui_manager::get_render_image() noexcept

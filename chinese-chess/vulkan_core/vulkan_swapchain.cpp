@@ -9,8 +9,7 @@
 #include <vulkan/vulkan.hpp>
 
 vulkan_swapchain::vulkan_swapchain(vulkan_swapchain&& _other) noexcept
-    : surface_capabilities(std::exchange(_other.surface_capabilities, {}))
-    , format(std::exchange(_other.format, {}))
+    : format(std::exchange(_other.format, {}))
     , extent(std::exchange(_other.extent, {}))
     , present_mode(std::exchange(_other.present_mode, {}))
     , surface(std::exchange(_other.surface, nullptr))
@@ -29,7 +28,6 @@ vulkan_swapchain& vulkan_swapchain::operator=(vulkan_swapchain&& _other) noexcep
 {
     if (this != &_other)
     {
-        std::ranges::swap(surface_capabilities, _other.surface_capabilities);
         std::ranges::swap(format, _other.format);
         std::ranges::swap(extent, _other.extent);
         std::ranges::swap(present_mode, _other.present_mode);
@@ -83,16 +81,25 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
 
 void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device, uint32_t _width, uint32_t _height)
 {
-    surface_capabilities = _physical_device.getSurfaceCapabilitiesKHR(surface);
+    const auto surface_capabilities = _physical_device.getSurfaceCapabilitiesKHR(surface);
 
-    extent = vk::Extent2D(
-        std::clamp<uint32_t>(_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width),
-        std::clamp<uint32_t>(_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height));
+    if (surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+    {
+        extent = surface_capabilities.currentExtent;
+    }
+    else
+    {
+        extent = vk::Extent2D(std::clamp<uint32_t>(_width, surface_capabilities.minImageExtent.width,
+                                                   surface_capabilities.maxImageExtent.width),
+                              std::clamp<uint32_t>(_height, surface_capabilities.minImageExtent.height,
+                                                   surface_capabilities.maxImageExtent.height));
+    }
 
     const auto requested_count = std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
     const auto image_count     = surface_capabilities.maxImageCount == 0 ?
                                      requested_count :
                                      std::min(requested_count, surface_capabilities.maxImageCount);
+
     const vk::SwapchainCreateInfoKHR swapchain_create_info(
         {}, surface, image_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1,
         vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, 0, nullptr, surface_capabilities.currentTransform,

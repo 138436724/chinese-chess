@@ -30,8 +30,8 @@ static const float JADE_ENGRAVE_ABSORPTION = 30.0f;  // 刻字区额外吸收（
 
 RaytracingAccelerationStructure top_level_acceleration_structure;  // b0
 RWTexture2D<float4>             render_output;                     // b1(时域累积输出)
-ConstantBuffer<rt_scene_data> scene_params;
-Sampler2D[] samplers;                                              // b2(bindless 纹理数组)
+ConstantBuffer<rt_scene_data> scene_params;                        // b2(场景参数 UBO)
+Sampler2D[] samplers;                                              // b3(bindless 纹理数组)
 
 // ---- 光线载荷：沿路径传递累积辐射度与吞吐量 ----
 struct HitPayload

@@ -206,9 +206,9 @@ void ui_record::update()
     }
 }
 
-void ui_record::handle(int _glfw_key) noexcept
+void ui_record::handle(int _key, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept
 {
-    switch (_glfw_key)
+    switch (_key)
     {
         case GLFW_KEY_W:
         case GLFW_KEY_A:
@@ -231,12 +231,6 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
         std::println(std::cerr, "Cannot read record file {}: {}", _record_path.generic_string(), records.error());
         return;
     }
-    all_records = std::move(*records);
-
-    all_records_c_str = all_records | std::views::transform([](const auto& _record) static { return _record.data(); })
-                        | std::ranges::to<std::vector>();
-
-    now_record_index = 0;
 
     auto states = record_loader::load_records(_record_path);
     if (!states)
@@ -244,7 +238,20 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
         std::println(std::cerr, "Cannot read record file {}: {}", _record_path.generic_string(), states.error());
         return;
     }
+
+    if (states->empty())
+    {
+        std::println(std::cerr, "Record file {} contains no valid move.", _record_path.generic_string());
+        return;
+    }
+
+    all_records       = std::move(*records);
+    all_records_c_str = all_records | std::views::transform([](const auto& _record) static { return _record.data(); })
+                        | std::ranges::to<std::vector>();
+
     board_state = std::move(*states);
+
+    now_record_index = 0;
 }
 
 //all_board_state ui_record::capture_board_state()
@@ -267,29 +274,34 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
 
 void ui_record::restore_board_state(uint32_t _index) noexcept
 {
+    if (_index >= board_state.size())
+    {
+        return;
+    }
+
     std::ranges::for_each(all_chess_pieces, [](const auto& p) static { p->is_show = false; });
 
     const all_board_state& state        = board_state.at(_index);
     size_t                 index_offset = 0;
     std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::BLACK)) | std::views::enumerate, [&](const auto& _pair) {
-        const auto& [index, state] = _pair;
+        const auto& [index, piece] = _pair;
         const auto& sp             = all_chess_pieces.at(index + index_offset);
-        sp->material               = std::shared_ptr<scene_material>(black_chess_piece_materials.at(state.piece_type));
+        sp->material               = std::shared_ptr<scene_material>(black_chess_piece_materials.at(piece.piece_type));
         sp->is_show                = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
-                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, state.x, state.y), chess_piece_z));
+                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, piece.x, piece.y), chess_piece_z));
     });
 
     index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
     std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::RED)) | std::views::enumerate, [&](const auto& _pair) {
-        const auto& [index, state] = _pair;
+        const auto& [index, piece] = _pair;
         const auto& sp             = all_chess_pieces.at(index + index_offset);
-        sp->material               = std::shared_ptr<scene_material>(red_chess_piece_materials.at(state.piece_type));
+        sp->material               = std::shared_ptr<scene_material>(red_chess_piece_materials.at(piece.piece_type));
         sp->is_show                = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
-                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, state.x, state.y), chess_piece_z));
+                           glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, piece.x, piece.y), chess_piece_z));
     });
 
     manager.need_update();

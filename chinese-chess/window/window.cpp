@@ -191,21 +191,13 @@ void glfw_window::mouse_button_callback(GLFWwindow* /*_window*/, int /*_button*/
 {
 }
 
-void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int, int _action, int)
+void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int _scancode, int _action, int _mods)
 {
-    if (_action == GLFW_PRESS || _action == GLFW_REPEAT)
-    {
-        ui->handle(_key);
-        scene->handle(_key);
+    ui->handle(_key, _scancode, _action, _mods);
+    scene->handle(_key, _scancode, _action, _mods);
 
-        // WASD处理
-        switch (_key)
-        {
-            case GLFW_KEY_C:
-                need_save = true;
-                break;
-            default:
-                break;
-        }
+    if (_key == GLFW_KEY_C && _action == GLFW_PRESS)
+    {
+        need_save = true;
     }
 }

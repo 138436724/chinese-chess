@@ -26,7 +26,7 @@ private:
     void resize_callback(GLFWwindow* _window, int _width, int _height);
     void cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) const noexcept;
     void mouse_button_callback(GLFWwindow* _window, int _button, int _action, int _mods) const noexcept;
-    void key_callback(GLFWwindow* _window, int _key, int /*_scancode*/, int _action, int /*_mods*/);
+    void key_callback(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods);
 
 private:
     bool need_save = false;

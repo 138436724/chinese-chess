@@ -31,10 +31,9 @@ static const float MAX_THROUGHPUT          = 10.0f;  // 路径钳制（与 ray_t
 // ---- 描述符布局（与 scene_rayquery_render.cpp 一致）----
 RaytracingAccelerationStructure top_level_acceleration_structure;  // b0
 RWTexture2D<float4> render_output;                                 // b1
-ConstantBuffer<rt_scene_data> scene_params;
-Sampler2D[]                     samplers;                         // b2(bindless 纹理数组)
-// b3: 场景参数 UBO(声明序自动分配)→ 相机逆矩阵 + models/materials/lights 基址 + 计数
-// models/materials/lights 不再单独绑定:经 scene_params.scene_params.models[i] 等指针(设备地址)直接解引用;
+ConstantBuffer<rt_scene_data> scene_params;                        // b2(场景参数 UBO)
+Sampler2D[]                     samplers;                         // b3(bindless 纹理数组)
+// models/materials/lights 不再单独绑定:经 scene_params.models[i] 等指针(设备地址)直接解引用;
 // push constant 已废弃(原 rt_push_constant 144B 超规范下限 → 见 Known #1/H2)
 
 // ============================================================================
@@ -89,7 +88,9 @@ bool trace_closest_hit(RayDesc ray, out uint model_index, out uint primitive_id,
   return found;
 }
 
-// 阴影（统计等价于 RT 的 any-hit 概率穿透）：取首个候选，半透明材质按 opacity 概率遮挡
+// 阴影（与 RT 的 any-hit 统计等价）：沿光线遍历候选，逐个按 opacity 概率决定是否遮挡，
+// 未被遮挡则继续深入 —— 与 rayShadowAnyHitMain 的 IgnoreHit() 行为一致。
+// 注意：旧实现用 ACCEPT_FIRST_HIT_AND_END_SEARCH 只看首个候选，半透明棋子后面的不透明物体不再遮挡 → 漏光。
 bool shadow_ray(RaytracingAccelerationStructure tlas, float3 origin, float3 direction, float tmax, inout uint seed)
 {
   RayDesc shadow_ray;
@@ -98,27 +99,32 @@ bool shadow_ray(RaytracingAccelerationStructure tlas, float3 origin, float3 dire
   shadow_ray.TMin      = SHADOW_EPSILON;
   shadow_ray.TMax      = tmax - SHADOW_EPSILON;
 
-  var query = RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_BACK_FACING_TRIANGLES>();
+  var query = RayQuery<RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_BACK_FACING_TRIANGLES>();
   query.TraceRayInline(tlas, 0u, 0xFFu, shadow_ray);
 
-  uint model_index = 0xFFFFFFFFu;
   while(query.Proceed())
   {
-    model_index = query.CandidateInstanceIndex();
-    break;
-  }
-  if(model_index == 0xFFFFFFFFu)
-    return false;
+    const uint model_index = query.CandidateInstanceIndex();
 
-  // 阴影只读材质不透明度:按需取字段,避免整拷 model_data(阴影光线频率高)
-  float    opacity        = 1.0f;
-  uint32_t material_index = scene_params.models[model_index].material_index;
-  // 计数上界守卫：0xFFFFFFFF（无材质）与越界/悬空索引都按不透明处理
-  if(material_index < scene_params.material_count)
-  {
-    opacity = scene_params.materials[material_index].opacity;
+    // 计数上界守卫：0xFFFFFFFF（无材质）与越界/悬空索引都按不透明处理
+    float opacity = 1.0f;
+    if(model_index < scene_params.model_count)
+    {
+      const uint32_t material_index = scene_params.models[model_index].material_index;
+      if(material_index < scene_params.material_count)
+      {
+        opacity = scene_params.materials[material_index].opacity;
+      }
+    }
+
+    // 不透明 → 立即遮挡；半透明 → 按 opacity 概率遮挡，否则视为穿过（等价 IgnoreHit）继续遍历
+    if(opacity >= 1.f || random_float(seed) < opacity)
+    {
+      return true;
+    }
   }
-  return random_float(seed) < opacity;  // 遮挡概率 = opacity（与 rayShadowAnyHitMain 一致）
+
+  return false;
 }
 
 [numthreads(8, 8, 1)]
@@ -126,6 +132,13 @@ void rayQueryComputeMain(uint3 dispatch_thread_id : SV_DispatchThreadID)
 {
   uint image_width, image_height;
   render_output.GetDimensions(image_width, image_height);
+
+  // dispatch 按 ceil(dim / 8) 分组 → 每维最多多出 7 个线程；越界写/读图像是未定义行为
+  // （未启用 robustImageAccess，不会自动丢弃），必须显式提前返回。
+  if(any(dispatch_thread_id.xy >= uint2(image_width, image_height)))
+  {
+    return;
+  }
 
   const float2 launch_id   = float2(dispatch_thread_id.xy);
   const float2 launch_size = float2(image_width, image_height);

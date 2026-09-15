@@ -197,8 +197,7 @@ void scene_rayquery_render::update_descriptor()
 
         std::vector<vk::WriteDescriptorSet> write_sets;
 
-        const vk::DescriptorBufferInfo as_buffer_info(model_manager.get_tlas().get_buffer(), 0,
-                                                      sizeof(vk::AccelerationStructureInstanceKHR) * model_manager.get_models_size());
+        const vk::DescriptorBufferInfo as_buffer_info(model_manager.get_tlas().get_buffer(), 0, vk::WholeSize);
         vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
             vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
             vk::WriteDescriptorSetAccelerationStructureKHR(*(model_manager.get_tlas().get_acceleration_structure())));

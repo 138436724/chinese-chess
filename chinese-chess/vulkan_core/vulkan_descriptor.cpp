@@ -51,6 +51,8 @@ void vulkan_descriptor::clear_descriptor_info() noexcept
 
 void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, const vk::raii::DescriptorSetLayout& _descriptor_set_layout)
 {
+    descriptor_sets.clear();
+
     // descriptor pool
     const vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, max_size, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(_device, pool_create_info);
@@ -60,7 +62,6 @@ void vulkan_descriptor::update_descriptor_sets(const vk::raii::Device& _device, 
     const std::vector<vk::DescriptorSetLayout> layouts(max_size, *(_descriptor_set_layout));
     const vk::DescriptorSetAllocateInfo        alloc_info(descriptor_pool, layouts);
 
-    descriptor_sets.clear();
     descriptor_sets = _device.allocateDescriptorSets(alloc_info);
 
 

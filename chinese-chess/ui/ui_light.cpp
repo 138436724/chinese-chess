@@ -3,6 +3,7 @@
 #include "scene/scene_light.h"
 #include "scene/scene_manager.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <glm/gtc/type_ptr.hpp>
@@ -30,6 +31,9 @@ constexpr std::string_view LIGHT_POSITION    = "灯光位置";
 constexpr std::string_view LIGHT_RANGE       = "灯光范围";
 constexpr std::string_view LIGHT_INNER_CONE  = "内锥角";
 constexpr std::string_view LIGHT_OUTER_CONE  = "外锥角";
+
+constexpr float cone_margin    = glm::radians(1.f);
+constexpr float max_cone_angle = glm::radians(90.f);
 }  // namespace
 
 
@@ -106,17 +110,17 @@ void ui_light::update()
                     if (ImGui::SliderAngle(LIGHT_INNER_CONE.data(), &light_ptr->inner_cone_angle, 0.f, 90.f))
                     {
                         modified |= true;
-                        if (glm::degrees(light_ptr->inner_cone_angle) >= glm::degrees(light_ptr->outer_cone_angle))
+                        if (light_ptr->inner_cone_angle > light_ptr->outer_cone_angle - cone_margin)
                         {
-                            light_ptr->inner_cone_angle = light_ptr->outer_cone_angle - 1.f;
+                            light_ptr->inner_cone_angle = std::max(0.f, light_ptr->outer_cone_angle - cone_margin);
                         }
                     }
                     if (ImGui::SliderAngle(LIGHT_OUTER_CONE.data(), &light_ptr->outer_cone_angle, 0.f, 90.f))
                     {
                         modified |= true;
-                        if (glm::degrees(light_ptr->outer_cone_angle) <= glm::degrees(light_ptr->inner_cone_angle))
+                        if (light_ptr->outer_cone_angle < light_ptr->inner_cone_angle + cone_margin)
                         {
-                            light_ptr->outer_cone_angle = light_ptr->inner_cone_angle + 1.f;
+                            light_ptr->outer_cone_angle = std::min(max_cone_angle, light_ptr->inner_cone_angle + cone_margin);
                         }
                     }
                     break;
@@ -150,4 +154,4 @@ void ui_light::update()
     }
 }
 
-void ui_light::handle(int /*_glfw_key*/) noexcept {}
+void ui_light::handle(int /*_key*/, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept {}

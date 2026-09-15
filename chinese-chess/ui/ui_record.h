@@ -20,7 +20,7 @@ public:
 
     void resize(uint32_t _width, uint32_t _height);
     void update();
-    void handle(int _glfw_key) noexcept;
+    void handle(int _key, int _scancode, int _action, int _mods) noexcept;
 
 private:
     void load_records(const std::filesystem::path& _record_path);

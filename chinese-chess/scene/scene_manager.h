@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -37,7 +38,7 @@ public:
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
     [[nodiscard]] vk::SemaphoreSubmitInfo render();
-    void                                  handle(int _glfw_key);
+    void                                  handle(int _key, int _scancode, int _action, int _mods);
 
     void need_update() noexcept;
     void need_camera_update() noexcept;
@@ -106,6 +107,8 @@ private:
 
     std::unordered_map<render_mode, pro::proxy<manager_render>> scene_renders;
     pro::proxy_view<manager_render>                             active_render = nullptr;
+
+    std::jthread save_thread;
 };
 
 template <typename T, typename... Args>

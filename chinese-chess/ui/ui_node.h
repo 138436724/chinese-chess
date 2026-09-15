@@ -19,7 +19,7 @@ public:
 
     void resize(uint32_t _width, uint32_t _height) noexcept;
     void update();
-    void handle(int _glfw_key) noexcept;
+    void handle(int _key, int _scancode, int _action, int _mods) noexcept;
 
 private:
     void update_material();

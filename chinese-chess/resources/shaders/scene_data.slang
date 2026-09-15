@@ -16,12 +16,11 @@ struct Vertex
 };
 
 // 模型运行时数据：每个实例一条
-// 注意：必须显式补足尾部填充（offset 88 → 96）。Slang 对物理存储缓冲指针
-// （model_data*，如 rt_scene_data.models）的元素步长按结构体自然大小计算，
-// 不做 std430 的 16 字节对齐收尾；而 C++ 侧 sizeof(model_data) = 96（mat4 使结构体
-// 对齐到 16）。若不补 pad，models[i]（i ≥ 1）会按 88 字节步长错位读取，
-// material_index 等字段读到垃圾 → materials[垃圾索引] 越界解引用 → GPU 故障（设备丢失）。
-// 描述符路径（StructuredBuffer）本就按 16 对齐得 96，此 pad 不影响其布局。
+// 注意：结构体自然大小即 96B（float4x4 对齐 16 使 sizeof 收尾到 96，offset 88 起的 8B 尾部空洞
+// 由编译器补齐），与 C++ 侧 sizeof(model_data) 一致，无需显式 _pad。
+// 若将来改动成员顺序/类型，务必复核 Slang 对物理存储缓冲指针（model_data*，如 rt_scene_data.models）
+// 的元素步长：它按结构体自然大小计算，不做 std430 的 16 字节对齐收尾；步长与 C++ sizeof 不一致会让
+// models[i]（i ≥ 1）错位，materials[垃圾索引] 越界解引用 → GPU 故障（设备丢失）。
 struct model_data
 {
   float4x4  model_matrix;    // 模型变换（局部 → 世界）
@@ -46,7 +45,7 @@ struct material_data
 
 // 光源参数：与 C++ scene_light_manager.cpp 的 light_data 对齐
 // active_type: 0=方向光, 1=点光源, 2=聚光灯
-// 同 model_data：显式补 8B 尾部填充（56 → 64），保证物理指针步长与 C++ sizeof 一致。
+// 同 model_data：自然大小即 64B（offset 56 起的 8B 尾部空洞由编译器补齐），无需显式 _pad。
 struct light_data
 {
   float3   color;             // 线性空间 RGB 颜色

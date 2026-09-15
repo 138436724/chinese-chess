@@ -72,12 +72,12 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
 
 void vulkan_buffer::flush() const
 {
-    buffer.getAllocation().flush(0, VK_WHOLE_SIZE);
+    buffer.getAllocation().flush(0, vk::WholeSize);
 }
 
 void vulkan_buffer::invalidate() const
 {
-    buffer.getAllocation().invalidate(0, VK_WHOLE_SIZE);
+    buffer.getAllocation().invalidate(0, vk::WholeSize);
 }
 
 void vulkan_buffer::set_info(const vk::BufferMemoryBarrier2& _barrier)

@@ -125,4 +125,4 @@ void ui_camera::update() noexcept
     }
 }
 
-void ui_camera::handle(int /*_glfw_key*/) noexcept {}
+void ui_camera::handle(int /*_key*/, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept {}

@@ -4,13 +4,13 @@
 
 Real-time 3D Chinese Chess (Xiangqi) visualization — **C++23**, **Vulkan 1.4**. Dual rendering: forward MSAA rasterization + path tracing (NEE direct lighting, Lambertian indirect bounce, Russian roulette, temporal accumulation). Slang shaders, ImGui UI (docking + multi-viewport), OpenColorIO ACES 2.0.
 
-Chinese docs: `README_CN.md`.
+Chinese docs: `README.md`(中文正文;原 `README_CN.md` 已重命名为 `README.md`)。
 
-> 最近一次全量扫描:2026-09-11(`*2` 化收尾 + VMA 分配意图显式化:`vulkan_buffer`/`vulkan_image::create` 增 `vma::AllocationCreateFlags` 参数,`usage` 管放置、`flags` 管映射,host 可见性只从 flags 推断;`is_host_accessible_usage()` 已删除,`eMapped` 由 `vulkan_buffer` 在含 HOST_ACCESS 位时补上(`vulkan_image` 不映射);9 处物理设备查询升 `*2`;`required_device_extensions` 收敛为 5 项,sync2/BDA 已提升为核心、改由 feature 结构启用;`create_instance` 增 loader 版本校验;`pipeline_cache` 头改 `memcpy`;RenderDoc `GetAPI` 经真实 `void*` 再 `static_cast`);2026-09-01(常量/函数修饰符提升 + 着色器优化与质量改进:C++ 侧——常量提升 `constexpr`/`constinit`(`scene_manager.h` `color_format`→`static constexpr`、`scene_material_manager.cpp` `image_format`×2、`vulkan_shader_binding_table.cpp` `raygen_offset`、`shader_compiler.cpp` `global_counter`→`constinit`、`vulkan_recycle_bin.h` `output`→`constexpr`),纯函数 `move_piece`/`location_transform`→`constexpr`;流水线创建处 vk 结构字面量(`bindings`/`push_constant`/`pool_size`、RT `shader_groups` 改 `constexpr std::array`)提升;`scene_camera` 7 个平凡 getter 移入头文件 `constexpr`(值类型)。复核回退:GPU 资源包装类 getter 的 constexpr 头文件化(空洞)与 `owner_less` 局部 constexpr(噪音)。proxy support_* 复核:渲染器现为拥有型 `proxy<manager_render>`(`unordered_map`)+ `proxy_view`,`nothrow` 已是最严(见 Type Erasure 节)。着色器——`lighting.slang` 清理 ~150 行死代码、`sample_ggx_brdf` 内联评估、整数幂改乘法;**GGX 间接弹射改真正 VNDF 采样(Heitz 2018)**(pdf=D·G1(V)/(4·NdotV),value=F·G1(L),方差更低);**firefly 钳制仅累积帧生效**(`frame_index>0`,修首帧/相机移动压暗,RT/RQ 同步);合并重复 `DispatchRaysIndex`);2026-08-31(光线追踪路线 A 落地 + SPIR-V 1.6 升级:新增 `scene_rayquery_render` + `ray_query.slang`、`render_mode` 三模式枚举(光栅化/RT Pipeline/Ray Query);ray query 与 RT pipeline 行为对齐(时域累积/间接弹射/高度雾),A2 实验模式与实验 UI 已按作者要求移除;Slang 2026.7.1 RayQuery 兼容问题(无候选确认 API / CommittedStatus 恒 None / CandidateInstanceID 错映射到自定义索引 / TraceRayInline 参数顺序)已逐一探测并规避;shader_compiler profile 升 `spirv_1_6`(移除 `VK_KHR_spirv_1_4` 扩展)、启用 `shaderIntegerDotProduct`、RNG 种子改用整数点积 OpUDot;着色器缓存不感知 profile 等编译器选项,改动后需手动删除 `resources\cache\shader_cache.cache`);2026-08-29(着色器缓存实为单一序列化文件 `resources\cache\shader_cache.cache`(非逐文件 .spv)、file_watcher 缓存实为 `hash_cache.cache`、F5 行号修正、swapchain getter noexcept 现状复核、新增 #34;2026-08-29 复核修正:#5(代码无 dummy SSBO,空场景 TLAS 直接 retire)、#8(改判 FIXED;队列族 2026-09 再核为 graphics,见 #8 当前文本)、#27(scale 钳制实为 `[0.001, 10000]`);2026-08-29 代码整理:include 按 IWYU 增删(移除 5 处未使用、补充约 28 处缺失,顺序由 clang-format 保证)、`file_watcher::is_file_modified()` 改 `const` + mutable 缓存;容器下标硬化仅 `record_loader.cpp` 保留 `charAt()`(ICU UnicodeString 的 `operator[]` 与 `charAt` 同实现、零开销),`vulkan_physical_device.h` 的 `.at()` 因编译失败由作者回退为 `[]`);2026-09(Vulkan 合规审计与文档同步:H2 push constant 全库弃用 RESOLVED、H4 `meshes` 改 `shared_ptr` + `use_count()==1` 剪枝 FIXED、M1 空场景构建 0 实例空 TLAS(期间评估 `VK_KHR_robustness2` 后确认无需并移除)、M2 描述符池 `eUpdateAfterBind` 死标志清除、M3 `upload_buffer`/`upload_image` 显式消费者 stage/access 参数(纹理 `eShaderSampledRead`、AS 输入 `eAccelerationStructureReadKHR`)、M4 swapchain imageCount 钳制修正、M5 F5 编译失败保留旧管线不再 terminate、M6 `wait_idle` 经 `explicit operator bool` 判空守卫、M8 移除 6 项未用特性/扩展;`/W4` 编译告警;渲染器每帧参数由 per-frame 场景 UBO 承载(见 GPU Data Structures))。注意:不要假设 `.slnx`/`.vcxproj` 存在(已删除,CMake 迁移);`PBR` 与 `heap` 分支为实验分支未并入 main,`spectral-rendering-plan.md` 仅存在于 `PBR` 分支。本文档刻意不写提交哈希(作者会改写 git 历史),统一用日期/描述定位改动;同理不写 `文件:行号`(行号随改动持续漂移),定位一律用符号名(函数/变量/类)。
+> 最近一次全量扫描:2026-09-13(异步截图保存 + 小缓冲内联上传 + 几何/实例脏标志分离:`scene_manager::save_image()` 改为后台 **`std::jthread save_thread`** 作业——`download_image` 拿到 wait 值后把 staging buffer 所有权等打包进 `image_save_info`,`run_save_job<T>`(匿名命名空间)先 `semaphore->wait(wait_value)` 同步 GPU、`invalidate()` 后做 CPU OCIO 变换 + 写盘(EXR/PNG),失败只打印不抛出;`save_thread` 支持移动赋值,再次按 C 会先 join 上一次,析构隐式 join,主循环不再被写盘阻塞;`upload_buffer` 增**内联上传路径**:数据 ≤ 64 KiB 且 4 字节对齐时走 `vkCmdUpdateBuffer`(免 transfer 队列 staging,CB 归属 owner 队列),否则保持 transfer→owner 两段式,两条路径都只在容量不足时才重建缓冲;**`scene_model_manager` 增 `meshes_dirty`**:`need_update()` 只置 `is_dirty`,`update()` 仅在新增网格(或 `use_count()==1` 剪枝回收)时置 `meshes_dirty` → 顶点/索引缓冲只在几何变化时重传,TLAS refit/间接命令/模型 SSBO 仍随 `is_dirty` 重传;三个渲染器各自持有 `descriptor_pool`/`descriptor_sets` 并按数组序直接构造 `WriteDescriptorSet`(`vulkan_descriptor` 仅服务 app 的 blend 管线,写入序与 `bindings` 严格同序,OCIO 用例的 layout/写入错位消失);着色器绑定注释修正(实测 Slang 反射:`top_level_acceleration_structure`=0 / `render_output`=1 / `scene_params`=2 / `samplers`=3));2026-09-11(`*2` 化收尾 + VMA 分配意图显式化:`vulkan_buffer`/`vulkan_image::create` 增 `vma::AllocationCreateFlags` 参数,`usage` 管放置、`flags` 管映射,host 可见性只从 flags 推断;`is_host_accessible_usage()` 已删除,`eMapped` 由 `vulkan_buffer` 在含 HOST_ACCESS 位时补上(`vulkan_image` 不映射);9 处物理设备查询升 `*2`;`required_device_extensions` 收敛为 5 项,sync2/BDA 已提升为核心、改由 feature 结构启用;`create_instance` 增 loader 版本校验;`pipeline_cache` 头改 `memcpy`;RenderDoc `GetAPI` 经真实 `void*` 再 `static_cast`);2026-09-01(常量/函数修饰符提升 + 着色器优化与质量改进:C++ 侧——常量提升 `constexpr`/`constinit`(`scene_manager.h` `color_format`→`static constexpr`、`scene_material_manager.cpp` `image_format`×2、`vulkan_shader_binding_table.cpp` `raygen_offset`、`shader_compiler.cpp` `global_counter`→`constinit`、`vulkan_recycle_bin.h` `output`→`constexpr`),纯函数 `move_piece`/`location_transform`→`constexpr`;流水线创建处 vk 结构字面量(`bindings`/`push_constant`/`pool_size`、RT `shader_groups` 改 `constexpr std::array`)提升;`scene_camera` 7 个平凡 getter 移入头文件 `constexpr`(值类型)。复核回退:GPU 资源包装类 getter 的 constexpr 头文件化(空洞)与 `owner_less` 局部 constexpr(噪音)。proxy support_* 复核:渲染器现为拥有型 `proxy<manager_render>`(`unordered_map`)+ `proxy_view`,`nothrow` 已是最严(见 Type Erasure 节)。着色器——`lighting.slang` 清理 ~150 行死代码、`sample_ggx_brdf` 内联评估、整数幂改乘法;**GGX 间接弹射改真正 VNDF 采样(Heitz 2018)**(pdf=D·G1(V)/(4·NdotV),value=F·G1(L),方差更低);**firefly 钳制仅累积帧生效**(`frame_index>0`,修首帧/相机移动压暗,RT/RQ 同步);合并重复 `DispatchRaysIndex`);2026-08-31(光线追踪路线 A 落地 + SPIR-V 1.6 升级:新增 `scene_rayquery_render` + `ray_query.slang`、`render_mode` 三模式枚举(光栅化/RT Pipeline/Ray Query);ray query 与 RT pipeline 行为对齐(时域累积/间接弹射/高度雾),A2 实验模式与实验 UI 已按作者要求移除;Slang 2026.7.1 RayQuery 兼容问题(无候选确认 API / CommittedStatus 恒 None / CandidateInstanceID 错映射到自定义索引 / TraceRayInline 参数顺序)已逐一探测并规避;shader_compiler profile 升 `spirv_1_6`(移除 `VK_KHR_spirv_1_4` 扩展)、启用 `shaderIntegerDotProduct`、RNG 种子改用整数点积 OpUDot;着色器缓存不感知 profile 等编译器选项,改动后需手动删除 `resources\cache\shader_cache.cache`);2026-08-29(着色器缓存实为单一序列化文件 `resources\cache\shader_cache.cache`(非逐文件 .spv)、file_watcher 缓存实为 `hash_cache.cache`、F5 行号修正、swapchain getter noexcept 现状复核、新增 #34;2026-08-29 复核修正:#5(代码无 dummy SSBO,空场景 TLAS 直接 retire)、#8(改判 FIXED;队列族 2026-09 再核为 graphics,见 #8 当前文本)、#27(scale 钳制实为 `[0.001, 10000]`);2026-08-29 代码整理:include 按 IWYU 增删(移除 5 处未使用、补充约 28 处缺失,顺序由 clang-format 保证)、`file_watcher::is_file_modified()` 改 `const` + mutable 缓存;容器下标硬化仅 `record_loader.cpp` 保留 `charAt()`(ICU UnicodeString 的 `operator[]` 与 `charAt` 同实现、零开销),`vulkan_physical_device.h` 的 `.at()` 因编译失败由作者回退为 `[]`);2026-09(Vulkan 合规审计与文档同步:H2 push constant 全库弃用 RESOLVED、H4 `meshes` 改 `shared_ptr` + `use_count()==1` 剪枝 FIXED、M1 空场景构建 0 实例空 TLAS(期间评估 `VK_KHR_robustness2` 后确认无需并移除)、M2 描述符池 `eUpdateAfterBind` 死标志清除、M3 `upload_buffer`/`upload_image` 显式消费者 stage/access 参数(纹理 `eShaderSampledRead`、AS 输入 `eAccelerationStructureReadKHR`)、M4 swapchain imageCount 钳制修正、M5 F5 编译失败保留旧管线不再 terminate、M6 `wait_idle` 经 `explicit operator bool` 判空守卫、M8 移除 6 项未用特性/扩展;`/W4` 编译告警;渲染器每帧参数由 per-frame 场景 UBO 承载(见 GPU Data Structures))。注意:不要假设 `.slnx`/`.vcxproj` 存在(已删除,CMake 迁移);`PBR` 与 `heap` 分支为实验分支未并入 main,`spectral-rendering-plan.md` 仅存在于 `PBR` 分支。本文档刻意不写提交哈希(作者会改写 git 历史),统一用日期/描述定位改动;同理不写 `文件:行号`(行号随改动持续漂移),定位一律用符号名(函数/变量/类)。
 
 ## 工作区布局与检索约定
 
-- 工作区根 = 本文件所在目录,内含**同名嵌套源码目录 `chinese-chess/`**(源码根:window/vulkan_core/scene/ui/tools/resources 均在其下,CLAUDE.md 所述"项目根/工作目录"即它);`CLAUDE.md`/`README.md`/`README_CN.md` 位于工作区根。
+- 工作区根 = 本文件所在目录,内含**同名嵌套源码目录 `chinese-chess/`**(源码根:window/vulkan_core/scene/ui/tools/resources 均在其下,CLAUDE.md 所述"项目根/工作目录"即它);`CLAUDE.md`/`README.md`(中文正文,即原 `README_CN.md`)位于工作区根。
 - `out/`(CMake 构建产物)、`vcpkg/`(依赖子模块)、`vcpkg_installed/`(vcpkg 安装头/库,工作区根与 `out/build/*/` 下均有)均为**生成/依赖产物,全库检索(grep/glob/文件枚举)一律排除**;检索范围限定 `chinese-chess/` 源码子目录与工作区根级文档。
 
 ## Build
@@ -46,7 +46,7 @@ tools/           Utilities: shader compiler, model loader, image I/O, OCIO, font
 | `ui/` | 6 pairs | `ui_manager` (ImGui init/render, 渲染模式切换), `ui_base` (`pro::proxy` facade), `ui_record` (棋谱回放), `ui_camera`, `ui_light`, `ui_node` (materials + models). NOTE: `ui_memory` 已不存在。 |
 | `tools/` | 9 cpp, 10 h | `shader_compiler` (Slang→SPIR-V, 依赖感知着色器缓存, `std::expected`), `model_loader` (fastgltf, `std::expected<model_data, std::string>`), `image_helper` (OIIO + KTX2 压缩, `paste_image`/`convert_channels`), `ocio_helper`, `font_loader`, `record_loader` (ICU4C 记谱解析), `file_watcher` (SHA-256, 缓存 `resources\cache\hash_cache.cache`, `is_file_modified()` const + mutable 缓存), `string_helper`, `renderdoc_capture` |
 
-## Shaders (10 Slang files in `resources/shaders/`)
+## Shaders (7 Slang files in `resources/shaders/`: 3 modules + 4 entry files)
 
 | File | Pipeline | Role |
 |------|----------|------|
@@ -57,9 +57,6 @@ tools/           Utilities: shader compiler, model loader, image I/O, OCIO, font
 | `common.slang` | (module) | Constants, Wang hash RNG, math/color helpers, tangent space, Hammersley, fullscreen triangle vertex |
 | `scene_data.slang` | (module) | Shared GPU structures aligned with C++ (`Vertex`, `model_data`, `material_data`, `light_data`) + 场景参数 UBO (`raster_scene_data`/`rt_scene_data`,std140,替代原 push constant) |
 | `blend_image.slang` | Graphics | Scene+UI alpha composite; `ocio_conversion()` stub body replaced by `ocio_helper` (self-contained, no imports) |
-| `scene_skybox.slang` | Graphics | Legacy, unused: HDR cubemap + Uncharted 2 tone mapping |
-| `scene_brdflut.slang` | Graphics | Legacy, unused: BRDF split-sum LUT |
-| `scene_cubemap.slang` | Graphics | Legacy, unused: equirect→cubemap (MRT) |
 
 Dependency graph:
 
@@ -68,22 +65,21 @@ common.slang ← scene_data.slang ← lighting.slang ← ray_tracing.slang
 rasterization.slang uses common / scene_data
 ray_query.slang uses common / scene_data / lighting
 blend_image.slang is self-contained (no imports)
-scene_skybox / scene_brdflut / scene_cubemap are legacy modules (reuse common)
 ```
 
-Note: `utils.slang` was removed (replaced by `common.slang`).
+Note: `utils.slang` was removed (replaced by `common.slang`);`scene_skybox.slang` / `scene_brdflut.slang` / `scene_cubemap.slang` 亦已从仓库删除(无引用)。当前 7 个文件 = 3 模块(`common`/`scene_data`/`lighting`)+ 4 entry(`rasterization`/`ray_tracing`/`ray_query`/`blend_image`)。
 
 ### GPU Data Structures (shared C++/Slang, std430-style)
 
 Byte sizes re-verified 2026-08-16 (MSVC `sizeof` + SPIR-V `OpMemberDecorate`/`ArrayStride`); C++ 与 GPU 布局完全一致。Slang/std430 将 `float3` 打包为 12B 但 16B 对齐,`alignas(16)` 只提升 offset 不影响 extent。
 
-访问路径(2026-09 起):`model_data`/`material_data`/`light_data` 数组以 GPU 存储缓冲上传(名字沿用 `ssbo`),但渲染期**不再作为 SSBO 描述符绑定**——设备地址与相机矩阵每帧写入场景参数 UBO(见下),shader 经指针成员直接解引用。
+访问路径(2026-09 起):`model_data`/`material_data`/`light_data` 数组以 GPU 存储缓冲上传(名字沿用 `ssbo`),但渲染期**不再作为 SSBO 描述符绑定**——设备地址与相机矩阵每帧在 `render()` 开头组装成 `uniform_buffer`(匿名命名空间内的 std140 镜像)并整块 `memcpy` 进当前帧槽,shader 经指针成员直接解引用。**地址一律取自 model/material manager 的共享 `ssbo` 缓冲**,因此顶点/索引缓冲单独重建(见 Manager Architecture 的 `meshes_dirty`)时地址仍然有效。
 
 - **model_data**: `mat4 model_matrix; uint32_t material_index; Vertex* vertex_address; uint32_t* index_address;` offsets 0/64/72/80, **sizeof 96B**
 - **material_data**: `float3 background_color; uint32_t texture_index; float3 foreground_color; float roughness, metallic, opacity, ior, transmission;` offsets 0/12/16/28/32/36/40/44, **sizeof 48B**;RT-only 字段默认 opacity=1, ior=1.5, transmission=0
 - **light_data**: `float3 color; uint32_t active_type; float3 direction; float intensity; float3 position; float range; float inner/outer_cone_angle;` offsets 0/12/16/28/32/44/48/52, **sizeof 64B**
 - **Vertex** (`scene_data.slang` 唯一共享定义): `{position, normal, uv}` = CPU `model_vertex` (32B);光栅顶点输入仅 `{position, uv}`
-- **场景参数 UBO(替代原 push constant,2026-09)**: `scene_data.slang` 定义 `raster_scene_data`(160B)/`rt_scene_data`(176B,std140)——相机矩阵、model/material(/light) 数组设备地址、计数、`texture_count`/`skybox_index`/`frame_index`。三个渲染器各持有 `vulkan_buffer ubo` + `ubo_offset`,容量 = `MAX_FRAMES_IN_FLIGHT` 槽(host 映射 + 每帧 `flush()`),每帧写当前帧槽。渲染器不再声明/推送任何 push constant,`vulkan_pipeline` 保留 `_push_constant` 参数(恒传空 span)为未来用法留接口。原 144B 超限问题随结构体移除而消失(见 Known Issue #1)。
+- **场景参数 UBO(替代原 push constant,2026-09)**: `scene_data.slang` 定义 `raster_scene_data`(160B)/`rt_scene_data`(176B,std140);C++ 侧三个渲染器各有一个匿名命名空间 `uniform_buffer` 镜像(实测 `sizeof` 分别为 160/176B)——相机矩阵、model/material(/light) 数组设备地址、计数、`texture_count`/`skybox_index`/`frame_index`。缓冲区以 `align_up(sizeof, minUniformBufferOffsetAlignment)` 为槽宽、容量 = `MAX_FRAMES_IN_FLIGHT` 槽(`eAuto` + `eHostAccessSequentialWrite`,host 映射 + 每帧 `flush()`),每帧在 `render()` 里写当前帧槽。渲染器不再声明/推送任何 push constant,`vulkan_pipeline` 保留 `_push_constant` 参数(恒传空 span)为未来用法留接口。原 144B 超限问题随结构体移除而消失(见 Known Issue #1)。
 
 ## Key Design Patterns
 
@@ -120,10 +116,12 @@ Byte sizes re-verified 2026-08-16 (MSVC `sizeof` + SPIR-V `OpMemberDecorate`/`Ar
 Upload: 传输队列 release(不改布局)→ 图形 acquire + `eShaderReadOnlyOptimal`。Download: 图形 release → 传输 `eTransferSrcOptimal` 拷贝 → 图形 re-acquire 恢复原布局。
 
 ### Manager Architecture (since 2026-07-28)
-`scene_model_manager` 持有顶点/索引缓冲、每网格 BLAS、共享 TLAS、间接绘制命令缓冲(`is_show` → instanceCount 0/1;RT mask 0xFF/0)、模型 SSBO;`scene_material_manager` 持有材质 SSBO + bindless 纹理数组(≤1024 槽,含字体图集);`scene_light_manager` 持有灯光 SSBO。各 manager 自查单一 `is_dirty`(`create()`/真删除置脏,`update()` 消费并返回 `bool`),`scene_manager::update()` 折叠为 `any_dirty` 并叠加 `is_render_dirty`(resize/渲染器切换,2026-08-26):`any_dirty || is_render_dirty` 时重建描述符,否则仅重置 RT 累积。UI 经 `need_update()`/`need_camera_update()`/`need_material_update()`/`need_model_update()`/`need_light_update()` 路由。TLAS:实例数不变仅 refit(`eUpdate` + 持久 scratch;实例缓冲每次更新重建局部缓冲,见 #17),增删模型才完全重建。
+`scene_model_manager` 持有顶点/索引缓冲、每网格 BLAS、共享 TLAS、间接绘制命令缓冲(`is_show` → instanceCount 0/1;RT mask 0xFF/0)、模型 SSBO;`scene_material_manager` 持有材质 SSBO + bindless 纹理数组(≤1024 槽,含字体图集);`scene_light_manager` 持有灯光 SSBO。各 manager 自查单一 `is_dirty`(`create()`/真删除置脏,`update()` 消费并返回 `bool`),`scene_manager::update()` 折叠为 `any_dirty` 并叠加 `is_render_dirty`(resize/渲染器切换,2026-08-26):`any_dirty || is_render_dirty` 时调 `active_render->update()` 重建描述符,否则仅 `active_render->reset_accumulation()` 重置 RT 累积。UI 经 `need_update()`/`need_camera_update()`/`need_material_update()`/`need_model_update()`/`need_light_update()` 路由。TLAS:实例数不变仅 refit(`eUpdate` + 持久 scratch;实例缓冲每次更新重建局部缓冲,见 #17),增删模型才完全重建。
+
+**几何脏标志分离(2026-09-13)**:`scene_model_manager` 另持 `meshes_dirty`——`update()` 只在新增网格(`create()` 走真实加载而非缓存命中)或 `use_count()==1` 剪枝回收时置位,于是顶点/索引缓冲(含逐网格 BLAS 重建)只在几何真正变化时重传;`update_tlas()`/`update_draw_commands()`/`update_ssbo()` 仍随 `is_dirty` 执行,`need_update()` 只置 `is_dirty`。
 
 ### Bindless Descriptors
-描述符池/集仅在 `any_dirty || is_render_dirty` 时重建;相机-only 更新永不触碰描述符。
+描述符池/集仅在 `any_dirty || is_render_dirty` 时重建;相机-only 更新(只置 `is_dirty`、无 manager 重传)同样会走 `any_dirty || is_render_dirty` 分支重建描述符池/集,但**不重传任何场景数据**。三个渲染器各自持有 `vk::raii::DescriptorPool` + `std::vector<vk::raii::DescriptorSet>`,在 `update_descriptor()` 里按 `pool_size`/`bindings` 数组序直接构造 `WriteDescriptorSet`(binding 0/1/2 固定项 + binding 3 的 bindless 数组按索引展开,`frame_index` 槽决定 UBO 偏移),旧池/集先 `recycle_bin.retire()`。`vulkan_descriptor` 只服务 app 的 blend 管线(其 `pool_infos` 顺序 == `bindings` 顺序,写入与 layout 严格同序,见 Known #4)。
 
 ### 三渲染模式 (since 2026-08-31)
 UI"渲染模式"Combo(光栅化 / RT Pipeline / Ray Query,`ui_manager::render_mode_ui()`)调 `scene_manager::set_render_mode(render_mode)`(`render_mode` 枚举于 `scene_manager.h`);`scene_renders` 以 `unordered_map<render_mode, pro::proxy<manager_render>>` 持有 3 个渲染器,`active_render` 为 `proxy_view`,构造默认绑定 `ray_tracing`(scene_manager.cpp)。切换 = rebind + `active_render->resize()` + 置 `is_dirty`+`is_render_dirty`(场景数据零重传、仅重建描述符并重置累积,#20)。三模式共享 `R16G16B16A16_SFLOAT` render_output;`resize()` 重建 render_output 并仅 resize active renderer;`recreate()` = F5 仅重编译 active renderer shaders。
@@ -148,8 +146,11 @@ UI"渲染模式"Combo(光栅化 / RT Pipeline / Ray Query,`ui_manager::render_mo
 ### std::expected Error Handling (project-wide, since 2026-08-15)
 可恢复的 data/IO/parse 错误返回 `std::expected<T, std::string>`(`compile_shader_to_spv`、`load_model`、`find_supported_format`、image_helper 系列、`load_font`、`load_records/read_record`、`upload_ktx2`);初始化/不可恢复错误 throw(`vulkan_application`、swapchain acquire/present);不变量/参数检查 throw(`set_info` 等);**"未找到"不是错误 → `std::optional`**(`get_material_index`/`get_texture_index`)。返回 `shared_ptr` 的工厂在边界把 expected 错误转为 `throw std::runtime_error(error)`。
 
-### Save Image QFOT
-`vulkan_common::download_image`(3 CBs:graphics release → transfer copy → graphics re-acquire/restore),然后 CPU OCIO `apply_on_image` + OIIO 写 EXR/PNG。
+### Save Image QFOT (now asynchronous, 2026-09-13)
+`vulkan_common::download_image`(3 CBs:graphics release → transfer copy → graphics re-acquire/restore)返回 owner CB 的 `SemaphoreSubmitInfo`;`scene_manager::save_image()` 把 wait 值与 staging buffer 所有权打包进匿名命名空间的 `image_save_info`,交给 `std::jthread save_thread` 执行 `run_save_job<T>`:线程先 `semaphore->wait(wait_value)` 等 GPU 落盘、`invalidate()` 后 CPU OCIO `apply_on_image` + OIIO `write_image`(EXR/PNG),异常只 `println(std::cerr, …)` 不上抛。文件格式按 `render_output` 格式判定(半精度浮点 → EXR,8 位无符号 → PNG),`image_save_info` 用聚合初始化 + move 捕获。保存不阻塞渲染循环;连续按键时 `save_thread` 的移动赋值会先 join 上一次作业,析构(经 `~scene_manager`)隐式 join。`waited_infos` 仍持有该 CB 的 submit info,使帧 CB 通过 GPU wait 覆盖下载拷贝、回收站可安全释放。上传侧配套:`upload_buffer` 对 ≤ 64 KiB 且 4 字节对齐的数据走 **`vkCmdUpdateBuffer` 内联路径**(owner 队列,免 transfer 队列与 staging),否则仍走两段式 QFOT。
+
+### 小缓冲内联上传 (2026-09-13)
+`UPLOAD_BUFFER_INLINE_MAX = 64 KiB`、`UPLOAD_BUFFER_INLINE_PADDING = 4`(`vulkan_common.cpp` 匿名命名空间)。命中时:容量不足才 retire+重建缓冲(容量足够则复用,避免每帧重建),在 owner 队列的一次性 CB 里 `begin_barrier → vkCmdUpdateBuffer → end_barrier(消费方 stage/access)`,submit 后 CB 入回收站;返回该 CB 的 submit info 供调用方串入帧 CB 等待链。未命中走原 `staging → transfer 队列拷贝 → transfer→owner 队列所有权转移 → owner acquire` 路径。两条路径都依赖调用方传入的 `_consumer_stages`/`_consumer_access`。
 
 ### RenderDoc Frame Capture (Debug)
 Debug 帧序与 Release 相同(`ui->update()` 先于 `scene->update()`)。ui 更新后、scene 消费前按 `scene->get_need_update()` 决定本帧捕获(跳过 `first_frame`);`StartFrameCapture` 在 `scene->update()` 前,upload/TLAS 构建入捕获;render/save 后结束。存 `resources\captures\`,失败丢弃。Release 无捕获。
@@ -177,24 +178,26 @@ getter 一律 `[[nodiscard]] const noexcept`;proxy 约定成员(manager_base/man
 - **Temporal accumulation**: `alpha = 1/(1 + frame_index/2)`;frame_index 场景更新时重置;jitter `random_float2` 以 `wang_hash(pixel·constants + frame_index)` 种子;accumulated 亮度 4× firefly 钳制**仅 `frame_index > 0` 时生效**(2026-09-01:重置后首帧 alpha=1 整帧替换,拿陈旧均值钳制会把新采样错误压暗)
 - **Sky**: `skybox_index != 0xFFFFFFFF` 时采样 HDR equirect(`sample_hdr_sky`),过暗回退程序化渐变天空
 - **Chess pieces**: 白玉 `(0.95,0.92,0.85)` + 深红刻字 / 青玉 `(0.15,0.45,0.32)` + 墨绿刻字;`opacity=0.8, ior=1.5, transmission=1.0, roughness=0.3`,材质面板可调
-- 主循环未使用: BRDF LUT(`scene_brdflut.slang`);`lighting.slang` 的零引用死代码已移除(统一 BRDF 调度 `evaluate_brdf`/`sample_brdf`/`pdf_brdf`、`sample_hemisphere_uniform`、`sample_uniform_sphere`、`power_heuristic`、`evaluate_height_fog_between` 等,2026-09-01)
+- 主循环未使用: BRDF LUT(`scene_brdflut.slang` 已从仓库删除;`common.slang` 的 Hammersley/球面采样辅助仍在但主路径不调用);`lighting.slang` 的零引用死代码已移除(统一 BRDF 调度 `evaluate_brdf`/`sample_brdf`/`pdf_brdf`、`sample_hemisphere_uniform`、`sample_uniform_sphere`、`power_heuristic`、`evaluate_height_fog_between` 等,2026-09-01)
 
 ## Data Flow (per frame)
 
 ```
+app->wait_frame()  (等当前帧槽上一次 signal;begin_record 不再各自等待)
 glfwPollEvents()
   → ui->update()     (ImGui NewFrame + panels;UI 操作使场景置脏)
   → [debug: if !first_frame && scene->get_need_update() → begin_capture]
-  → scene->update()  (dirty-gated: managers 重传 SSBO/重建 TLAS/draw;render.update() 重建描述符)
+  → scene->update()  (dirty-gated: managers 重传 SSBO/重建 TLAS/draw(meshes_dirty 时才重传顶点/索引);
+                      any_dirty || is_render_dirty → renderer.update() 重建描述符,否则 reset_accumulation())
   → ui_wait    = ui->render()     (MSAA resolve → submit, signal timeline)
-  → scene_wait = scene->render()  (raster 或 RT → submit, signal timeline)
+  → scene_wait = scene->render()  (raster 或 RT/RQ → 写本帧 UBO → submit, signal timeline)
   → app->render({ui_wait, scene_wait})
       → recycle_bin.release()
       → CB: wait timeline + clear → acquire swapchain (OutOfDate → end + return)
       → barrier scene+UI→shader read, swapchain→color attachment
       → blend_image 全屏三角形(scene+UI lerp;ocio_conversion 运行时替换)
       → barrier swapchain→present → submit (signal timeline + binary) → present
-  → [if save: scene->save_image() — download_image QFOT → OCIO CPU → EXR/PNG]
+  → [if save: scene->save_image() — download_image QFOT 入 waited_infos;写盘在 std::jthread 中异步进行]
   → [debug: if begin_capture → end_capture; first_frame = false]
 ```
 
@@ -205,7 +208,7 @@ glfwPollEvents()
 - **Textures** (`resources/textures/`): `cracked ground.hdr`(~90 MB)默认 HDR 天空;运行时生成 `cracked ground.hdr.ktx2`(**UASTC** sidecar,gitignored,加载时转码 BC6H/BC7)。2026-08-15 由中文名 `干裂地面.hdr` 重命名(解决 sidecar 编码问题,见 #29)。
 - **OCIO** (`resources/ocios/`): 5 个 ACES 2.0 + OCIO v2.4 configs(studio, D60, all-views, reference, CG) + `aces_conversion_graph.svg`;all-views studio config 用于 CPU save 与 GPU shader 生成。
 - **Records** (`resources/records/`): `棋谱1.txt`(GB2312 示例)。
-- **Shaders**: 10 `.slang`(3 模块 `common`/`scene_data`/`lighting` + 7 个 entry 文件:`rasterization`、`ray_tracing`、`ray_query`、`blend_image`、`scene_skybox`、`scene_brdflut`、`scene_cubemap`);编译缓存为 `resources\cache\shader_cache.cache` 单一序列化文件(gitignored,见 Pipeline Cache 段)。
+- **Shaders**: 7 `.slang`(3 模块 `common`/`scene_data`/`lighting` + 4 个 entry 文件:`rasterization`、`ray_tracing`、`ray_query`、`blend_image`;`scene_skybox`/`scene_brdflut`/`scene_cubemap` 已从仓库删除);编译缓存为 `resources\cache\shader_cache.cache` 单一序列化文件(gitignored,见 Pipeline Cache 段)。
 
 ## Required GPU Features
 
@@ -244,12 +247,12 @@ Features (当前实际请求集,谓词/查询链与启用链 1:1):
 
 ## Known Issues & TODOs
 
-扫描基线:2026-08-08(CMake 迁移 + scene_light 重构);Re-scanned 2026-08-12(dirty-gating + TLAS refit,findings 14-23)、2026-08-15(28-31)、2026-08-16(#29 解决)、2026-08-18(#18 修复)、2026-08-26(#20 修复,新增 #32/#33)、2026-08-27(#32 路径更新、#33 解决)、2026-08-28(#3 引用修正、#34 现状记录、缓存文件形态/路径修正、swapchain noexcept 保留确认)、2026-08-29(#5 修正、#8 改判 FIXED、#27 数值修正)、2026-09(#1/#3/#5/#15/#17/#34 状态更新与 M 系列审计;push constant 弃用改场景 UBO、F5 保旧管线、空场景空 TLAS、显式消费者 stage/access、`wait_idle` 守卫、swapchain imageCount 钳制、未用特性/扩展移除、`/W4`)、2026-09-11(`*2` 化收尾 + VMA 分配意图显式化,见各设计节)。
+扫描基线:2026-08-08(CMake 迁移 + scene_light 重构);Re-scanned 2026-08-12(dirty-gating + TLAS refit,findings 14-23)、2026-08-15(28-31)、2026-08-16(#29 解决)、2026-08-18(#18 修复)、2026-08-26(#20 修复,新增 #32/#33)、2026-08-27(#32 路径更新、#33 解决)、2026-08-28(#3 引用修正、#34 现状记录、缓存文件形态/路径修正、swapchain noexcept 保留确认)、2026-08-29(#5 修正、#8 改判 FIXED、#27 数值修正)、2026-09(#1/#3/#5/#15/#17/#34 状态更新与 M 系列审计;push constant 弃用改场景 UBO、F5 保旧管线、空场景空 TLAS、显式消费者 stage/access、`wait_idle` 守卫、swapchain imageCount 钳制、未用特性/扩展移除、`/W4`)、2026-09-11(`*2` 化收尾 + VMA 分配意图显式化,见各设计节)、2026-09-13(异步截图保存 + 小缓冲内联上传 + `meshes_dirty` 分离 + #4 FIXED,新增 #35)。
 
 1. ~~**RT push constants 144 > 128 bytes**~~(RESOLVED 2026-09: 渲染器已不再声明/推送 push constant 结构体,`vulkan_pipeline` 保留 `_push_constant` 参数恒传空 span 为未来留接口;144B 超限问题随结构体移除消失。)。
 2. ~~texture_index 守卫~~(FIXED 2026-08-09: 双守卫)。Remaining: `ePartiallyBound` 未启用,未填充 bindless 槽位技术上未定义。
 3. ~~**F5 热重载编译错误直接终止**~~(FIXED 2026-09): 三个渲染器 `create_pipeline*` 改为返回新构建对象,`recreate()` 先构建成功再 retire 旧的并 move 替换;`scene_manager::handle(F5)` 捕获编译异常,打印 `recreate failed, keep pipeline: {...}`(`scene_manager.cpp`)并保留旧管线,不再 terminate。
-4. **OCIO GPU 合成绑定序错位**: layout `[scene, ui, sampler, UBO, tex...]` vs 写入 `[scene, ui, sampler, tex..., UBO]`,自 binding 3 起错位,GPU 变换实际不可用;debug callback 不过滤。(OPEN)
+4. ~~**OCIO GPU 合成绑定序错位**~~(FIXED 2026-09-13: `vulkan_descriptor::update_descriptor_sets` 现按 `std::views::zip(pool_size, pool_infos) | views::enumerate` 的顺序写 binding(`j` == `pool_infos` 下标),`vulkan_application::bind_image`/`create_pipeline` 也按同一顺序 add(UBO 在纹理对之前,binding 3),layout 与写入自 binding 0 起完全一致。残余约束:OCIO 生成的纹理 binding 索引须自 1 起连续(代码对 `binding_index == 0` 抛错),否则 `bindings` 中未被覆盖的槽会停留在默认构造项。)
 5. ~~**空容器 null 描述符写入**~~(FIXED 2026-09): `update_tlas()` 在模型为空时不再 retire TLAS,改为构建 **0 实例空 TLAS**——描述符恒绑有效 AS 句柄,trace 空 TLAS = 0 命中 → miss → 天空盒仍渲染。材质/灯光空容器路径由 shader count 守卫兜底。期间曾评估 `VK_KHR_robustness2` nullDescriptor,实测 0 实例空 TLAS 后确认无需该特性,已移除。
 6. **ImGui 多视口验证误报**(1.92.8): 辅助视口未 acquire 即 present → `UNASSIGNED-non-acquired-swapchain-image-used`;debug callback 未过滤。
 7. ~~save_image 布局正确性~~(FIXED 2026-08-12: 转换全部在 acquire 侧;release barrier 保持 old_layout)。
@@ -280,5 +283,6 @@ Features (当前实际请求集,谓词/查询链与启用链 1:1):
 32. ~~`resources/cache/` 未加入 .gitignore~~(FIXED 2026-08-26,2026-08-27 更新路径: pipeline cache 与 file_watch 缓存同目录,已忽略)。
 33. ~~多 `vulkan_pipeline` 实例共享缓存文件~~(FIXED 2026-08-27: 单一 `vulkan_pipeline_cache` 实例,读盘 1 次(启动)/写盘 1 次(退出))。
 34. ~~**`~vulkan_application()` 对未创建 device 无守卫调 waitIdle**~~(FIXED 2026-09): `vulkan_device` 增 `explicit operator bool() const noexcept`(`vulkan_device.h`,判 `static_cast<vk::Device>(*device) != nullptr`——raii Device 无 operator bool);析构与 resize 经 `wait_idle()` 且开头 `if (!device) return;`(`vulkan_application.cpp`),`create()` 中途抛异常时部分构造对象析构不再对 null device 调 waitIdle。析构顺序不变(wait_idle 先于 `descriptor.clear_descriptor_info()`,`vulkan_application.cpp`)。
+35. **连续截图会短暂阻塞主线程**(设计取舍,2026-09-13): `scene_manager::save_image()` 用单个 `std::jthread save_thread` 承载后台写盘,`save_thread = std::jthread{...}` 的移动赋值会先 join 上一次作业。若上一次 OCIO 变换 + EXR/PNG 编码尚未结束,主线程会在这一行等到它完成(表现为按键瞬间掉帧,而非崩溃)。EXR 编码较慢时尤为明显;若要真正无阻塞需改成作业队列/线程池并让 staging buffer 随作业一起排队。`~scene_manager()` 亦会隐式 join 未完成的保存(退出时可能多等一次写盘)。
 
-Note (2026-08-12): MSAA sample count(`pick_msaa_sample_count`)故意取设备最高采样数(开发机实测 8×)——设计选择,非问题。
+Note (2026-08-12): MSAA sample count(`pick_msaa_sample_count`)故意取设备最高采样数(候选从 `e64` 递减到 `e2`,取 `framebufferColorSampleCounts & framebufferDepthSampleCounts` 命中的第一个;开发机实测 8×)——设计选择,非问题。

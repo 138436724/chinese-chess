@@ -13,9 +13,49 @@
 #include <chrono>
 #include <print>
 #include <ranges>
+#include <span>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vulkan/utility/vk_format_utils.h>
+
+namespace {
+
+struct image_save_info
+{
+    vulkan_buffer         staging_buffer;
+    vulkan_semaphore*     semaphore  = nullptr;
+    uint64_t              wait_value = 0;
+    std::filesystem::path save_path;
+    std::filesystem::path ocio_config_path;
+    uint32_t              width       = 0;
+    uint32_t              height      = 0;
+    size_t                pixel_count = 0;
+};
+
+template <typename T>
+void run_save_job(image_save_info _info)
+{
+    _info.semaphore->wait(_info.wait_value);
+    _info.staging_buffer.invalidate();
+
+    std::span<T> pixels(static_cast<T*>(_info.staging_buffer.get_buffer_address().hostAddress), _info.pixel_count);
+
+    try
+    {
+        ocio_helper::apply_on_image<T>(_info.ocio_config_path, _info.width, _info.height, pixels);
+        if (auto result = image_helper::write_image<T>(_info.save_path, _info.width, _info.height, pixels); !result)
+        {
+            std::println(std::cerr, "Write image {} failed: {}", _info.save_path.generic_string(), result.error());
+        }
+    }
+    catch (const std::exception& _exception)
+    {
+        std::println(std::cerr, "Save image {} failed: {}", _info.save_path.generic_string(), _exception.what());
+    }
+}
+
+}  // namespace
 
 scene_manager::~scene_manager()
 {
@@ -146,9 +186,14 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     return commandbuffer.get_submit_info();
 }
 
-void scene_manager::handle(int _glfw_key)
+void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/)
 {
-    switch (_glfw_key)
+    if (_action != GLFW_PRESS)
+    {
+        return;
+    }
+
+    switch (_key)
     {
         case GLFW_KEY_F5:
             try
@@ -209,47 +254,45 @@ void scene_manager::save_image()
     const auto [image_width, image_height] = render_output.get_extent();
     const VkFormat image_format            = static_cast<VkFormat>(render_output.get_format());
 
+    const bool is_float_half = vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format);
+    const bool is_uint8_t    = vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format);
+    if (!is_float_half && !is_uint8_t)
+    {
+        throw std::runtime_error("Unsupported format!");
+    }
+
     vulkan_buffer staging_buffer;
     const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore,
                                                           graphic_queue, transfer_queue, render_output, staging_buffer);
 
-    semaphore.wait(wait_value.value);
-
-    staging_buffer.invalidate();
+    waited_infos.push_back(wait_value);
 
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
 
     std::filesystem::path save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
+    save_path.replace_extension(is_float_half ? ".exr" : ".png");
 
-    const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio";
+    const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v4.0.0_aces-v2.0_ocio-v2.5.ocio";
 
     const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
-    if (vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format))
+
+    image_save_info info{.staging_buffer   = std::move(staging_buffer),
+                         .semaphore        = &semaphore,
+                         .wait_value       = wait_value.value,
+                         .save_path        = save_path,
+                         .ocio_config_path = ocio_config_path,
+                         .width            = image_width,
+                         .height           = image_height,
+                         .pixel_count      = pixel_count};
+
+    if (is_float_half)
     {
-        save_path.replace_extension(".exr");
-        std::vector<half> image_data(static_cast<half*>(staging_buffer.get_buffer_address().hostAddress),
-                                     static_cast<half*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
-        ocio_helper::apply_on_image<half>(ocio_config_path, image_width, image_height, image_data);
-        if (auto result = image_helper::write_image<half>(save_path, image_width, image_height, image_data); !result)
-        {
-            std::println(std::cerr, "write image{} failed: {}", save_path.generic_string(), result.error());
-        }
-    }
-    else if (vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format))
-    {
-        save_path.replace_extension(".png");
-        std::vector<uint8_t> image_data(static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress),
-                                        static_cast<uint8_t*>(staging_buffer.get_buffer_address().hostAddress) + pixel_count);
-        ocio_helper::apply_on_image<uint8_t>(ocio_config_path, image_width, image_height, image_data);
-        if (auto result = image_helper::write_image<uint8_t>(save_path, image_width, image_height, image_data); !result)
-        {
-            std::println(std::cerr, "write_image{} failed: {}", save_path.generic_string(), result.error());
-        }
+        save_thread = std::jthread([info = std::move(info)]() mutable { run_save_job<half>(std::move(info)); });
     }
     else
     {
-        throw std::runtime_error("Unsupported format!");
+        save_thread = std::jthread([info = std::move(info)]() mutable { run_save_job<uint8_t>(std::move(info)); });
     }
 }
 

@@ -406,7 +406,7 @@ void vulkan_application::create_pipeline()
 
     if constexpr (vulkan_common::USE_OCIO)
     {
-        shader_desc = ocio_helper::generate_shader_info(std::string(OCIOS_PATH) + "studio-config-all-views-v3.0.0_aces-v2.0_ocio-v2.4.ocio");
+        shader_desc = ocio_helper::generate_shader_info(std::string(OCIOS_PATH) + "studio-config-all-views-v4.0.0_aces-v2.0_ocio-v2.5.ocio");
         spirv_code = ocio_helper::replace_and_compile(shader_desc, std::filesystem::path(SHADERS_PATH) / "blend_image.slang",
                                                       {VERT_ENTRY_NAME, FRAG_ENTRY_NAME});
     }
