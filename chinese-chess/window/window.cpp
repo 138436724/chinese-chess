@@ -110,14 +110,10 @@ void glfw_window::render()
         scene->update();
 
         const auto ui_wait_info    = ui->render();
-        const auto scene_wait_info = scene->render();
+        const auto scene_wait_info = scene->render(need_capture);
         app->render(ui_wait_info, scene_wait_info);
 
-        if (need_save)
-        {
-            scene->save_image();
-            need_save = false;
-        }
+        need_capture = false;
 
 #ifndef NDEBUG
         if (begin_capture)
@@ -198,6 +194,6 @@ void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int _scancode,
 
     if (_key == GLFW_KEY_C && _action == GLFW_PRESS)
     {
-        need_save = true;
+        need_capture = true;
     }
 }

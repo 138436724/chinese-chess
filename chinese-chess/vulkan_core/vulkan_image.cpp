@@ -75,21 +75,27 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
 #endif  // !NDEBUG
 }
 
-void vulkan_image::set_info(const vk::ImageMemoryBarrier2& _barrier)
+vk::ImageMemoryBarrier2 vulkan_image::transition_state(vk::PipelineStageFlags2 _stage,
+                                                       vk::AccessFlags2        _access,
+                                                       vk::ImageLayout         _layout,
+                                                       uint32_t                _queue /*= vk::QueueFamilyIgnored*/,
+                                                       vk::ImageSubresourceRange _range /*= vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)*/)
 {
-    if (_barrier.image != *image)
+    auto barrier = vk::ImageMemoryBarrier2(stage, access, _stage, _access, layout, _layout, vk::QueueFamilyIgnored,
+                                           vk::QueueFamilyIgnored, image, _range);
+
+    if (_queue != vk::QueueFamilyIgnored && _queue != queue)
     {
-        throw std::runtime_error("The barrier not used by this image!");
-    }
-    if ((_barrier.srcQueueFamilyIndex == vk::QueueFamilyIgnored) != (_barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored))
-    {
-        throw std::runtime_error("Queue must all ignore or all set new value!");
+        barrier.srcQueueFamilyIndex = queue;
+        barrier.dstQueueFamilyIndex = _queue;
     }
 
-    stage  = _barrier.dstStageMask;
-    access = _barrier.dstAccessMask;
-    layout = _barrier.newLayout;
-    queue  = _barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored ? queue : _barrier.dstQueueFamilyIndex;
+    stage  = _stage;
+    access = _access;
+    layout = _layout;
+    queue  = _queue == vk::QueueFamilyIgnored ? queue : _queue;
+
+    return barrier;
 }
 
 vk::Format vulkan_image::get_format() const noexcept

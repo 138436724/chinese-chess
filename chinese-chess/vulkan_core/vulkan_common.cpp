@@ -49,19 +49,13 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
                           .front());
         commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-        const auto inline_begin_barrier =
-            vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), vk::PipelineStageFlagBits2::eTransfer,
-                                     vk::AccessFlagBits2::eTransferWrite, vk::QueueFamilyIgnored,
-                                     vk::QueueFamilyIgnored, _buffer.get_buffer(), 0, vk::WholeSize);
-        _buffer.set_info(inline_begin_barrier);
+        const auto inline_begin_barrier = _buffer.transition_state(vk::PipelineStageFlagBits2::eTransfer,
+                                                                   vk::AccessFlagBits2::eTransferWrite, vk::QueueFamilyIgnored);
         (*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, inline_begin_barrier, {}));
 
-        (*commandbuffer).updateBuffer(*_buffer.get_buffer(), 0, data_size, _data.data());
+        (*commandbuffer).updateBuffer<uint8_t>(*_buffer.get_buffer(), 0, _data);
 
-        const auto inline_end_barrier =
-            vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), _consumer_stages, _consumer_access,
-                                     vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, _buffer.get_buffer(), 0, vk::WholeSize);
-        _buffer.set_info(inline_end_barrier);
+        const auto inline_end_barrier = _buffer.transition_state(_consumer_stages, _consumer_access, vk::QueueFamilyIgnored);
         (*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, inline_end_barrier, {}));
 
         commandbuffer.end_record();
@@ -107,11 +101,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     transfer_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
     // create barrier to transfer write
-    const auto ssbo_begin_barrier =
-        vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), vk::PipelineStageFlagBits2::eTransfer,
-                                 vk::AccessFlagBits2::eTransferWrite, vk::QueueFamilyIgnored, vk::QueueFamilyIgnored,
-                                 _buffer.get_buffer(), 0, vk::WholeSize);
-    _buffer.set_info(ssbo_begin_barrier);
+    const auto ssbo_begin_barrier = _buffer.transition_state(vk::PipelineStageFlagBits2::eTransfer,
+                                                             vk::AccessFlagBits2::eTransferWrite, vk::QueueFamilyIgnored);
     const std::array begin_barrier = {ssbo_begin_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, begin_barrier, {}));
 
@@ -124,10 +115,7 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
 
     // create barrier to end transfer and ready to owner
     const auto ssbo_transfer_barrier =
-        vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), vk::PipelineStageFlagBits2::eNone,
-                                 vk::AccessFlagBits2::eNone, _buffer.get_queue(), _owner_queue.get_index(),
-                                 _buffer.get_buffer(), 0, vk::WholeSize);
-    _buffer.set_info(ssbo_transfer_barrier);
+        _buffer.transition_state(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone, _owner_queue.get_index());
     const std::array end_barrier = {ssbo_transfer_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, end_barrier, {}));
 
@@ -146,10 +134,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     owner_commandbuffer.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to owner read
-    const auto ssbo_owner_barrier =
-        vk::BufferMemoryBarrier2(_buffer.get_stage(), _buffer.get_access(), _consumer_stages, _consumer_access,
-                                 _transfer_queue.get_index(), _buffer.get_queue(), _buffer.get_buffer(), 0, vk::WholeSize);
-    _buffer.set_info(ssbo_owner_barrier);
+    auto ssbo_owner_barrier = _buffer.transition_state(_consumer_stages, _consumer_access);
+    ssbo_owner_barrier.setSrcQueueFamilyIndex(_transfer_queue.get_index()).setDstQueueFamilyIndex(_buffer.get_queue());
     const std::array owner_barrier = {ssbo_owner_barrier};
     (*owner_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, owner_barrier, {}));
 
@@ -215,11 +201,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
 
     // create barrier to transfer layout for clear
     const auto image_owner_begin_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eTransfer,
-                                vk::AccessFlagBits2::eTransferWrite, _image.get_layout(),
-                                vk::ImageLayout::eTransferDstOptimal, _image.get_queue(), _image.get_queue(),
-                                _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_owner_begin_barrier);
+        _image.transition_state(vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
+                                vk::ImageLayout::eTransferDstOptimal, vk::QueueFamilyIgnored);
     const std::array owner_begin_barrier = {image_owner_begin_barrier};
     (*owner_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, owner_begin_barrier));
 
@@ -231,12 +214,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     }
 
     // create barrier to give the ownership
-    const auto image_owner_end_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eNone,
-                                vk::AccessFlagBits2::eNone, _image.get_layout(), _image.get_layout(),
-                                _image.get_queue(), _transfer_queue.get_index(), _image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_owner_end_barrier);
+    const auto image_owner_end_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+                                                                 _image.get_layout(), _transfer_queue.get_index());
     const std::array owner_end_barrier = {image_owner_end_barrier};
     (*owner_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, owner_end_barrier));
 
@@ -256,12 +235,9 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     transfer_commandbuffer.add_waited_info(owner_commandbuffer.get_submit_info());
 
     // create barrier to transfer write
-    const auto image_begin_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eTransfer,
-                                vk::AccessFlagBits2::eTransferWrite, _image.get_layout(),
-                                vk::ImageLayout::eTransferDstOptimal, _owner_queue.get_index(), _image.get_queue(),
-                                _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_begin_barrier);
+    auto image_begin_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
+                                                       vk::ImageLayout::eTransferDstOptimal);
+    image_begin_barrier.setSrcQueueFamilyIndex(_owner_queue.get_index()).setDstQueueFamilyIndex(_image.get_queue());
     const std::array begin_barrier = {image_begin_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
@@ -272,12 +248,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
                              vk::Offset3D(0, 0, 0), _image_extent));
 
     // create barrier to end transfer and only transfer ownership to owner
-    const auto image_end_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eNone,
-                                vk::AccessFlagBits2::eNone, _image.get_layout(), _image.get_layout(),
-                                _image.get_queue(), _owner_queue.get_index(), _image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_end_barrier);
+    const auto image_end_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+                                                           _image.get_layout(), _owner_queue.get_index());
     const std::array end_barrier = {image_end_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
@@ -296,11 +268,8 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     owner_commandbuffer2.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to get the ownership and transition layout for sampler
-    const auto image_owner_barrier2 =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), _consumer_stages, _consumer_access, _image.get_layout(),
-                                vk::ImageLayout::eShaderReadOnlyOptimal, _transfer_queue.get_index(), _image.get_queue(),
-                                _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_owner_barrier2);
+    auto image_owner_barrier2 = _image.transition_state(_consumer_stages, _consumer_access, vk::ImageLayout::eShaderReadOnlyOptimal);
+    image_owner_barrier2.setSrcQueueFamilyIndex(_transfer_queue.get_index()).setDstQueueFamilyIndex(_image.get_queue());
     const std::array owner_barrier2 = {image_owner_barrier2};
     (*owner_commandbuffer2).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, owner_barrier2));
 
@@ -318,15 +287,16 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     return submit_info;
 }
 
-vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator& _allocator,
-                                                      const vk::raii::Device&     _device,
-                                                      vulkan_recycle_bin&         _recycle_bin,
-                                                      vulkan_semaphore&           _semaphore,
-                                                      const vulkan_queue&         _owner_queue,
-                                                      const vulkan_queue&         _transfer_queue,
-                                                      vulkan_image&               _image,
-                                                      vulkan_buffer&              _buffer,
-                                                      const std::string&          _buffer_name)
+vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator&    _allocator,
+                                                      const vk::raii::Device&        _device,
+                                                      vulkan_recycle_bin&            _recycle_bin,
+                                                      vulkan_semaphore&              _semaphore,
+                                                      const vulkan_queue&            _owner_queue,
+                                                      const vulkan_queue&            _transfer_queue,
+                                                      const vk::SemaphoreSubmitInfo& _waited_info,
+                                                      vulkan_image&                  _image,
+                                                      vulkan_buffer&                 _buffer,
+                                                      const std::string&             _buffer_name)
 {
     const auto [image_width, image_height]     = _image.get_extent();
     const VkFormat                image_format = static_cast<VkFormat>(_image.get_format());
@@ -349,14 +319,11 @@ vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator
             &_owner_queue, &_semaphore)
             .front());
     owner_commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    owner_commandbuffer.add_waited_info(_waited_info);
 
     // create barrier to get the ownership and transition layout for sampler
-    const auto image_owner_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eNone,
-                                vk::AccessFlagBits2::eNone, _image.get_layout(), _image.get_layout(),
-                                _image.get_queue(), _transfer_queue.get_index(), _image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_owner_barrier);
+    const auto image_owner_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+                                                             _image.get_layout(), _transfer_queue.get_index());
     const std::array owner_barrier = {image_owner_barrier};
     (*owner_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, owner_barrier));
 
@@ -375,12 +342,9 @@ vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator
     transfer_commandbuffer.add_waited_info(owner_commandbuffer.get_submit_info());
 
     // create barrier to transfer write and get the ownership
-    const auto image_begin_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eTransfer,
-                                vk::AccessFlagBits2::eTransferRead, _image.get_layout(),
-                                vk::ImageLayout::eTransferSrcOptimal, _owner_queue.get_index(), _image.get_queue(),
-                                _image.get_image(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_begin_barrier);
+    auto image_begin_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead,
+                                                       vk::ImageLayout::eTransferSrcOptimal);
+    image_begin_barrier.setSrcQueueFamilyIndex(_owner_queue.get_index()).setDstQueueFamilyIndex(_image.get_queue());
     const std::array begin_barrier = {image_begin_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
@@ -391,12 +355,8 @@ vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator
                              vk::Offset3D(0, 0, 0), vk::Extent3D(image_width, image_height, 1)));
 
     // create barrier to end transfer and transfer ownership to owner
-    const auto image_end_barrier =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), vk::PipelineStageFlagBits2::eNone,
-                                vk::AccessFlagBits2::eNone, _image.get_layout(), _image.get_layout(),
-                                _image.get_queue(), _owner_queue.get_index(), _image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_end_barrier);
+    const auto image_end_barrier = _image.transition_state(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+                                                           _image.get_layout(), _owner_queue.get_index());
     const std::array end_barrier = {image_end_barrier};
     (*transfer_commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
@@ -415,11 +375,8 @@ vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator
     owner_commandbuffer2.add_waited_info(transfer_commandbuffer.get_submit_info());
 
     // create barrier to get the ownership and transition layout for sampler
-    const auto image_owner_barrier2 =
-        vk::ImageMemoryBarrier2(_image.get_stage(), _image.get_access(), old_stage, old_access, _image.get_layout(),
-                                old_layout, _transfer_queue.get_index(), _image.get_queue(), _image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    _image.set_info(image_owner_barrier2);
+    auto image_owner_barrier2 = _image.transition_state(old_stage, old_access, old_layout);
+    image_owner_barrier2.setSrcQueueFamilyIndex(_transfer_queue.get_index()).setDstQueueFamilyIndex(_image.get_queue());
     const std::array owner_barrier2 = {image_owner_barrier2};
     (*owner_commandbuffer2).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, owner_barrier2));
 

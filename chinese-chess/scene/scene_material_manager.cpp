@@ -21,7 +21,7 @@
 
 namespace {
 
-struct material_data  // scalar layout
+struct gpu_material_data  // scalar layout
 {
     glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
     uint32_t  texture_index    = std::numeric_limits<uint32_t>::max();
@@ -476,7 +476,7 @@ bool scene_material_manager::reload_textures(std::vector<vk::SemaphoreSubmitInfo
             {
                 std::filesystem::path ktx2_path = source_path;
                 ktx2_path += ".ktx2";
-                write_ktx2(ktx2_path, *compressed);  // 同步写 UASTC sidecar（转码前）
+                write_ktx2(ktx2_path, *compressed);
                 load_result = upload_ktx2(*compressed, target_format, new_image, _waited_infos, "material texture reload");
             }
             else
@@ -605,15 +605,15 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
         const auto materials_ssbo =
             materials | std::views::transform([this](const auto& p) {
                 const auto sp = p.lock();
-                return material_data{.background_color = sp->background_color,
-                                     .texture_index =
-                                         get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
-                                     .foreground_color = sp->foreground_color,
-                                     .roughness        = sp->roughness,
-                                     .metallic         = sp->metallic,
-                                     .opacity          = sp->opacity,
-                                     .ior              = sp->ior,
-                                     .transmission     = sp->transmission};
+                return gpu_material_data{.background_color = sp->background_color,
+                                         .texture_index =
+                                             get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
+                                         .foreground_color = sp->foreground_color,
+                                         .roughness        = sp->roughness,
+                                         .metallic         = sp->metallic,
+                                         .opacity          = sp->opacity,
+                                         .ior              = sp->ior,
+                                         .transmission     = sp->transmission};
             })
             | std::ranges::to<std::vector>();
 

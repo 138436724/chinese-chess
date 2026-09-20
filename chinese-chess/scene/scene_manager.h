@@ -37,7 +37,7 @@ public:
 
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
-    [[nodiscard]] vk::SemaphoreSubmitInfo render();
+    [[nodiscard]] vk::SemaphoreSubmitInfo render(bool _need_capture);
     void                                  handle(int _key, int _scancode, int _action, int _mods);
 
     void need_update() noexcept;
@@ -45,8 +45,6 @@ public:
     void need_light_update() noexcept;
     void need_material_update() noexcept;
     void need_model_update() noexcept;
-
-    void save_image();
 
     template <typename T, typename... Args>
         requires(std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image>
@@ -72,6 +70,8 @@ private:
                                                          const std::filesystem::path& _image_path,
                                                          bool                         _is_hdr,
                                                          sampler_type                 _type);
+
+    [[nodiscard]] vk::SemaphoreSubmitInfo capture_frame(const vk::SemaphoreSubmitInfo& _waited_info);
 
 private:
     bool is_dirty        = true;

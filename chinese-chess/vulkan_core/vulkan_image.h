@@ -22,7 +22,13 @@ public:
                 const vk::ClearValue&       _clear_value,
                 const std::string&          _name = "");
 
-    void set_info(const vk::ImageMemoryBarrier2& _barrier);
+    [[nodiscard("Barrier need record by commandbuffer!")]]
+    vk::ImageMemoryBarrier2 transition_state(
+        vk::PipelineStageFlags2   _stage,
+        vk::AccessFlags2          _access,
+        vk::ImageLayout           _layout,
+        uint32_t                  _queue = vk::QueueFamilyIgnored,
+        vk::ImageSubresourceRange _range = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
 
     [[nodiscard]] vk::Format                 get_format() const noexcept;
     [[nodiscard]] vk::Extent2D               get_extent() const noexcept;

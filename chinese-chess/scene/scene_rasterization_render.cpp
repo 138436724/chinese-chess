@@ -131,28 +131,17 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
 
     // render
     const auto render_output_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
-                                vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
-                                render_output.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    render_output.set_info(render_output_barrier);
+        render_output.transition_state(vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
+                                       vk::ImageLayout::eColorAttachmentOptimal, vk::QueueFamilyIgnored);
 
-    const auto color_barrier =
-        vk::ImageMemoryBarrier2(color_image.get_stage(), color_image.get_access(),
-                                vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
-                                color_image.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, color_image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    color_image.set_info(color_barrier);
+    const auto color_barrier = color_image.transition_state(vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                                                            vk::AccessFlagBits2::eColorAttachmentWrite,
+                                                            vk::ImageLayout::eColorAttachmentOptimal, vk::QueueFamilyIgnored);
 
     const auto depth_barrier =
-        vk::ImageMemoryBarrier2(depth_image.get_stage(), depth_image.get_access(), vk::PipelineStageFlagBits2::eAllGraphics,
-                                vk::AccessFlagBits2::eDepthStencilAttachmentWrite, depth_image.get_layout(),
-                                vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::QueueFamilyIgnored,
-                                vk::QueueFamilyIgnored, depth_image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
-    depth_image.set_info(depth_barrier);
+        depth_image.transition_state(vk::PipelineStageFlagBits2::eAllGraphics, vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+                                     vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::QueueFamilyIgnored,
+                                     vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
 
     const std::array begin_barriers = {render_output_barrier, color_barrier, depth_barrier};
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barriers, nullptr));

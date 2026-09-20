@@ -34,7 +34,7 @@ struct image_save_info
 };
 
 template <typename T>
-void run_save_job(image_save_info _info)
+void save_frame(image_save_info _info)
 {
     _info.semaphore->wait(_info.wait_value);
     _info.staging_buffer.invalidate();
@@ -167,7 +167,7 @@ void scene_manager::update()
     is_render_dirty = false;
 }
 
-vk::SemaphoreSubmitInfo scene_manager::render()
+vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
 {
     recycle_bin.release();
 
@@ -181,9 +181,16 @@ vk::SemaphoreSubmitInfo scene_manager::render()
     commandbuffer.end_record();
     commandbuffer.submit();
 
+    auto submit_info = commandbuffer.get_submit_info();
+
+    if (_need_capture)
+    {
+        submit_info = capture_frame(submit_info);
+    }
+
     current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
-    return commandbuffer.get_submit_info();
+    return submit_info;
 }
 
 void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/)
@@ -249,53 +256,6 @@ void scene_manager::need_model_update() noexcept
     model_manager.need_update();
 }
 
-void scene_manager::save_image()
-{
-    const auto [image_width, image_height] = render_output.get_extent();
-    const VkFormat image_format            = static_cast<VkFormat>(render_output.get_format());
-
-    const bool is_float_half = vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format);
-    const bool is_uint8_t    = vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format);
-    if (!is_float_half && !is_uint8_t)
-    {
-        throw std::runtime_error("Unsupported format!");
-    }
-
-    vulkan_buffer staging_buffer;
-    const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore,
-                                                          graphic_queue, transfer_queue, render_output, staging_buffer);
-
-    waited_infos.push_back(wait_value);
-
-    const auto now        = std::chrono::system_clock::now();
-    const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
-
-    std::filesystem::path save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
-    save_path.replace_extension(is_float_half ? ".exr" : ".png");
-
-    const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v4.0.0_aces-v2.0_ocio-v2.5.ocio";
-
-    const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
-
-    image_save_info info{.staging_buffer   = std::move(staging_buffer),
-                         .semaphore        = &semaphore,
-                         .wait_value       = wait_value.value,
-                         .save_path        = save_path,
-                         .ocio_config_path = ocio_config_path,
-                         .width            = image_width,
-                         .height           = image_height,
-                         .pixel_count      = pixel_count};
-
-    if (is_float_half)
-    {
-        save_thread = std::jthread([info = std::move(info)]() mutable { run_save_job<half>(std::move(info)); });
-    }
-    else
-    {
-        save_thread = std::jthread([info = std::move(info)]() mutable { run_save_job<uint8_t>(std::move(info)); });
-    }
-}
-
 void scene_manager::set_render_mode(render_mode _mode)
 {
     active_render = scene_renders.at(_mode);
@@ -351,4 +311,51 @@ std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_imag
                                                    sampler_type                 _type)
 {
     return material_manager.create(_image_path, _is_hdr, _type, waited_infos);
+}
+
+vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitInfo& _waited_info)
+{
+    const auto [image_width, image_height] = render_output.get_extent();
+    const VkFormat image_format            = static_cast<VkFormat>(render_output.get_format());
+
+    const bool is_float_half = vkuFormatIsSFLOAT(image_format) && vkuFormatIs16bit(image_format);
+    const bool is_uint8_t    = vkuFormatIs8bit(image_format) && vkuFormatIsUINT(image_format);
+    if (!is_float_half && !is_uint8_t)
+    {
+        throw std::runtime_error("Unsupported format!");
+    }
+
+    vulkan_buffer staging_buffer;
+    const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
+                                                          transfer_queue, _waited_info, render_output, staging_buffer);
+
+    const auto now        = std::chrono::system_clock::now();
+    const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
+
+    std::filesystem::path save_path = std::format("{}{:%Y_%m_%d_%H_%M_%S}", CAPTURES_PATH, now_second);
+    save_path.replace_extension(is_float_half ? ".exr" : ".png");
+
+    const std::string ocio_config_path = std::string(OCIOS_PATH) + "studio-config-all-views-v4.0.0_aces-v2.0_ocio-v2.5.ocio";
+
+    const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
+
+    image_save_info info{.staging_buffer   = std::move(staging_buffer),
+                         .semaphore        = &semaphore,
+                         .wait_value       = wait_value.value,
+                         .save_path        = save_path,
+                         .ocio_config_path = ocio_config_path,
+                         .width            = image_width,
+                         .height           = image_height,
+                         .pixel_count      = pixel_count};
+
+    if (is_float_half)
+    {
+        save_thread = std::jthread([info = std::move(info)]() mutable { save_frame<half>(std::move(info)); });
+    }
+    else
+    {
+        save_thread = std::jthread([info = std::move(info)]() mutable { save_frame<uint8_t>(std::move(info)); });
+    }
+
+    return wait_value;
 }

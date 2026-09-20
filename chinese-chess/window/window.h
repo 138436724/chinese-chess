@@ -29,7 +29,7 @@ private:
     void key_callback(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods);
 
 private:
-    bool need_save = false;
+    bool need_capture = false;
 
     float                 title_timer  = 0.f;
     uint32_t              title_frames = 0;

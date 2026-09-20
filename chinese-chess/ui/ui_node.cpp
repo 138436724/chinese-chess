@@ -253,7 +253,7 @@ void ui_node::update_model()
                     const glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
 
                     model_ptr->model_matrix = T * R * S;
-                    ;
+
                     manager.need_model_update();
                 }
             }

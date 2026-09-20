@@ -54,7 +54,7 @@ private:
     void                   create_instance(const std::vector<const char*>& _instance_layers,
                                            const std::vector<const char*>& _instance_extensions,
                                            vk::InstanceCreateFlags         _flags = {});
-    [[nodiscard]] uint32_t create_physical_device_and_device(vk::SurfaceKHR _surface);
+    [[nodiscard]] uint32_t create_physical_device_and_logical_device(vk::SurfaceKHR _surface);
     void                   create_pipeline();
 
     void pick_msaa_sample_count() const noexcept;

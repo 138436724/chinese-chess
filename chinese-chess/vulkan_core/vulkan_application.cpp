@@ -49,7 +49,7 @@ void vulkan_application::init(const std::vector<const char*>& _instance_layers,
 
 void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
-    const auto present_index = create_physical_device_and_device(_surface);
+    const auto present_index = create_physical_device_and_logical_device(_surface);
     pick_msaa_sample_count();
     pick_depth_format();
 
@@ -102,20 +102,12 @@ void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, 
     commandbuffer.add_signal_info(swapchain.get_signal_info());
 
     const auto scene_barrier =
-        vk::ImageMemoryBarrier2(bind_scene_image->get_stage(), bind_scene_image->get_access(),
-                                vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
-                                bind_scene_image->get_layout(), vk::ImageLayout::eShaderReadOnlyOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, bind_scene_image->get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    bind_scene_image->set_info(scene_barrier);
+        bind_scene_image->transition_state(vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
+                                           vk::ImageLayout::eShaderReadOnlyOptimal, vk::QueueFamilyIgnored);
 
     const auto ui_barrier =
-        vk::ImageMemoryBarrier2(bind_ui_image->get_stage(), bind_ui_image->get_access(),
-                                vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
-                                bind_ui_image->get_layout(), vk::ImageLayout::eShaderReadOnlyOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, bind_ui_image->get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    bind_ui_image->set_info(ui_barrier);
+        bind_ui_image->transition_state(vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
+                                        vk::ImageLayout::eShaderReadOnlyOptimal, vk::QueueFamilyIgnored);
 
     const auto swapchain_barrier =
         vk::ImageMemoryBarrier2(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
@@ -222,7 +214,7 @@ void vulkan_application::bind_image(vulkan_image& _scene_image, vulkan_image& _u
         descriptor.add_descriptor_info(vk::DescriptorType::eSampler, std::move(ocio_sampler_pool_info));
     });
 
-    if (ocio_ubo.get_buffer_address().deviceAddress)
+    if (ocio_ubo.get_buffer() != nullptr)
     {
         std::vector<DescriptorBufferOrImageInfo> ubo_pool_info(vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                                                vk::DescriptorBufferInfo(ocio_ubo.get_buffer(), 0, vk::WholeSize));
@@ -335,7 +327,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 #endif  // !NDEBUG
 }
 
-uint32_t vulkan_application::create_physical_device_and_device(vk::SurfaceKHR _surface)
+uint32_t vulkan_application::create_physical_device_and_logical_device(vk::SurfaceKHR _surface)
 {
     constexpr std::array required_device_extensions = {vk::KHRSwapchainExtensionName, vk::KHRAccelerationStructureExtensionName,
                                                        vk::KHRRayTracingPipelineExtensionName, vk::KHRRayQueryExtensionName,

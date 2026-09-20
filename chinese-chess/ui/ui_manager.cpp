@@ -28,6 +28,7 @@ constexpr std::string_view RENDER_MODE_RASTERIZATION = "光栅化";
 constexpr std::string_view RENDER_MODE_RAY_TRACING   = "光线追踪 (RT Pipeline)";
 constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)";
 
+#ifndef NDEBUG
 void imgui_callback(VkResult _result) noexcept
 {
     if (_result != VK_SUCCESS) [[unlikely]]
@@ -35,18 +36,10 @@ void imgui_callback(VkResult _result) noexcept
         std::println(std::cerr, "imgui error: {}", vk::to_string(static_cast<vk::Result>(_result)));
     }
 }
+#endif  // !NDEBUG
 
 }  // namespace
 
-
-ui_manager::~ui_manager()
-{
-    app.wait_idle();
-
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-}
 
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)
     : app(_app)
@@ -64,7 +57,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    (void)io;
+
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // Enable Docking
@@ -113,7 +106,9 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
         .ImageCount          = vulkan_common::MAX_FRAMES_IN_FLIGHT,
         .PipelineInfoMain    = create_info,
         .UseDynamicRendering = true,
-        .CheckVkResultFn     = imgui_callback,
+#ifndef NDEBUG
+        .CheckVkResultFn = imgui_callback,
+#endif  // !NDEBUG
     };
     ImGui_ImplVulkan_Init(&init_info);
 
@@ -124,6 +119,15 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
                                                   &graphic_queue, &semaphore);
 
     resize(_width, _height);
+}
+
+ui_manager::~ui_manager()
+{
+    app.wait_idle();
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 }
 
 void ui_manager::resize(uint32_t _width, uint32_t _height)
@@ -185,33 +189,25 @@ vk::SemaphoreSubmitInfo ui_manager::render()
 
 
     const auto color_image_barrier =
-        vk::ImageMemoryBarrier2(color_image.get_stage(), color_image.get_access(),
-                                vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
-                                color_image.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, color_image.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    color_image.set_info(color_image_barrier);
+        color_image.transition_state(vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
+                                     vk::ImageLayout::eColorAttachmentOptimal, vk::QueueFamilyIgnored);
 
     const auto render_output_barrier =
-        vk::ImageMemoryBarrier2(render_output.get_stage(), render_output.get_access(),
-                                vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
-                                render_output.get_layout(), vk::ImageLayout::eColorAttachmentOptimal,
-                                vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, render_output.get_image(),
-                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    render_output.set_info(render_output_barrier);
+        render_output.transition_state(vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
+                                       vk::ImageLayout::eColorAttachmentOptimal, vk::QueueFamilyIgnored);
 
     const std::array begin_barriers = {color_image_barrier, render_output_barrier};
     (*commandbuffer).pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barriers, nullptr));
 
-    const vk::RenderingAttachmentInfo colorAttachmentInfo(color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal,
-                                                          vk::ResolveModeFlagBits::eAverage, render_output.get_imageview(),
-                                                          vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear,
-                                                          vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
+    const vk::RenderingAttachmentInfo color_attachment_info(
+        color_image.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::ResolveModeFlagBits::eAverage,
+        render_output.get_imageview(), vk::ImageLayout::eColorAttachmentOptimal, vk::AttachmentLoadOp::eClear,
+        vk::AttachmentStoreOp::eStore, color_image.get_clear_value());
 
-    const vk::RenderingInfo renderingInfo({}, vk::Rect2D({0, 0}, app.get_swapchain().get_extent()), 1, {},
-                                          colorAttachmentInfo, nullptr, nullptr, nullptr);
+    const vk::RenderingInfo rendering_info({}, vk::Rect2D({0, 0}, app.get_swapchain().get_extent()), 1, {},
+                                           color_attachment_info, nullptr, nullptr, nullptr);
 
-    (*commandbuffer).beginRendering(renderingInfo);
+    (*commandbuffer).beginRendering(rendering_info);
 
     ImGui_ImplVulkan_RenderDrawData(draw_data, *(*(commandbuffer)));
 

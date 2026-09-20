@@ -15,7 +15,7 @@
 #include <span>
 
 namespace {
-struct model_data  // scalar layout
+struct gpu_model_data  // scalar layout
 {
     glm::mat4         model_matrix   = glm::mat4(1.f);
     uint32_t          material_index = std::numeric_limits<uint32_t>::max();
@@ -403,7 +403,7 @@ void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
         const auto models_ssbo =
             models | std::views::transform([&](const auto& p) {
                 const auto sp = p.lock();
-                return model_data{
+                return gpu_model_data{
                     .model_matrix = sp->model_matrix,
                     .material_index =
                         material_manager.get_material_index(sp->material).value_or(std::numeric_limits<uint32_t>::max()),

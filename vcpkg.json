@@ -27,15 +27,5 @@
     "vulkan-memory-allocator-hpp",
     "vulkan-utility-libraries",
     "ktx"
-  ],
-  "overrides": [
-    {
-      "name": "vulkan-memory-allocator",
-      "version": "3.3.0"
-    },
-    {
-      "name": "vulkan-memory-allocator-hpp",
-      "version": "3.3.0#1"
-    }
   ]
 }

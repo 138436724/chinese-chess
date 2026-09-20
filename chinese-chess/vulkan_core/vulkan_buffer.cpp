@@ -80,20 +80,22 @@ void vulkan_buffer::invalidate() const
     buffer.getAllocation().invalidate(0, vk::WholeSize);
 }
 
-void vulkan_buffer::set_info(const vk::BufferMemoryBarrier2& _barrier)
+vk::BufferMemoryBarrier2 vulkan_buffer::transition_state(vk::PipelineStageFlags2 _stage, vk::AccessFlags2 _access, uint32_t _queue /*= vk::QueueFamilyIgnored*/)
 {
-    if (_barrier.buffer != *buffer)
+    auto barrier = vk::BufferMemoryBarrier2(stage, access, _stage, _access, vk::QueueFamilyIgnored,
+                                            vk::QueueFamilyIgnored, buffer, 0, vk::WholeSize);
+
+    if (_queue != vk::QueueFamilyIgnored && _queue != queue)
     {
-        throw std::runtime_error("The barrier not used by this buffer!");
-    }
-    if ((_barrier.srcQueueFamilyIndex == vk::QueueFamilyIgnored) != (_barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored))
-    {
-        throw std::runtime_error("Queue must all ignore or all set new value!");
+        barrier.srcQueueFamilyIndex = queue;
+        barrier.dstQueueFamilyIndex = _queue;
     }
 
-    stage  = _barrier.dstStageMask;
-    access = _barrier.dstAccessMask;
-    queue  = _barrier.dstQueueFamilyIndex == vk::QueueFamilyIgnored ? queue : _barrier.dstQueueFamilyIndex;
+    stage  = _stage;
+    access = _access;
+    queue  = _queue == vk::QueueFamilyIgnored ? queue : _queue;
+
+    return barrier;
 }
 
 vk::PipelineStageFlags2 vulkan_buffer::get_stage() const noexcept

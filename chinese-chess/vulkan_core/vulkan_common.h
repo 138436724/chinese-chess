@@ -88,13 +88,14 @@ inline constexpr bool                    USE_OCIO             = true;
                                                    const std::span<const uint8_t> _data,
                                                    const std::string&             _image_name = "");
 
-[[nodiscard]] vk::SemaphoreSubmitInfo download_image(const vma::raii::Allocator& _allocator,
-                                                     const vk::raii::Device&     _device,
-                                                     vulkan_recycle_bin&         _recycle_bin,
-                                                     vulkan_semaphore&           _semaphore,
-                                                     const vulkan_queue&         _owner_queue,
-                                                     const vulkan_queue&         _transfer_queue,
-                                                     vulkan_image&               _image,
-                                                     vulkan_buffer&              _buffer,
-                                                     const std::string&          _buffer_name = "");
+[[nodiscard]] vk::SemaphoreSubmitInfo download_image(const vma::raii::Allocator&    _allocator,
+                                                     const vk::raii::Device&        _device,
+                                                     vulkan_recycle_bin&            _recycle_bin,
+                                                     vulkan_semaphore&              _semaphore,
+                                                     const vulkan_queue&            _owner_queue,
+                                                     const vulkan_queue&            _transfer_queue,
+                                                     const vk::SemaphoreSubmitInfo& _waited_info,
+                                                     vulkan_image&                  _image,
+                                                     vulkan_buffer&                 _buffer,
+                                                     const std::string&             _buffer_name = "");
 }  // namespace vulkan_common

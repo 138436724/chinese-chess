@@ -10,7 +10,7 @@
 #include <utility>
 
 namespace {
-struct light_data  // scalar layout
+struct gpu_light_data  // scalar layout
 {
     glm::vec3 color            = glm::vec3(1.f);
     uint32_t  active_type      = std::to_underlying(light_type::directional);
@@ -93,14 +93,14 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
     {
         const auto lights_ssbo = lights | std::views::transform([](const auto& p) static {
                                      const auto sp = p.lock();
-                                     return light_data{.color            = sp->color,
-                                                       .active_type      = std::to_underlying(sp->active_type),
-                                                       .direction        = glm::normalize(sp->direction),
-                                                       .intensity        = sp->intensity,
-                                                       .position         = sp->position,
-                                                       .range            = sp->range,
-                                                       .inner_cone_angle = sp->inner_cone_angle,
-                                                       .outer_cone_angle = sp->outer_cone_angle};
+                                     return gpu_light_data{.color            = sp->color,
+                                                           .active_type      = std::to_underlying(sp->active_type),
+                                                           .direction        = glm::normalize(sp->direction),
+                                                           .intensity        = sp->intensity,
+                                                           .position         = sp->position,
+                                                           .range            = sp->range,
+                                                           .inner_cone_angle = sp->inner_cone_angle,
+                                                           .outer_cone_angle = sp->outer_cone_angle};
                                  })
                                  | std::ranges::to<std::vector>();
 

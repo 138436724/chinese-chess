@@ -24,7 +24,8 @@ public:
     void flush() const;
     void invalidate() const;
 
-    void set_info(const vk::BufferMemoryBarrier2& _barrier);
+    [[nodiscard("Barrier need record by commandbuffer!")]]
+    vk::BufferMemoryBarrier2 transition_state(vk::PipelineStageFlags2 _stage, vk::AccessFlags2 _access, uint32_t _queue = vk::QueueFamilyIgnored);
 
     [[nodiscard]] vk::PipelineStageFlags2    get_stage() const noexcept;
     [[nodiscard]] vk::AccessFlags2           get_access() const noexcept;

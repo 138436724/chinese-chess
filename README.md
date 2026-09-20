@@ -47,7 +47,7 @@
 | **3D 棋盘与棋子** | 32 枚象棋棋子（16 红 + 16 黑），GLB 模型；棋盘"楚河汉界"与棋子文字由 FreeType 运行时栅格化（LXGW WenKai GB Medium） |
 | **棋谱回放** | ICU4C 自动检测 GB2312/UTF-8 编码，正则解析中文记谱法（含前/中/后与中文数字），逐步播放对局（W/A 上一步，S/D 下一步） |
 | **ImGui 控制面板** | 场景设置窗口包含相机、灯光、材质/物体、棋谱 4 个面板（docking + 多视口） |
-| **截图保存** | 按 **C** 键保存当前帧（仅场景，不含 UI）；16 位浮点渲染格式 → EXR（HDR），8 位格式 → PNG（LDR）；GPU 回读后**在后台线程**（`std::jthread`）做 CPU OCIO 变换与编码写盘，不阻塞渲染循环 |
+| **截图保存** | 按 **C** 键保存当前帧（仅场景，不含 UI）；16 位浮点渲染格式 → EXR（HDR），8 位格式 → PNG（LDR）；GPU 回读走三段式队列所有权转移，其 submit info 作为本帧 `scene->render()` 的返回值交给合成；随后**在后台线程**（`std::jthread`）做 CPU OCIO 变换与编码写盘，不阻塞渲染循环 |
 | **热重载** | **F5** 仅重编译当前激活渲染器的着色器与 pipeline（复用同一 pipeline cache 句柄、不读写盘；先构建新管线、成功后再替换，编译失败打印错误并保留旧管线，不会退出）；**F6** 热重载磁盘纹理（SHA-256 判变 → 单线程重压缩 sidecar → 同槽位重上传） |
 | **字体渲染** | FreeType 逐字栅格化生成字形图集（单字图集 + 棋盘多字图集），宽高 4 对齐、内容居中、`padding=2` 防渗墨；UASTC 压缩为单通道 BC4/ EAC_R11，失败回退无压缩 R8 |
 | **RenderDoc 帧捕获** | Debug 构建集成 RenderDoc：UI 操作使场景变脏后，本帧自动开始/结束捕获，保存到 `resources/captures/` |
@@ -77,9 +77,9 @@
 | **智能队列选择** | `cartesian_product` 穷举（图形/计算/传输/呈现）队列族组合，专用传输队列 10× 加分，最大化独立队列族；BLAS/TLAS 构建与全部帧提交在 graphics 队列 |
 | **显式同步参数** | `upload_buffer`/`upload_image` 按真实消费者传 stage/access（顶点/索引含 AS 构建读、间接参数 `eDrawIndirect`、纹理 `eShaderSampledRead`），acquire barrier 覆盖实际消费方 |
 | **小缓冲内联上传** | `upload_buffer` 对 ≤ 64 KiB 且 4 字节对齐的数据走 `vkCmdUpdateBuffer`（owner 队列直接写，免 transfer 队列 staging 与队列所有权转移），且仅在容量不足时重建缓冲；超限数据仍走 transfer→owner 两段式 QFOT。每帧 UBO / 模型数组 / 间接命令等热路径因此收益 |
-| **资源状态追踪** | 每个 buffer/image 跟踪当前 Stage/Access/Layout/Queue，barrier 按实际当前状态生成；上传/下载走三段式 QFOT |
+| **资源状态追踪** | 每个 buffer/image 跟踪当前 Stage/Access/Layout/Queue，barrier 一律由 `transition_state()` 按实际当前状态生成（返回的 barrier 必须交给 `pipelineBarrier2`）；上传下载都走三段式 QFOT（上传的小数据走 `vkCmdUpdateBuffer` 内联） |
 | **管理器架构** | scene_model_manager（顶点/索引、BLAS/TLAS、间接绘制、模型数组）/ scene_material_manager（材质数组、bindless 纹理、KTX2、F6）/ scene_light_manager（灯光数组），各 manager 自查 `is_dirty`，scene_manager 折叠 `any_dirty || is_render_dirty` 决定重建描述符或仅重置累积；model manager 另有 `meshes_dirty`，顶点/索引缓冲只在几何（网格集合）变化时重传 |
-| **异步截图** | GPU 回读（三段式 QFOT）后把 wait 值 + staging buffer 打包交 `std::jthread` 后台作业：等 GPU 信号 → `invalidate()` → CPU OCIO 变换 → OIIO 写 EXR/PNG；异常仅打印不抛出 |
+| **异步截图** | GPU 回读（三段式 QFOT：owner 释放并等待 scene CB → transfer 拷贝 → owner acquire 并恢复原布局）后把 wait 值 + staging buffer 打包交 `std::jthread` 后台作业：等 GPU 信号 → `invalidate()` → CPU OCIO 变换 → OIIO 写 EXR/PNG；异常仅打印不抛出 |
 | **回收纪律** | 帧 CB 通过 GPU 侧 wait 覆盖全部 upload，回收站 `release()` 只在帧渲染末尾调用（单线程提交下的安全侧推断） |
 | **KTX2 纹理压缩管线** | 磁盘纹理与字体图集统一 **UASTC 中间格式**（内存压缩 → 同步写 sidecar → 加载时按设备转码 BC6H/BC7/BC4/EAC_R11 上传）；F6 同槽位换图，旧 imageview 延迟销毁 |
 | **Pipeline 缓存** | 独立 RAII 类单实例持有（启动读盘一次、退出写盘一次、F5 不读写盘），设备校验（vendorID/deviceID/UUID），不匹配/损坏回退空缓存 |
@@ -126,7 +126,7 @@ git submodule update --init --recursive
 .\vcpkg\bootstrap-vcpkg.bat   # 首次使用 vcpkg 时引导
 ```
 
-vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`；`vcpkg-configuration.json` 通过 `overlay-ports` 提供自定义 ktx 端口（KTX-Software 5.0.0-rc1，UASTC HDR）。VMA和VMA-HPP版本锁定为3.3.0。默认注册表为 GitHub `microsoft/vcpkg`（国内网络可自行替换为镜像）。
+vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`；`vcpkg-configuration.json` 通过 `overlay-ports` 提供自定义 ktx 端口（KTX-Software 5.0.0-rc1，UASTC HDR）。VMA/VMA-HPP 不再用 `overrides` 固定版本，随 baseline 解析（当前 3.4.0）。默认注册表为 GitHub `microsoft/vcpkg`（国内网络可自行替换为镜像）。
 
 ### 2. 配置与构建
 
@@ -211,7 +211,7 @@ UI"渲染模式"下拉框（`光栅化` / `光线追踪 (RT Pipeline)` / `光线
 - 16 位浮点格式 → `.exr`（HDR）
 - 8 位整数格式 → `.png`（LDR）
 
-保存路径 `resources/captures/`，文件名为时间戳。流程：`download_image` 三段式 QFOT 把渲染结果拷到 host 可见 staging buffer（其 submit info 仍串入本帧 CB 等待链，保证回收安全），随后把 staging buffer 与信号量 wait 值打包交给 `std::jthread` 后台作业——线程先 `wait()` 等 GPU 完成拷贝，再 `invalidate()`、CPU OCIO 变换、OIIO 写盘。渲染循环因此不被编码写盘阻塞；若在上一张仍在写盘时再次按键，移动赋值 `save_thread` 会先 join 上一次作业（表现为短暂停顿）。
+保存路径 `resources/captures/`，文件名为时间戳。流程：`scene->render(need_capture)` 在 scene 命令缓冲提交之后调私有 `capture_frame(场景 CB 的 submit info)`，`download_image` 用三条一次性命令缓冲完成（owner 释放所有权并显式等待 scene CB → transfer 拷贝到 host 可见 staging buffer → owner 取回所有权并恢复原布局），**把最后一条 CB（owner acquire）的 submit info 作为 `render()` 的返回值**交给 `app->render()`，于是这一帧合成的等待链包含整条回读。随后把 staging buffer 与信号量 wait 值打包交给 `std::jthread` 后台作业——线程先 `wait()` 等 GPU 完成拷贝，再 `invalidate()`、CPU OCIO 变换、OIIO 写盘。渲染循环因此不被编码写盘阻塞；若在上一张仍在写盘时再次按键，移动赋值 `save_thread` 会先 join 上一次作业（表现为短暂停顿）。
 
 ---
 
@@ -223,14 +223,14 @@ chinese-chess/
 │   ├── window.h/cpp                  # 窗口 RAII、帧循环、输入分发、截图、RenderDoc（Debug）
 │   └── main.cpp                      # 程序入口
 ├── vulkan_core/      (17 个类)       # Vulkan 1.4 RAII 封装层
-│   ├── vulkan_application            # 编排器：init→create、场景+UI 合成、持有 pipeline cache；wait_frame/wait_idle
-│   ├── vulkan_common                 # 格式选择、upload/download（显式消费者 stage/access）、运行期全局（MAX_FRAMES_IN_FLIGHT=3 等）
+│   ├── vulkan_application            # 编排器：init→create、场景+UI 合成、持有 pipeline cache；wait_frame/wait_idle、blend 描述符池/集（OCIO 绑定数运行时决定）
+│   ├── vulkan_common                 # 格式选择、upload/download QFOT（显式消费者 stage/access）、运行期全局（MAX_FRAMES_IN_FLIGHT=3 等）
 │   ├── vulkan_device                 # 逻辑设备 RAII（move-only；explicit operator bool 判空）
 │   ├── vulkan_physical_device        # 物理设备选择：cartesian_product 队列族组合评分
 │   ├── vulkan_swapchain              # 交换链（Mailbox/FIFO、imageCount 钳制、动态重建、逐图像二元信号量）
 │   ├── vulkan_pipeline               # 管线创建（graphics + RT/RQ；缓存句柄由参数传入；_push_constant 参数保留恒传空 span）
 │   ├── vulkan_pipeline_cache         # 磁盘 pipeline cache（独立 RAII + 设备校验）
-│   ├── vulkan_descriptor             # 描述符池/集管理（池容量与 layout 配平）
+│   ├── vulkan_descriptor             # 累加式描述符声明 + 池/集 owner + 类型化写入（blend 管线 + 三个渲染器共用）
 │   ├── vulkan_buffer / vulkan_image  # 缓冲/图像 + VMA + 状态追踪
 │   ├── vulkan_commandbuffer          # 命令缓冲 + timeline 集成（begin_record 不等待）
 │   ├── vulkan_queue                  # 队列 + CommandPool 封装
@@ -240,7 +240,7 @@ chinese-chess/
 │   ├── vulkan_acceleration_structure # BLAS/TLAS（0 实例空 TLAS 支持、scratch 对齐）
 │   └── vulkan_shader_binding_table   # RT SBT（5 个 Shader Group）
 ├── scene/            (12 个类)       # 场景管理
-│   ├── scene_manager                 # 编排器：3 渲染器 map、F5/F6 热重载、save_image（后台 jthread）、set_render_mode
+│   ├── scene_manager                 # 编排器：3 渲染器 map、F5/F6 热重载、render(need_capture)/capture_frame（后台 jthread）、set_render_mode
 │   ├── scene_base                    # pro::proxy facade 定义（manager_base / manager_render）
 │   ├── scene_model                   # 模型（BLAS、变换矩阵、is_show、材质引用）
 │   ├── scene_material                # PBR 材质（双色混合 + 粗糙度/金属度 + Alpha 贴图 + opacity/ior/transmission）
@@ -282,14 +282,14 @@ chinese-chess/
 
 ### 数据流（每帧）
 
-主循环顶部 `app->wait_frame()`（等当前帧槽上次 signal）→ `glfwPollEvents()` → `ui->update()` → `scene->update()`（脏检查：manager 重传数组/重建 BLAS/TLAS/间接绘制，`meshes_dirty` 时才重传顶点/索引；渲染器在 `any_dirty || is_render_dirty` 时重建描述符，否则仅重置累积）→ `ui->render()` / `scene->render()`（各自写本帧场景 UBO、渲染后 submit 并 signal timeline）→ `app->render({ui_wait, scene_wait})`（回收站 release → acquire swapchain → barrier → blend 全屏三角形合成 scene+UI，OCIO 注入代码作用于 scene 颜色 → present）。需要保存时 `scene->save_image()`（`download_image` 三段式 QFOT，随后 CPU OCIO 变换 + EXR/PNG **在 `std::jthread` 后台作业中异步完成**）。
+主循环顶部 `app->wait_frame()`（等当前帧槽上次 signal）→ `glfwPollEvents()` → `ui->update()` → `scene->update()`（脏检查：manager 重传数组/重建 BLAS/TLAS/间接绘制，`meshes_dirty` 时才重传顶点/索引；渲染器在 `any_dirty || is_render_dirty` 时重建描述符，否则仅重置累积）→ `ui->render()` / `scene->render(need_capture)`（各自写本帧场景 UBO、渲染后 submit 并 signal timeline；`need_capture` 时 `scene->render()` 内部随即调 `capture_frame`，三段式 QFOT 回读，并把回读末条 CB 的 submit info 换成函数返回值）→ `app->render({ui_wait, scene_wait})`（回收站 release → acquire swapchain → barrier → blend 全屏三角形合成 scene+UI，OCIO 注入代码作用于 scene 颜色 → present）。回读完成后 CPU OCIO 变换 + EXR/PNG **在 `std::jthread` 后台作业中异步完成**。
 
 ### 核心设计模式
 
 - **两步初始化**：`vulkan_application` 先 `init` 创建 Instance，再 `create` 创建设备/交换链/管线；两步之间创建 Window Surface
 - **队列选择**：`cartesian_product` 穷举队列族组合评分；专用传输队列 10× 加分
 - **时间线信号量 + 回收站**：资源与 signal 值配对、GPU 越过该值后销毁；一次性 CB 立即提交、帧槽 pacing 由 `wait_frame()` 承担，帧循环无 Fence/`vkDeviceWaitIdle`
-- **资源状态追踪**：每次 barrier 后更新 Stage/Access/Layout/Queue，后续 barrier 基于实际状态生成
+- **资源状态追踪**：barrier 由 buffer/image 自身的 `transition_state()` 生成（src 取当前追踪状态、dst 取入参，调用即完成状态更新），手工构造 barrier 再回灌状态的 `set_info()` 写法已删除
 - **Bindless + 设备地址**：纹理走大型描述符数组（≤1024）；模型/材质/灯光数组以 BDA 解引用，地址与相机矩阵每帧经场景参数 UBO 下发（替代原 push constant）
 - **UI/场景分层合成**：`blend_image.slang` 全屏三角形按 UI alpha 混合两路输出
 - **类型擦除**：`ui_base`/`manager_render` 基于 `pro::proxy`（值语义多态）；渲染器存于 `unordered_map<render_mode, proxy>`，`active_render` 为非拥有 `proxy_view`
@@ -374,7 +374,7 @@ blend_image.slang 自包含（无 import；ocio_conversion 桩函数体被 ocio_
 | **glfw3** | 窗口创建与输入管理 |
 | **glm** | 数学计算 |
 | **vulkan-headers** + **vulkan-utility-libraries** | Vulkan API |
-| **vulkan-memory-allocator-hpp** | GPU 内存分配（VMA C++ RAII，固定 3.3.0） |
+| **vulkan-memory-allocator-hpp** | GPU 内存分配（VMA C++ RAII，版本随 baseline 解析，当前 3.4.0） |
 | **imgui** 1.92.8（docking-experimental + glfw/vulkan binding） | 用户界面（多视口支持） |
 | **fastgltf** | glTF/GLB 模型加载 |
 | **freetype** | 字体字形栅格化 |
@@ -387,13 +387,13 @@ blend_image.slang 自包含（无 import；ocio_conversion 桩函数体被 ocio_
 | **icu** | 字符集检测、编码转换、正则表达式 |
 | **ktx**（vcpkg overlay port，KTX-Software 5.0.0-rc1，UASTC HDR） | BC6H/BC7 纹理压缩和加载 |
 
-`vcpkg.json` 另以 `overrides` 锁定 `vulkan-memory-allocator` 3.3.0 与 `vulkan-memory-allocator-hpp` 3.3.0#1；`imgui` 未固定版本（当前安装 1.92.8，含 `docking-experimental` + glfw/vulkan binding）；`yaml-cpp` 为 OpenColorIO 的传递依赖，`CMakeLists.txt` 显式 `find_package`。
+`vcpkg.json` 不再使用 `overrides`（2026-09-26 删除对 VMA 3.3.0 的固定，VMA/VMA-HPP 随 baseline 解析为 3.4.0）；`imgui` 未固定版本（当前安装 1.92.8，含 `docking-experimental` + glfw/vulkan binding）；`yaml-cpp` 为 OpenColorIO 的传递依赖，`CMakeLists.txt` 显式 `find_package`。
 
 ---
 
 ## 已知限制与取舍
 
-- **OCIO GPU 合成**：blend 描述符的 layout 与写入均已按 `[scene, ui, sampler, UBO, 纹理对…]` 顺序组织（`vulkan_application::bind_image` 与 `create_pipeline` 同序 add，`vulkan_descriptor::update_descriptor_sets` 按 `pool_infos` 下标写 binding），binding 0 起严格一致；约束是 OCIO 生成的纹理 binding 索引须自 1 起连续（代码对 `binding_index == 0` 抛错），否则未被覆盖的 layout 项会停留在默认构造。CPU 截图色彩变换与 GPU 合成均可用。
+- **OCIO GPU 合成**：blend 描述符由 `create_pipeline` 顺序 `add_binding` 声明（layout 与描述符池容量同出于这份累加声明；OCIO 纹理对按索引顺序追加并校验与 `getTextureShaderBindingIndex` 一致），`bind_image` 按声明时记录的 binding 号写入，`vulkan_descriptor::check_write` 兜底越界/类别不符，binding 0 起严格一致。CPU 截图色彩变换与 GPU 合成均可用。
 - **ImGui 多视口验证层误报**：1.92.8的BUG，拖出窗口外部时触发，与本项目无关。
 - **RenderDoc 不捕获第一帧**：捕获第一帧会导致无法启动，暂时未找到解决方案，故捕获时跳过第一帧。
 - **每帧一次 CPU 等待**：移除begin_record中的等待，改为由外部手动调用wait等待。
