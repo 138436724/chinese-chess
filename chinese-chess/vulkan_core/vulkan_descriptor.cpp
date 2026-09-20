@@ -36,7 +36,7 @@ void vulkan_descriptor::add_descriptor_info(vk::DescriptorType _descriptor_type,
         throw std::runtime_error("All pool info size must be same.");
     }
 
-    pool_size.emplace_back(vk::DescriptorPoolSize(_descriptor_type, static_cast<uint32_t>(_pool_info.size())));
+    pool_size.emplace_back(_descriptor_type, static_cast<uint32_t>(_pool_info.size()));
     pool_infos.emplace_back(std::move(_pool_info));
 }
 

@@ -41,9 +41,8 @@ std::expected<std::vector<character_info>, std::string> font_loader::load_font(c
         const uint32_t height = face->glyph->bitmap.rows;
         const uint8_t* bitmap = face->glyph->bitmap.buffer;
 
-        character_infos.emplace_back(character_info(width, height, face->glyph->bitmap_left, face->glyph->bitmap_top,
-                                                    (face->glyph->advance.x + 32) / 64,
-                                                    std::vector<uint8_t>(bitmap, bitmap + width * height)));
+        character_infos.emplace_back(width, height, face->glyph->bitmap_left, face->glyph->bitmap_top,
+                                     (face->glyph->advance.x + 32) / 64, std::vector<uint8_t>(bitmap, bitmap + width * height));
     }
 
     return character_infos;

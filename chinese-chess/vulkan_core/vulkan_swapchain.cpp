@@ -117,11 +117,11 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
         const vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {},
                                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 
-        imageviews.emplace_back(vk::raii::ImageView(_device, viewInfo));
+        imageviews.emplace_back(_device, viewInfo);
 
-        before_rendering.emplace_back(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo()));
+        before_rendering.emplace_back(_device, vk::SemaphoreCreateInfo());
 
-        after_rendering.emplace_back(vk::raii::Semaphore(_device, vk::SemaphoreCreateInfo()));
+        after_rendering.emplace_back(_device, vk::SemaphoreCreateInfo());
     }
 }
 

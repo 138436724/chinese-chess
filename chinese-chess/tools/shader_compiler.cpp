@@ -129,14 +129,14 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
             continue;
         }
 
-        const auto dependency_hash = FILE_WATCHER.generate_file_hash(dependency_path);
+        auto dependency_hash = FILE_WATCHER.generate_file_hash(dependency_path);
         if (!dependency_hash)
         {
             return {};
         }
         dependence += dependency_path;
         dependence += split_char;
-        hashes.push_back(*dependency_hash);
+        hashes.push_back(std::move(*dependency_hash));
     }
 
     std::ranges::sort(hashes);
@@ -153,13 +153,13 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
             continue;
         }
 
-        const auto current_hash = FILE_WATCHER.generate_file_hash(std::filesystem::path(line.begin(), line.end()));
+        auto current_hash = FILE_WATCHER.generate_file_hash(std::filesystem::path(line.begin(), line.end()));
         if (!current_hash)
         {
             return false;
         }
 
-        hashes.emplace_back(*current_hash);
+        hashes.push_back(std::move(*current_hash));
     }
 
     if (hashes.empty())

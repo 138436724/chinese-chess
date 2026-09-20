@@ -433,8 +433,8 @@ void vulkan_application::create_pipeline()
                 vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer,
                 vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead, buffer, "ocio_ubo"));
 
-            bindings.emplace_back(vk::DescriptorSetLayoutBinding(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eUniformBuffer,
-                                                                 1, vk::ShaderStageFlagBits::eFragment, nullptr));
+            bindings.emplace_back(static_cast<uint32_t>(bindings.size()), vk::DescriptorType::eUniformBuffer, 1,
+                                  vk::ShaderStageFlagBits::eFragment, nullptr);
         }
 
         ocio_images.clear();
@@ -503,7 +503,7 @@ void vulkan_application::create_pipeline()
                 vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge,
                 vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, 0.f, vk::False, 1.f,
                 vk::False, vk::CompareOp::eAlways, 0.f, 0.f, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-            ocio_samplers.emplace_back(vk::raii::Sampler(*device, sampler_info));
+            ocio_samplers.emplace_back(*device, sampler_info);
 
             const size_t binding_idx = static_cast<size_t>(shader_desc->getTextureShaderBindingIndex(i));
             if (binding_idx == 0)
@@ -563,7 +563,7 @@ void vulkan_application::create_pipeline()
                 vk::SamplerMipmapMode::eNearest, vk::SamplerAddressMode::eClampToEdge,
                 vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, 0.f, vk::False, 1.f,
                 vk::False, vk::CompareOp::eAlways, 0.f, 0.f, vk::BorderColor::eFloatOpaqueBlack, vk::False, nullptr);
-            ocio_samplers.emplace_back(vk::raii::Sampler(*device, sampler_info));
+            ocio_samplers.emplace_back(*device, sampler_info);
 
             const size_t binding_idx = static_cast<size_t>(shader_desc->get3DTextureShaderBindingIndex(i));
             if (binding_idx == 0)

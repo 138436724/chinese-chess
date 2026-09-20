@@ -192,6 +192,7 @@ void scene_rayquery_render::update_descriptor()
     auto alloc_info = vk::DescriptorSetAllocateInfo(*descriptor_pool, layouts);
     descriptor_sets = device.allocateDescriptorSets(alloc_info);
 
+    const auto descriptor_infos = material_manager.get_descriptor_info();
     std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _frame_pair) {
         const auto& [frame_index_set, descriptor_set] = _frame_pair;
 
@@ -211,13 +212,14 @@ void scene_rayquery_render::update_descriptor()
                                                           sizeof(uniform_buffer));
         write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 2, 0, vk::DescriptorType::eUniformBuffer, {}, scene_uniform_info));
 
+        write_sets.reserve(write_sets.size() + descriptor_infos.size());
+
         const auto material_sets =
-            material_manager.get_descriptor_info() | std::views::enumerate
-            | std::views::transform([&descriptor_set](const auto& _pair) {
-                  const auto& [index, image_info] = _pair;
-                  return vk::WriteDescriptorSet(descriptor_set, 3, static_cast<uint32_t>(index),
-                                                vk::DescriptorType::eCombinedImageSampler, image_info, {});
-              });
+            descriptor_infos | std::views::enumerate | std::views::transform([&descriptor_set](const auto& _pair) {
+                const auto& [index, image_info] = _pair;
+                return vk::WriteDescriptorSet(descriptor_set, 3, static_cast<uint32_t>(index),
+                                              vk::DescriptorType::eCombinedImageSampler, image_info, {});
+            });
         std::ranges::move(material_sets, std::back_inserter(write_sets));
 
         (*device).updateDescriptorSets(write_sets, {});

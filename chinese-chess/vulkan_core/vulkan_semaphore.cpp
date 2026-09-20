@@ -11,7 +11,7 @@ void vulkan_semaphore::create(const vk::raii::Device& _device)
 
 vk::SemaphoreSubmitInfo vulkan_semaphore::next(vk::PipelineStageFlagBits2 _stage) noexcept
 {
-    value.fetch_add(1, std::memory_order_relaxed);
+    value.fetch_add(1, std::memory_order_release);
     return vk::SemaphoreSubmitInfo(*semaphore, value, _stage);
 }
 
@@ -30,7 +30,7 @@ uint64_t vulkan_semaphore::get_gpu_value() const noexcept
 
 uint64_t vulkan_semaphore::get_cpu_value() const noexcept
 {
-    return value.load(std::memory_order_relaxed);
+    return value.load(std::memory_order_acquire);
 }
 
 const vk::raii::Semaphore& vulkan_semaphore::get_semaphore() const noexcept

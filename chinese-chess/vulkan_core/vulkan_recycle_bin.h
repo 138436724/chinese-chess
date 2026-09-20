@@ -21,6 +21,7 @@ public:
     void create(const vulkan_semaphore* _semaphore);
 
     template <typename T>
+        requires(!std::is_lvalue_reference_v<T>) && std::movable<std::remove_cvref_t<T>>
     void retire(T&& _resource, std::string&& _message);
 
     void release() noexcept;
@@ -32,6 +33,7 @@ private:
 };
 
 template <typename T>
+    requires(!std::is_lvalue_reference_v<T>) && std::movable<std::remove_cvref_t<T>>
 inline void vulkan_recycle_bin::retire(T&& _resource, std::string&& _message)
 {
     uint64_t cpu_value = semaphore->get_cpu_value();

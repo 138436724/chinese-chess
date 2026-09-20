@@ -14,7 +14,7 @@ void vulkan_recycle_bin::create(const vulkan_semaphore* _semaphore)
 void vulkan_recycle_bin::release() noexcept
 {
     const uint64_t gpu_val = semaphore->get_gpu_value();
-    while (!resources.empty() && resources.front().first < gpu_val)
+    while (!resources.empty() && resources.front().first <= gpu_val)
     {
 #ifndef NDEBUG
         if constexpr (output)
