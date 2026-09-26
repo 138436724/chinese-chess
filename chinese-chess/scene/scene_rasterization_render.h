@@ -40,6 +40,15 @@ public:
     void recreate();
     void reset_accumulation() noexcept;
 
+    // 物理正确性调试通道由 manager_render facade 统一要求(见 scene_base.h)。
+    // 光栅化路径的着色本来就不物理,这些开关在这里是空操作:只保存取值,
+    // 让 UI 在切换渲染模式时仍能读写(取回上一次的设置)。
+    void                set_debug_flags(uint32_t _flags) noexcept;
+    [[nodiscard]] uint32_t get_debug_flags() const noexcept;
+    void                   set_debug_mat_override(float _metallic, float _roughness) noexcept;
+    [[nodiscard]] float    get_debug_force_metallic() const noexcept;
+    [[nodiscard]] float    get_debug_force_roughness() const noexcept;
+
 private:
     [[nodiscard]] vulkan_pipeline create_pipeline(vk::Format _color_format);
     void                          update_descriptor();
@@ -63,6 +72,11 @@ private:
     uint32_t         height        = 0;
     uint32_t         current_frame = 0;
     const vk::Format color_format  = vk::Format::eUndefined;
+
+    // 仅作 UI 状态留存(本路径不消费)
+    uint32_t debug_flags           = 0;
+    float    debug_force_metallic  = 0.0f;
+    float    debug_force_roughness = 0.5f;
 
     vk::DeviceSize ubo_offset = 0;
     vulkan_buffer  ubo;

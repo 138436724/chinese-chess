@@ -30,6 +30,18 @@ private:
     void prev_step() noexcept;
     void next_step() noexcept;
 
+    // 白炉测试球体阵:roughness(列) × metallic(行) 的球体网格。
+    // 每格一个材质(共用同一份球体网格),配合 debug_flags 的
+    // "只强制 albedo 为白" 即可逐格核查环境光下的方向反射率。
+    void rebuild_furnace_grid();
+    void set_furnace_grid_visible(bool _visible) noexcept;
+    // 白炉模式下隐藏棋盘与棋子(隔离测试场景);非白炉模式为空操作
+    void apply_furnace_isolation() noexcept;
+    // 白炉球体阵开关:UI 勾选与 `G` 热键共用这一条路径
+    void set_furnace_grid_enabled(bool _enabled);
+    // 白炉预设(关全部钳制 + 反照率强制为白):UI 按钮与 `H` 热键共用
+    void toggle_furnace_preset() noexcept;
+
 private:
     uint32_t width  = 0;
     uint32_t height = 0;
@@ -43,6 +55,11 @@ private:
     std::shared_ptr<scene_model>                 chess_board;
     std::shared_ptr<scene_model>                 chess_board_line;
     std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;
+
+    // 白炉球体阵(懒创建;隐藏时不参与渲染)
+    std::vector<std::shared_ptr<scene_model>> furnace_spheres;
+    bool                                      furnace_grid_enabled = false;
+    bool                                      furnace_grid_built   = false;
 
     std::vector<all_board_state>                                    board_state = {record_loader::get_init_all_board()};
     std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> red_chess_piece_materials;

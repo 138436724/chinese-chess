@@ -1,12 +1,19 @@
+// ============================================================================
+// lighting.slang — 光源与大气模块
+//
+// 职责边界(2026 起):
+//   本模块只负责**光传输的采样与介质**:光源采样(NEE)、阴影光线、天空/环境
+//   采样、高度雾。
+//   **所有 BRDF/BSDF 已迁至 shading.slang** —— 这里不再定义 Lambertian /
+//   Disney / GGX / Fresnel。原因见 pbr-exploration-plan.md:材质求值必须
+//   收敛到 shading.slang 的单一入口,才能保证光谱化时只有一处需要改,且
+//   不会出现"标量近似"与"逐波长求值"两套实现。
+//
+// 被 ray_tracing.slang 复用。
+// ============================================================================
+
 import common;
 import scene_data;
-
-// ============================================================================
-// lighting.slang — 光照库模块
-// 光源数据结构在 scene_data.slang 中定义；本模块只负责：
-//   光源采样（NEE）、BRDF 评估/采样/PDF、阴影光线、天空采样、高度雾
-// 被 ray_tracing.slang / ray_query.slang（和 scene_brdflut.slang）复用。
-// ============================================================================
 
 enum light_type : uint32_t
 {
@@ -16,20 +23,14 @@ enum light_type : uint32_t
 };
 
 // ---- 光照采样结果（NEE 采样返回值） ----
+// pdf 为**标量**:光源采样策略是几何+亮度决策,与波长无关。
+// 光谱化时必须保持这一点,否则 pdf 里会混入颜色而无法分离。
 struct light_sample
 {
   float3 direction;  // 从命中点到光源的方向（单位向量）
   float  distance;   // 命中点到光源的距离（用于阴影光线 tmax）
-  float3 color;      // 光源在该采样方向的辐射亮度
+  float3 color;      // 光源在该采样方向的辐射亮度(逐波长)
   float  pdf;        // 采样概率密度函数值（用于 MIS）
-};
-
-// ---- BRDF 采样结果（BSDF 采样返回值） ----
-struct brdf_sample
-{
-  float3 direction;  // 采样出的出射方向（单位向量，世界空间）
-  float  pdf;        // 采样概率密度函数值（用于 MIS）
-  float3 value;      // BRDF 值 × cos_theta / pdf（用于路径吞吐量累积）
 };
 
 // ---- 阴影光线载荷（轻量级，仅需知道是否被遮挡） ----
@@ -38,19 +39,6 @@ struct shadow_payload
   bool is_shadowed;
   uint seed;  // 概率阴影（半透明穿透）用随机种子，与主路径种子解耦
 };
-
-// ---- 余弦加权半球采样（重要性采样 Lambertian BRDF） ----
-float3 sample_hemisphere_cosine(float3 N, inout uint seed)
-{
-  float2 r        = random_float2(seed);
-  float  phi      = 2.0 * PI * r.x;
-  float  cosTheta = sqrt(r.y);
-  float  sinTheta = sqrt(max(0.0, 1.0 - r.y));
-  float3 local    = float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-
-  tangent_space ts = build_tangent_space(N);
-  return ts.T * local.x + ts.B * local.y + N * local.z;
-}
 
 // ============================================================================
 // 光源采样函数（NEE 核心）
@@ -139,168 +127,6 @@ light_sample sample_light(light_data light, float3 hit_pos, inout uint seed)
 }
 
 // ============================================================================
-// BRDF 函数族（Lambertian / Disney Diffuse / GGX）
-// ============================================================================
-
-// Lambertian PDF
-float pdf_lambertian(float3 N, float3 L)
-{
-  return max(0.0, dot(N, L)) * INV_PI;
-}
-
-// Disney Diffuse BRDF 评估（Burley 2012）：粗糙表面掠射角变亮
-float3 evaluate_disney_diffuse(float3 albedo, float roughness, float3 N, float3 V, float3 L, float3 H, float NdotL)
-{
-  float NdotV = max(dot(N, V), 0.0f);
-  if(NdotL <= 0.0f || NdotV <= 0.0f)
-    return float3(0.0f);
-
-  float LdotH = max(dot(L, H), 0.0f);
-  float FD90  = 0.5f + 2.0f * roughness * LdotH * LdotH;
-
-  float nl5 = pow5(1.0f - NdotL);
-  float nv5 = pow5(1.0f - NdotV);
-  float f   = (1.0f + (FD90 - 1.0f) * nl5) * (1.0f + (FD90 - 1.0f) * nv5);
-
-  return albedo * INV_PI * f;
-}
-
-// Disney Diffuse 采样（与 Lambert 同分布，用评估值折算吞吐量）
-brdf_sample sample_disney_diffuse(float3 albedo, float roughness, float3 N, float3 V, inout uint seed)
-{
-  brdf_sample bs;
-  bs.direction = sample_hemisphere_cosine(N, seed);
-  float NdotL  = max(dot(N, bs.direction), 0.0f);
-  if(NdotL <= 0.0f)
-  {
-    bs.value = float3(0.0f);
-    bs.pdf   = 0.0f;
-    return bs;
-  }
-
-  float3 H = normalize(V + bs.direction);
-  bs.value = evaluate_disney_diffuse(albedo, roughness, N, V, bs.direction, H, NdotL) * NdotL / pdf_lambertian(N, bs.direction);
-  bs.pdf = pdf_lambertian(N, bs.direction);
-  return bs;
-}
-
-// GGX / Trowbridge-Reitz 法线分布函数
-float d_ggx(float NdotH, float roughness)
-{
-  float a     = roughness * roughness;
-  float a2    = a * a;
-  float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
-  return a2 * INV_PI / max(denom * denom, 1e-5);
-}
-
-// Smith 几何遮蔽（Schlick-GGX 近似）
-float g_schlick_ggx(float NdotV, float roughness)
-{
-  float a = roughness * roughness;
-  float k = a / 2.0;
-  return NdotV / max(NdotV * (1.0 - k) + k, 1e-5);
-}
-
-float g_smith(float NdotV, float NdotL, float roughness)
-{
-  return g_schlick_ggx(NdotV, roughness) * g_schlick_ggx(NdotL, roughness);
-}
-
-// Fresnel-Schlick
-float3 f_schlick(float3 F0, float VdotH)
-{
-  return F0 + (float3(1.0) - F0) * pow5(max(1.0 - VdotH, 0.0));
-}
-
-// GGX BRDF 评估：fr = D*G*F / (4*NdotV*NdotL)，调用方乘以 NdotL 与 Li
-float3 evaluate_ggx(float3 F0, float roughness, float3 N, float3 V, float3 L)
-{
-  float3 H     = normalize(V + L);
-  float  NdotH = max(dot(N, H), 0.0);
-  float  NdotV = max(dot(N, V), 0.0);
-  float  NdotL = max(dot(N, L), 0.0);
-
-  if(NdotL <= 0.0 || NdotV <= 0.0)
-    return float3(0.0);
-
-  float  D = d_ggx(NdotH, roughness);
-  float  G = g_smith(NdotV, NdotL, roughness);
-  float3 F = f_schlick(F0, max(dot(V, H), 0.0));
-
-  return D * G * F / max(4.0 * NdotV * NdotL, 0.001);
-}
-
-// GGX 可见法线分布（VNDF）重要性采样（Heitz 2018 "Sampling the GGX Distribution of Visible Normals"）
-// 返回采样出的反射方向 L（世界空间）。较经典 Smith 采样方差更低、firefly 更少，
-// 且采样方向保证在上半球（不会被 NdotL<=0 拒绝浪费）。
-float3 sample_ggx(float3 V, float roughness, float3 N, inout uint seed)
-{
-  float2 r = random_float2(seed);
-  float  a = roughness * roughness;
-
-  // 视线变换到切线空间（局部半球，+Z = 法线）
-  tangent_space ts = build_tangent_space(N);
-  float3        Ve = float3(dot(V, ts.T), dot(V, ts.B), dot(V, N));
-
-  // §3.2 拉伸到椭圆体配置
-  float3 Vh = normalize(float3(a * Ve.x, a * Ve.y, Ve.z));
-
-  // §4.1 正交基（半球配置特化）
-  float  lensq = Vh.x * Vh.x + Vh.y * Vh.y;
-  float3 T1    = lensq > 0.0 ? float3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : float3(1.0, 0.0, 0.0);
-  float3 T2    = cross(Vh, T1);
-
-  // §4.2 投影面积参数化（同心圆盘采样）
-  float r_disk = sqrt(r.x);
-  float phi    = 2.0 * PI * r.y;
-  float t1     = r_disk * cos(phi);
-  float t2     = r_disk * sin(phi);
-  float s      = 0.5 * (1.0 + Vh.z);
-  t2           = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
-
-  // §4.3 重投影到半球
-  float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
-
-  // §3.4 变换回椭圆体配置并归一化 → 世界空间半向量 H
-  float3 H_local = normalize(float3(a * Nh.x, a * Nh.y, max(0.0, Nh.z)));
-  float3 H       = ts.T * H_local.x + ts.B * H_local.y + N * H_local.z;
-
-  // 反射出射方向 L
-  return normalize(reflect(-V, H));
-}
-
-// GGX BRDF 采样（VNDF）：pdf = D·G1(V)/(4·NdotV)，value = F·G1(L)（fr·NdotL/pdf 约简）
-brdf_sample sample_ggx_brdf(float3 albedo, float3 F0, float roughness, float3 N, float3 V, inout uint seed)
-{
-  brdf_sample bs;
-  float3      L = sample_ggx(V, roughness, N, seed);
-  bs.direction  = L;
-
-  float NdotV = max(dot(N, V), 0.0);
-  float NdotL = max(dot(N, L), 0.0);
-  if(NdotV <= 0.0 || NdotL <= 0.0)
-  {
-    bs.value = float3(0.0);
-    bs.pdf   = 0.0;
-    return bs;
-  }
-
-  float3 H     = normalize(V + L);
-  float  NdotH = max(dot(N, H), 0.0);
-  float  VdotH = max(dot(V, H), 0.001);
-
-  // VNDF 对应项：采样分布 pdf = D·G1(V)/(4·NdotV)，吞吐量约简为 F·G1(L)
-  float  D    = d_ggx(NdotH, roughness);
-  float  G1_v = g_schlick_ggx(NdotV, roughness);
-  float  G1_l = g_schlick_ggx(NdotL, roughness);
-  float3 F    = f_schlick(F0, VdotH);
-
-  bs.pdf   = D * G1_v / max(4.0 * NdotV, 0.001);
-  bs.value = G1_l * F;
-  return bs;
-}
-
-// ============================================================================
 // 阴影光线追踪
 // ============================================================================
 
@@ -355,10 +181,125 @@ float3 sample_sky(float3 direction)
 }
 
 // HDR 等距矩形环境贴图采样（方向 → 经纬 UV）
+float2 direction_to_equirect_uv(float3 direction)
+{
+  return float2(0.5f + 0.5f * atan2(direction.z, direction.x) * INV_PI,
+                1.0f - acos(clamp(direction.y, -1.0f, 1.0f)) * INV_PI);
+}
+
 float3 sample_hdr_sky(float3 direction, Sampler2D hdr_env_map)
 {
-  float2 uv = float2(0.5f + 0.5f * atan2(direction.z, direction.x) * INV_PI, 1.0f - acos(clamp(direction.y, -1.0f, 1.0f)) * INV_PI);
-  return hdr_env_map.SampleLevel(uv, 0.0f).rgb;
+  return hdr_env_map.SampleLevel(direction_to_equirect_uv(direction), 0.0f).rgb;
+}
+
+// ============================================================================
+// 环境光照(阶段 3)—— 取代原来那个恒定的 AMBIENT_LIGHT 经验项
+//
+// 两个用途:
+//   1) 漫反射环境光:irradiance(辐照度)= ∫ L(ω)cosθ dω,用**余弦重要性采样**直接估计,
+//      每帧 8 个样本 + 时域累积收敛。这样不需要预计算 irradiance 贴图,
+//      也不需要新增资产/纹理槽。
+//   2) 环境 NEE(镜面):按天空亮度做重要性采样,并给出与 BSDF 采样之间的 MIS 权重。
+//
+// 物理要点:
+//   · 余弦采样的 pdf = cosθ/π,而积分里被积函数自带 cosθ,
+//     故估计量 = L(ω)·π,与 cosθ 无关(这正是不需要显式 cos 的原因)。
+//   · irradiance 送入 Lambertian 时还要乘 albedo/π,两端 π 相消。
+//   · 所有 pdf 与 MIS 权重均为**标量**(亮度),与波长无关 —— 光谱化时保持这个性质。
+// ============================================================================
+
+// 余弦重要性采样方向(切线空间 → 世界空间)。
+// 估计量 = L·π:pdf = cosθ/π,而辐照度积分自带 cosθ,两者相消。
+float3 sample_cosine_direction(float3 N, inout uint seed)
+{
+  float2 r   = random_float2(seed);
+  float  phi = 2.0 * PI * r.x;
+  float  ct  = sqrt(1.0 - r.y);
+  float  st  = sqrt(r.y);
+  tangent_space ts = build_tangent_space(N);
+  return normalize(ts.T * (st * cos(phi)) + ts.B * (st * sin(phi)) + N * ct);
+}
+
+// 环境 NEE 的方向 pdf。
+//
+// ⚠ 这是**唯一**的定义处:MIS 的两侧(环境 NEE 的估计量、以及 BSDF 采样命中天空
+// 时的权重)必须用同一个 pdf,否则 balance heuristic 的权重错、能量会系统性偏移。
+// 本仓库踩过这个坑:采样改成了均匀半球,但弹射前算 MIS 权重的地方仍用余弦 pdf,
+// 结果是白炉球体阵整体偏暗(由 tools/furnace_probe.ps1 在真白炉下抓到)。
+// 与 sample_uniform_upper_hemisphere 的分布必须一致。
+float environment_nee_pdf()
+{
+  return 1.0 / (2.0 * PI);
+}
+
+// 上半球均匀采样(绕给定法线):cosθ 均匀取 [0,1)、方位角均匀 ⟹ pdf = 1/(2π)。
+// 环境 NEE 用它 —— **不要**用"全空间采样 + 拒绝下半球 + 重试补偿"那种写法:
+// 重试 N 次只保留 1 个样本时,概率因子的补偿极易写成放大 2 倍的偏差
+// (本仓库踩过:估计量恰好变成解析值的 2 倍,由 tools/pbr_env_check.py 抓到)。
+float3 sample_uniform_upper_hemisphere(float3 N, inout uint seed)
+{
+  float2 r   = random_float2(seed);
+  float  ct  = r.x;                              // cosθ ∈ [0,1)
+  float  st  = sqrt(max(0.0, 1.0 - ct * ct));
+  float  phi = 2.0 * PI * r.y;
+  tangent_space ts = build_tangent_space(N);
+  return normalize(ts.T * (st * cos(phi)) + ts.B * (st * sin(phi)) + N * ct);
+}
+
+// 取天空辐射亮度(带"过暗回退程序化天空"的一致判据)
+// _uniform_env:白炉模式 —— 返回常数 1.0,使环境在所有方向上等辐射亮度
+float3 environment_radiance(float3 _direction, Sampler2D _hdr_env_map, uint _skybox_index, bool _uniform_env)
+{
+  if(_uniform_env)
+  {
+    return float3(1.0);
+  }
+
+  float3 sky = sample_sky(_direction);
+  if(_skybox_index < 0xFFFFFFFFu)
+  {
+    float3 hdr = sample_hdr_sky(_direction, _hdr_env_map);
+    sky        = (luminance(hdr) > 0.02f) ? hdr : sky;
+  }
+  return sky;
+}
+
+// 环境辐照度估计(E = ∫L cos dω),余弦重要性采样 + 可见性
+// _uniform_env:白炉模式,天空处处为 1.0 ⟹ E = π(解析值,可用于像素级验收)
+float3 sample_environment_irradiance(RaytracingAccelerationStructure tlas, float3 origin, float3 N,
+                                     Sampler2D hdr_env_map, uint skybox_index, uint sample_count,
+                                     bool _uniform_env, inout uint seed)
+{
+  if(sample_count == 0u)
+    return float3(0.0);
+
+  float3 sum = float3(0.0);
+  for(uint i = 0u; i < sample_count; ++i)
+  {
+    float3 dir = sample_cosine_direction(N, seed);
+
+    // 可见性:被几何遮挡的方向不贡献环境光。命中即为遮挡。
+    // 注意:不能对追踪到天空的射线复用 trace_shadow_ray —— 它的 miss shader
+    // 会把 is_shadowed 置 false,语义相反。这里用零初始化 + 命中即置真。
+    RayDesc ray;
+    ray.Origin    = origin;
+    ray.Direction = dir;
+    ray.TMin      = SHADOW_EPSILON;
+    ray.TMax      = 1e10f;
+
+    shadow_payload occ;
+    occ.is_shadowed = false;
+    occ.seed        = wang_hash(seed);
+    TraceRay(tlas, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER
+                        | RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+             0xff, 1, 0, 1, ray, occ);
+    if(occ.is_shadowed)
+      continue;
+
+    sum += environment_radiance(dir, hdr_env_map, skybox_index, _uniform_env);
+  }
+  // 余弦采样 pdf = cos/π,被积函数自带 cos ⟹ 估计量 = L·π;再除样本数
+  return sum * (PI / float(sample_count));
 }
 
 // ============================================================================

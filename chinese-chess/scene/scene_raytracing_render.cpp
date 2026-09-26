@@ -34,7 +34,7 @@ constexpr std::string_view RAY_SHADOW_MISS_ENTRY_NAME    = "rayShadowMissMain";
 constexpr std::string_view RAY_CLOSEST_HIT_ENTRY_NAME    = "rayClosestHitMain";
 constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain";
 
-struct uniform_buffer  // std140 layout
+struct uniform_buffer  // std140 layout,与 scene_data.slang 的 rt_scene_data 逐字节一致
 {
     alignas(16) glm::mat4x4 proj_inv_matrix{};
     alignas(16) glm::mat4x4 view_inv_matrix{};
@@ -47,6 +47,11 @@ struct uniform_buffer  // std140 layout
     uint32_t texture_count                       = 0;
     uint32_t skybox_index                        = std::numeric_limits<uint32_t>::max();
     uint32_t frame_index                         = 0;
+    // ---- 物理正确性调试通道(见 pbr_debug_flags) ----
+    uint32_t debug_flags                         = 0;
+    float    env_intensity                       = 1.0f;  // 环境光强度(阶段 3;0 = 关闭)
+    float    force_metallic                      = 0.0f;
+    float    force_roughness                     = 0.5f;
 };
 
 }  // namespace
@@ -121,6 +126,35 @@ void scene_raytracing_render::reset_accumulation() noexcept
     frame_index = 0;
 }
 
+void scene_raytracing_render::set_debug_flags(uint32_t _flags) noexcept
+{
+    debug_flags = _flags;
+    // 调试通道改变成像结果,必须重置时域累积,否则新旧画面混叠
+    frame_index = 0;
+}
+
+uint32_t scene_raytracing_render::get_debug_flags() const noexcept
+{
+    return debug_flags;
+}
+
+void scene_raytracing_render::set_debug_mat_override(float _metallic, float _roughness) noexcept
+{
+    debug_force_metallic  = _metallic;
+    debug_force_roughness = _roughness;
+    frame_index           = 0;
+}
+
+float scene_raytracing_render::get_debug_force_metallic() const noexcept
+{
+    return debug_force_metallic;
+}
+
+float scene_raytracing_render::get_debug_force_roughness() const noexcept
+{
+    return debug_force_roughness;
+}
+
 void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
 {
     // update ubo
@@ -136,6 +170,10 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
         .texture_count     = static_cast<uint32_t>(material_manager.get_textures_size()),
         .skybox_index      = _skybox_index,
         .frame_index       = frame_index,
+        .debug_flags       = debug_flags,
+        .env_intensity     = env_intensity,
+        .force_metallic    = debug_force_metallic,
+        .force_roughness   = debug_force_roughness,
     };
 
     auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;

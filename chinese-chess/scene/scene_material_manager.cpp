@@ -23,14 +23,29 @@ namespace {
 
 struct gpu_material_data  // scalar layout
 {
-    glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
-    uint32_t  texture_index    = std::numeric_limits<uint32_t>::max();
-    glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
-    float     roughness        = 0.5f;
-    float     metallic         = 0.0f;
-    float     opacity          = 1.0f;
-    float     ior              = 1.5f;
-    float     transmission     = 0.0f;
+    // ⚠ 必须与 resources/shaders/scene_data.slang 的 material_data 逐字节一致:
+    // model_data/materials 在 shader 中按物理指针解引用,步长 = 结构体自然大小,
+    // 任何偏移不一致都会让 materials[i≥1] 错位 → 越界解引用 → 设备丢失。
+    // 当前自然大小 112B。改动后用 tools/verify_shaders.ps1 重新校验偏移。
+    glm::vec3 background_color       = glm::vec3(1.f, 1.f, 1.f);  //   0:基底反射率
+    uint32_t  albedo_index           = std::numeric_limits<uint32_t>::max();  //  12:覆盖率/albedo 图
+    glm::vec3 foreground_color       = glm::vec3(1.f, 1.f, 1.f);  //  16:刻字层反射率
+    float     roughness              = 0.5f;                      //  28
+    float     metallic               = 0.0f;                      //  32
+    float     opacity                = 1.0f;                      //  36
+    float     ior                    = 1.5f;                      //  40
+    float     transmission           = 0.0f;                      //  44
+    glm::vec3 absorption_coefficient = glm::vec3(0.f);            //  48:σ_t 光谱消光系数
+    glm::vec3 engrave_absorption     = glm::vec3(0.f);            //  64:刻字层附加消光
+    uint32_t  dispersion_model       = 0;                         //  76
+    float     dispersion_param       = 1.5f;                      //  80
+    uint32_t  normal_index           = std::numeric_limits<uint32_t>::max();  //  84:切线空间法线图
+    uint32_t  orm_index              = std::numeric_limits<uint32_t>::max();  //  88:R=AO G=rough B=metal
+    uint32_t  emissive_index         = std::numeric_limits<uint32_t>::max();  //  92:预留(阶段 4)
+    float     normal_scale           = 1.0f;                      //  96
+    float     occlusion_strength     = 1.0f;                      // 100
+    float     pad0                   = 0.0f;                      // 104
+    float     pad1                   = 0.0f;                      // 108
 };
 
 [[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_and_compress_to_ktx2(const std::filesystem::path& _source_path, bool _is_hdr)
@@ -606,14 +621,26 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
             materials | std::views::transform([this](const auto& p) {
                 const auto sp = p.lock();
                 return gpu_material_data{.background_color = sp->background_color,
-                                         .texture_index =
+                                         .albedo_index =
                                              get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
-                                         .foreground_color = sp->foreground_color,
-                                         .roughness        = sp->roughness,
-                                         .metallic         = sp->metallic,
-                                         .opacity          = sp->opacity,
-                                         .ior              = sp->ior,
-                                         .transmission     = sp->transmission};
+                                         .foreground_color       = sp->foreground_color,
+                                         .roughness              = sp->roughness,
+                                         .metallic               = sp->metallic,
+                                         .opacity                = sp->opacity,
+                                         .ior                    = sp->ior,
+                                         .transmission           = sp->transmission,
+                                         .absorption_coefficient = sp->absorption_coefficient,
+                                         .engrave_absorption     = sp->engrave_absorption,
+                                         .dispersion_model       = sp->dispersion_model,
+                                         .dispersion_param       = sp->dispersion_param,
+                                         .normal_index =
+                                             get_texture_index(sp->normal_map).value_or(std::numeric_limits<uint32_t>::max()),
+                                         .orm_index =
+                                             get_texture_index(sp->orm_map).value_or(std::numeric_limits<uint32_t>::max()),
+                                         .emissive_index =
+                                             get_texture_index(sp->emissive_map).value_or(std::numeric_limits<uint32_t>::max()),
+                                         .normal_scale       = sp->normal_scale,
+                                         .occlusion_strength = sp->occlusion_strength};
             })
             | std::ranges::to<std::vector>();
 

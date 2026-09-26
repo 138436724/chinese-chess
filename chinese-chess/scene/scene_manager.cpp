@@ -1,7 +1,6 @@
 #include "scene_manager.h"
 
 #include "scene_rasterization_render.h"
-#include "scene_rayquery_render.h"
 #include "scene_raytracing_render.h"
 #include "tools/image_helper.h"
 #include "tools/ocio_helper.h"
@@ -101,12 +100,6 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
 
     scene_renders.insert_or_assign(render_mode::ray_tracing,
                                    pro::make_proxy<manager_render, scene_raytracing_render>(
-                                       app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                       model_manager, material_manager, light_manager, render_output));
-
-    scene_renders.insert_or_assign(render_mode::ray_query,
-                                   pro::make_proxy<manager_render, scene_rayquery_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
                                        *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
                                        model_manager, material_manager, light_manager, render_output));
@@ -220,6 +213,17 @@ void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods
                 need_model_update();
             }
             break;
+        case GLFW_KEY_J:
+        {
+            // 调试热键:切换环境光(辐照度 + 环境 NEE)。
+            // 复用已有的 DEBUG_DISABLE_AMBIENT 位,不需要新增 proxy 约定;
+            // 用途是量出环境光的性能开销(窗口标题里的 FPS 就是读数)。
+            // 注意:本函数开头已过滤 `_action != GLFW_PRESS`,这里无需再判。
+            const uint32_t ambient_bit = static_cast<uint32_t>(pbr_debug_flags::disable_ambient);
+            const uint32_t flags       = get_debug_flags();
+            set_debug_flags((flags & ambient_bit) != 0u ? (flags & ~ambient_bit) : (flags | ambient_bit));
+            break;
+        }
         default:
             break;
     }
@@ -271,6 +275,37 @@ bool scene_manager::get_need_update() const noexcept
     return is_dirty;
 }
 
+void scene_manager::set_debug_flags(uint32_t _flags) noexcept
+{
+    active_render->set_debug_flags(_flags);
+    // 调试参数改变会改变成像结果 → 置脏,下一帧经 update() 重置 RT 时域累积,
+    // 否则新旧画面会混叠,能量实验读到的不是干净结果。
+    is_dirty = true;
+}
+
+// 三个 getter 不能加 const:active_render 是 proxy_view,其约定成员在 facade 里
+// 声明为非 const,const 成员函数里调用会 "转换丢失限定符"。
+uint32_t scene_manager::get_debug_flags() noexcept
+{
+    return active_render->get_debug_flags();
+}
+
+void scene_manager::set_debug_mat_override(float _metallic, float _roughness) noexcept
+{
+    active_render->set_debug_mat_override(_metallic, _roughness);
+    is_dirty = true;
+}
+
+float scene_manager::get_debug_force_metallic() noexcept
+{
+    return active_render->get_debug_force_metallic();
+}
+
+float scene_manager::get_debug_force_roughness() noexcept
+{
+    return active_render->get_debug_force_roughness();
+}
+
 scene_camera& scene_manager::get_active_camera() noexcept
 {
     return active_camera;
@@ -289,6 +324,12 @@ std::shared_ptr<scene_light> scene_manager::create(std::type_identity<scene_ligh
 std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name)
 {
     return model_manager.create(_model_name);
+}
+
+std::shared_ptr<scene_model> scene_manager::create_procedural_sphere(float _radius, uint32_t _segments, uint32_t _rings)
+{
+    is_dirty = true;
+    return model_manager.create_procedural_sphere(_radius, _segments, _rings);
 }
 
 std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>)

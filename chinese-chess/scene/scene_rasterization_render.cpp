@@ -192,6 +192,33 @@ void scene_rasterization_render::recreate()
 
 void scene_rasterization_render::reset_accumulation() noexcept {}
 
+// 调试通道空操作:光栅化路径不消费这些开关,仅留存取值供 UI 读写。
+void scene_rasterization_render::set_debug_flags(uint32_t _flags) noexcept
+{
+    debug_flags = _flags;
+}
+
+uint32_t scene_rasterization_render::get_debug_flags() const noexcept
+{
+    return debug_flags;
+}
+
+void scene_rasterization_render::set_debug_mat_override(float _metallic, float _roughness) noexcept
+{
+    debug_force_metallic  = _metallic;
+    debug_force_roughness = _roughness;
+}
+
+float scene_rasterization_render::get_debug_force_metallic() const noexcept
+{
+    return debug_force_metallic;
+}
+
+float scene_rasterization_render::get_debug_force_roughness() const noexcept
+{
+    return debug_force_roughness;
+}
+
 vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {
     vulkan_pipeline new_pipeline;

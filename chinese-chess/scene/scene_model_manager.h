@@ -30,6 +30,14 @@ public:
 
     [[nodiscard]] std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
 
+    // 程序化 UV 球(白炉测试球体阵用)。
+    // 关键性质:所有实例**共用同一份网格**(写入 models_cache,用合成路径做键),
+    // 所以造一个 N×M 的球阵只有一份顶点/索引数据,代价是 N×M 个实例。
+    // UV 严格以接缝为 u=0/1、两极为 v=0/1 排列,保证切线空间可由 UV 差分正确建立。
+    [[nodiscard]] std::shared_ptr<scene_model> create_procedural_sphere(float _radius,
+                                                                       uint32_t _segments = 48u,
+                                                                       uint32_t _rings    = 24u);
+
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear();
 

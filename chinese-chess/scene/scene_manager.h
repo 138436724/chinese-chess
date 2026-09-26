@@ -22,11 +22,13 @@
 
 class vulkan_application;
 
+// Ray Query 路径已于 2026 退役:它曾与 RT pipeline 各自实现同一套着色逻辑,
+// 物理正确性改造必须同时改两遍,维护成本与静默分叉风险都不可接受。
+// 现在物理正确性以光栅化(可视化)/ 光线追踪(唯一物理正确路径)二者为准。
 enum class render_mode : uint32_t
 {
     rasterization,
     ray_tracing,
-    ray_query,
 };
 
 class scene_manager
@@ -51,7 +53,27 @@ public:
                  || std::same_as<T, scene_light>)
     [[nodiscard]] auto create(Args&&... args);
 
+    // 程序化 UV 球(白炉测试球体阵用):所有实例共用同一份网格。
+    // 公开接口 —— 与模板 create<T> 同属"造对象"的入口。
+    [[nodiscard]] std::shared_ptr<scene_model> create_procedural_sphere(float _radius,
+                                                                       uint32_t _segments = 48u,
+                                                                       uint32_t _rings    = 24u);
+
     void set_render_mode(render_mode _mode);
+
+    // ---- 物理正确性调试通道(RT 渲染器专属;光栅化模式忽略) ----
+    // 能量守恒验证必须能关闭全部启发式钳制,否则白炉测试测到的是钳制而非物理。
+    //
+    // 注意:三个 getter **不能加 const** —— 它们经 `active_render` 转发到
+    // manager_render facade 的约定成员,而该约定声明为非 const
+    // (`uint32_t()` 而非 `uint32_t() const`),const 成员函数里调用会因
+    // "转换丢失限定符"编译失败。这与同文件的 get_active_camera()/
+    // get_render_image() 保持一致的写法(它们同样是 proxy 转发)。
+    void              set_debug_flags(uint32_t _flags) noexcept;
+    [[nodiscard]] uint32_t get_debug_flags() noexcept;
+    void              set_debug_mat_override(float _metallic, float _roughness) noexcept;
+    [[nodiscard]] float get_debug_force_metallic() noexcept;
+    [[nodiscard]] float get_debug_force_roughness() noexcept;
 
     [[nodiscard]] bool          get_need_update() const noexcept;
     [[nodiscard]] scene_camera& get_active_camera() noexcept;

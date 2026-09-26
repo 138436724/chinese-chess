@@ -3,11 +3,14 @@
 #include "scene/scene_manager.h"
 #include "scene/scene_material.h"
 #include "scene/scene_model.h"
+// 仅为白炉预设(furnace_preset)与 debug_flags 位定义
+#include "scene/scene_raytracing_render.h"
 #include "tools/font_loader.h"
 #include "tools/model_loader.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <exception>
 #include <glm/glm.hpp>
 #include <imgui.h>
 #include <print>
@@ -26,6 +29,12 @@ constexpr std::string_view RECORDS_LIST    = "棋谱列表";
 constexpr std::string_view LOAD_RECORDS    = "加载棋谱";
 constexpr std::string_view LAST_STEP       = "上一步";
 constexpr std::string_view NEXT_STEP       = "下一步";
+
+// 白炉测试球体阵
+constexpr std::string_view FURNACE_GRID        = "白炉测试球体阵";
+constexpr std::string_view FURNACE_GRID_TOGGLE = "显示球体阵(roughness × metallic)";
+constexpr std::string_view FURNACE_GRID_HINT =
+    "热键 G 切球体阵、H 切白炉预设;两者配合「PBR 物理调试」可逐格核查方向反射率。";
 
 constexpr uint32_t board_font_padding = 2;
 
@@ -119,9 +128,14 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
                               piece_material->background_color = glm::vec3(0.95f, 0.92f, 0.85f);
                               piece_material->foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
                               piece_material->roughness        = 0.3f;
-                              piece_material->opacity          = 0.8f;
-                              piece_material->ior              = 1.5f;
-                              piece_material->transmission     = 1.0f;
+                              // 透射由 transmission 表达;opacity 只用于介质内的概率穿透,
+                              // 不再拿它当"透射开关"(否则会产生非物理的软阴影)
+                              piece_material->opacity     = 1.0f;
+                              piece_material->ior         = 1.5f;
+                              piece_material->transmission = 1.0f;
+                              // 白玉:各波长近似等吸收,微微偏暖;刻字为深红且吸收更强
+                              piece_material->absorption_coefficient = glm::vec3(20.0f, 22.0f, 26.0f);
+                              piece_material->engrave_absorption     = glm::vec3(20.0f, 55.0f, 45.0f);
 
                               auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                                              static_cast<uint32_t>(height / 9.0 * 2),
@@ -138,9 +152,13 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
                               piece_material->background_color = glm::vec3(0.15f, 0.45f, 0.32f);
                               piece_material->foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
                               piece_material->roughness        = 0.3f;
-                              piece_material->opacity          = 0.8f;
+                              piece_material->opacity          = 1.0f;
                               piece_material->ior              = 1.5f;
                               piece_material->transmission     = 1.0f;
+                              // 青玉:红光被强烈吸收、绿光相对透过 → 绿色由物理涌现,
+                              // 而不是靠 background_color 直接"涂"成绿色
+                              piece_material->absorption_coefficient = glm::vec3(30.0f, 12.0f, 22.0f);
+                              piece_material->engrave_absorption     = glm::vec3(40.0f, 60.0f, 50.0f);
 
                               auto piece_image = manager.create<scene_image>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
                                                                              static_cast<uint32_t>(height / 9.0 * 2),
@@ -204,9 +222,141 @@ void ui_record::update()
             next_step();
         }
     }
+
+    // ---- 白炉测试球体阵 ----
+    // 与"PBR 物理调试"面板的"一键白炉"配合使用:后者只把 albedo 强制为白,
+    // 保留每格自己的 roughness/metallic,于是每格的方向反射率可逐格核查。
+    ImGui::SeparatorText(FURNACE_GRID.data());
+    bool grid_enabled = furnace_grid_enabled;
+    if (ImGui::Checkbox(FURNACE_GRID_TOGGLE.data(), &grid_enabled))
+    {
+        set_furnace_grid_enabled(grid_enabled);
+    }
+    ImGui::TextUnformatted(FURNACE_GRID_HINT.data());
 }
 
-void ui_record::handle(int _key, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept
+// ============================================================================
+// 白炉测试球体阵
+//
+// 布局:x 轴 = roughness(0.05 → 1.0),y 轴 = metallic(0 → 1)。
+// 每个球一个材质(粗糙度/金属度不同),但**共用同一份球体网格**,
+// 所以整个 6×5 网格只有一份顶点/索引数据。
+//
+// 物理用途:配合"只强制 albedo 为白"的调试开关,每格的方向反射率
+// 应只由 (roughness, metallic) 决定。若某格出现非物理的亮斑/暗块,
+// 或整列随粗糙度出现系统性偏移,就是能量补偿或 FRESNEL 项出了问题。
+// ============================================================================
+void ui_record::rebuild_furnace_grid()
+{
+    constexpr uint32_t cols = 6;  // roughness
+    constexpr uint32_t rows = 5;  // metallic
+    constexpr float    radius  = 0.22f;
+    // 间距从 0.62 放宽到 0.85:球之间的**相互遮挡**会压低入射辐照度,
+    // 让白炉读数偏低(实测间距 0.62 时相邻球可挡掉约 20%~40% 半球)。
+    // 0.85 在 z=-2.0 处仍完整落在视锥内(6 列半宽 2.125+0.22 < 2.667)。
+    // 注意:改这里必须同步 tools/furnace_probe.ps1 与 tools/dark_probe.ps1 里的 spacing。
+    constexpr float    spacing = 0.85f;
+    // 相机在原点朝 -Z,FOV_y = 90°(可视半高 = 距离)。
+    // 网格铺在**屏幕平面 XY** 上、放在 z = -2.0:
+    //   · z 必须为负 —— 正值在相机背后,根本看不见(踩过这个错)
+    //   · 行不能沿 z 铺开 —— 那样会向远处堆叠、近排遮远排
+    // z=-2.0 时可视半高 2.0 / 半宽 3.56,而网格半高 1.24 / 半宽 1.55,留有余量。
+    constexpr float    grid_z = -2.0f;
+
+    furnace_spheres.clear();
+    furnace_spheres.reserve(static_cast<size_t>(cols) * rows);
+
+    for (uint32_t row = 0; row < rows; ++row)
+    {
+        const float metallic = static_cast<float>(row) / static_cast<float>(rows - 1);
+
+        for (uint32_t col = 0; col < cols; ++col)
+        {
+            // 粗糙度从 0.05(近镜面)到 1.0(完全粗糙);下限避开 delta 化
+            const float roughness = 0.05f + (1.0f - 0.05f) * static_cast<float>(col) / static_cast<float>(cols - 1);
+
+            auto sphere = manager.create_procedural_sphere(radius, 48u, 24u);
+            sphere->model_matrix =
+                glm::translate(glm::mat4(1.0f),
+                               glm::vec3((static_cast<float>(col) - static_cast<float>(cols - 1) * 0.5f) * spacing,
+                                         (static_cast<float>(row) - static_cast<float>(rows - 1) * 0.5f) * spacing,
+                                         grid_z));
+
+            auto material              = manager.create<scene_material>();
+            material->background_color = glm::vec3(1.0f);  // 白炉:反照率本身就设白
+            material->roughness        = roughness;
+            material->metallic         = metallic;
+            sphere->material           = std::move(material);
+
+            sphere->is_show = furnace_grid_enabled;
+            furnace_spheres.push_back(std::move(sphere));
+        }
+    }
+
+    manager.need_model_update();
+    manager.need_material_update();
+}
+
+void ui_record::apply_furnace_isolation() noexcept
+{
+    // 白炉模式 = 隔离测试场景:隐掉棋盘与棋子,避免遮挡球体阵。
+    // 关闭白炉时不在这里恢复 —— 由 restore_board_state 按当前棋局状态重建。
+    if (!furnace_grid_enabled)
+    {
+        return;
+    }
+
+    chess_board->is_show      = false;
+    chess_board_line->is_show = false;
+    for (auto& piece : all_chess_pieces)
+    {
+        piece->is_show = false;
+    }
+}
+
+void ui_record::set_furnace_grid_visible(bool _visible) noexcept
+{
+    for (auto& sphere : furnace_spheres)
+    {
+        sphere->is_show = _visible;
+    }
+
+    if (_visible)
+    {
+        apply_furnace_isolation();
+        manager.need_model_update();
+    }
+    else
+    {
+        // 关闭白炉:按当前棋局状态把棋盘与棋子重新点亮
+        restore_board_state(static_cast<uint32_t>(now_record_index));
+    }
+}
+
+void ui_record::set_furnace_grid_enabled(bool _enabled)
+{
+    furnace_grid_enabled = _enabled;
+
+    if (furnace_grid_enabled && !furnace_grid_built)
+    {
+        rebuild_furnace_grid();
+        furnace_grid_built = true;
+    }
+
+    set_furnace_grid_visible(furnace_grid_enabled);
+}
+
+void ui_record::toggle_furnace_preset() noexcept
+{
+    constexpr uint32_t preset = furnace_preset();
+    const uint32_t     flags  = manager.get_debug_flags();
+
+    // 已完整处于白炉预设 → 关闭;否则打开(并补齐缺失位)
+    const bool already_on = (flags & preset) == preset;
+    manager.set_debug_flags(already_on ? (flags & ~preset) : (flags | preset));
+}
+
+void ui_record::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/) noexcept
 {
     switch (_key)
     {
@@ -217,6 +367,31 @@ void ui_record::handle(int _key, int /*_scancode*/, int /*_action*/, int /*_mods
         case GLFW_KEY_S:
         case GLFW_KEY_D:
             next_step();
+            break;
+        // ---- 调试热键(便于脚本化验证:可用 PostMessage 投递按键,不抢焦点)----
+        // 只在按下时响应:GLFW 还会发 GLFW_REPEAT,不过滤的话按住键会反复切换。
+        // W/A/S/D 保持原有行为不变 —— 那里的自动重复是"连续翻步"的有意特性。
+        case GLFW_KEY_G:
+            if (_action == GLFW_PRESS)
+            {
+                // 建网格会分配内存/创建对象,可能抛异常;而 handle 是 noexcept
+                // (ui_base facade 的约定),noexcept 里抛出会直接 std::terminate,
+                // 所以必须在这里兜住。
+                try
+                {
+                    set_furnace_grid_enabled(!furnace_grid_enabled);
+                }
+                catch (const std::exception& _error)
+                {
+                    std::println(std::cerr, "furnace grid toggle failed: {}", _error.what());
+                }
+            }
+            break;
+        case GLFW_KEY_H:
+            if (_action == GLFW_PRESS)
+            {
+                toggle_furnace_preset();
+            }
             break;
         default:
             break;
@@ -303,6 +478,10 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
             glm::translate(glm::mat4(1.f),
                            glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, piece.x, piece.y), chess_piece_z));
     });
+
+    // 棋局恢复会把棋子重新点亮 —— 若当前处于白炉模式,要再隐回去,
+    // 否则翻棋谱时棋子会突然出现在球体阵前面。
+    apply_furnace_isolation();
 
     manager.need_update();
 }

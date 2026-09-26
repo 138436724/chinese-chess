@@ -29,6 +29,7 @@ public:
 
 private:
     void render_mode_ui() noexcept;
+    void pbr_debug_ui() noexcept;
 
 private:
     vk::Format color_format = vk::Format::eUndefined;

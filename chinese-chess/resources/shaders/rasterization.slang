@@ -63,16 +63,17 @@ float4 fragMain(VSOutput output)
   // （如材质被删除后模型仍引用旧索引；若不守卫将按 0 基址/越界解引用 → 设备丢失）。
   if(output.material_index < scene_params.material_count)
   {
-    // 按需取字段：只读底色/纹理槽/前景色（逐像素，避免整拷 48B material_data）
+    // 按需取字段：只读底色/纹理槽/前景色（逐像素，避免整拷 material_data）
     const uint32_t material_slot = output.material_index;
     const float3   bg_color      = scene_params.materials[material_slot].background_color;
-    const uint32_t texture_index = scene_params.materials[material_slot].texture_index;
-    if(texture_index < scene_params.texture_count)
+    const uint32_t albedo_index  = scene_params.materials[material_slot].albedo_index;
+    if(albedo_index < scene_params.texture_count)
     {
-      // 有纹理：采样 R 通道作为"字形/图案权重"，
+      // 有纹理：采样 R 通道作为"字形/图案覆盖率"，
       // 在底色（background_color）与前景色（foreground_color）间插值
-      // （棋盘"楚河汉界"、棋子刻字图集均为该机制）
-      Sampler2D now_texture = samplers[texture_index];
+      // （棋盘"楚河汉界"、棋子刻字图集均为该机制；光栅化路径不做物理着色，
+      //   故这里是覆盖率混合而非物理 BRDF 混合 —— 物理正确性以 RT 路径为准）
+      Sampler2D now_texture = samplers[albedo_index];
       float     weight      = now_texture.Sample(output.uv).x;
       color                 = float4(lerp(bg_color, scene_params.materials[material_slot].foreground_color, weight), 1.0);
     }

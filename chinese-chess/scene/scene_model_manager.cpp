@@ -9,8 +9,10 @@
 #include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <limits>
+#include <numbers>
 #include <ranges>
 #include <span>
 
@@ -71,6 +73,96 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
 
     meshes.emplace_back(mesh);
     models_cache.emplace(_model_path, std::weak_ptr<model_information>(mesh));
+
+    auto model        = std::make_shared<scene_model>();
+    model->model_info = mesh;
+    models.emplace_back(model);
+
+    is_dirty     = true;
+    meshes_dirty = true;
+    return model;
+}
+
+std::shared_ptr<scene_model> scene_model_manager::create_procedural_sphere(float _radius, uint32_t _segments, uint32_t _rings)
+{
+    // 合成路径作为缓存键:参数进键,保证不同半径/细分的球不会互相顶掉
+    const std::filesystem::path cache_key =
+        std::format("__procedural_sphere_r{}_s{}_g{}", _radius, _segments, _rings);
+
+    if (auto iter = models_cache.find(cache_key); iter != models_cache.end())
+    {
+        if (!iter->second.expired())
+        {
+            auto model        = std::make_shared<scene_model>();
+            model->model_info = std::shared_ptr<model_information>(iter->second);
+            models.emplace_back(model);
+            is_dirty = true;
+            return model;
+        }
+    }
+
+    const uint32_t seg   = std::max(_segments, 3u);
+    const uint32_t rings = std::max(_rings, 2u);
+
+    auto mesh = std::make_shared<model_information>();
+    mesh->vertices.reserve(static_cast<size_t>(seg + 1) * (rings + 1));
+    mesh->indices.reserve(static_cast<size_t>(seg) * rings * 6);
+
+    // 顶点:u 绕赤道(接缝在 u=0/1 处重复一圈),v 从北极到南极
+    for (uint32_t y = 0; y <= rings; ++y)
+    {
+        const float v     = static_cast<float>(y) / static_cast<float>(rings);
+        const float theta = v * std::numbers::pi_v<float>;  // 0 = 北极
+        const float st    = std::sin(theta);
+        const float ct    = std::cos(theta);
+
+        for (uint32_t x = 0; x <= seg; ++x)
+        {
+            const float u   = static_cast<float>(x) / static_cast<float>(seg);
+            const float phi = u * 2.0f * std::numbers::pi_v<float>;
+            const glm::vec3 n(st * std::cos(phi), ct, st * std::sin(phi));
+            mesh->vertices.push_back(model_vertex{.position = n * _radius, .normal = n, .uv = glm::vec2(u, v)});
+        }
+    }
+
+    // 索引:每格两个三角形。
+    // ⚠ 绕序必须是 (a, a+1, b) / (b, a+1, b+1) 这一支 —— 反过来的话
+    // 面法线全部朝内,背面剔除会把球的正面剔掉(由 tools/verify_sphere_mesh.py
+    // 的"绕序向外"检验抓到:错误绕序下向外比例 = 0%)。
+    //
+    // 两极的圈只能发**一个**三角形:极点处该圈的两个顶点位置重合,
+    // 另一个三角形面积为零。照发的话会白占 BVH 空间、并让极点片拓扑不封闭
+    // (校验里 96 条边找不到配对)。这里按行特判,两极各只发一个。
+    const uint32_t stride = seg + 1;
+    for (uint32_t y = 0; y < rings; ++y)
+    {
+        const bool at_north_pole = (y == 0u);
+        const bool at_south_pole = (y + 1u == rings);
+
+        for (uint32_t x = 0; x < seg; ++x)
+        {
+            const uint32_t a = y * stride + x;
+            const uint32_t b = a + stride;
+
+            if(at_north_pole)
+            {
+                // 北极:顶点 a 与 a+1 重合,只发 (a, a+1, b) 的等价有效三角形
+                mesh->indices.insert(mesh->indices.end(), {a, b + 1, b});
+            }
+            else if(at_south_pole)
+            {
+                // 南极:b 与 b+1 重合
+                mesh->indices.insert(mesh->indices.end(), {a, a + 1, b});
+            }
+            else
+            {
+                mesh->indices.insert(mesh->indices.end(), {a, a + 1, b, b, a + 1, b + 1});
+            }
+        }
+    }
+
+    meshes.emplace_back(mesh);
+    models_cache.emplace(cache_key, std::weak_ptr<model_information>(mesh));
 
     auto model        = std::make_shared<scene_model>();
     model->model_info = mesh;

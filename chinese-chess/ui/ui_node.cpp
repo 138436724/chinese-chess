@@ -34,6 +34,14 @@ constexpr std::string_view MATERIAL_TRANSMISSION     = "透射强度";
 constexpr std::string_view DELETE_MATERIAL           = "删除材质";
 constexpr std::string_view NO_MATERIAL               = "无材质";
 constexpr std::string_view ADD_IMAGE                 = "添加贴图";
+constexpr std::string_view MATERIAL_NORMAL_SCALE     = "法线强度";
+constexpr std::string_view MATERIAL_OCCLUSION        = "AO 强度";
+constexpr std::string_view MATERIAL_ABSORPTION       = "消光系数(光谱)";
+constexpr std::string_view MATERIAL_ENGRAVE_ABSORB   = "刻字附加消光";
+constexpr std::string_view MATERIAL_NORMAL_MAP       = "法线贴图";
+constexpr std::string_view MATERIAL_ORM_MAP          = "ORM 贴图";
+constexpr std::string_view MATERIAL_MAP_NONE         = "(无)";
+constexpr std::string_view MATERIAL_MAP_PICK         = "选择";
 
 constexpr std::string_view MODEL_MANAGER     = "物体管理";
 constexpr std::string_view ADD_MODEL         = "添加物体";
@@ -158,6 +166,86 @@ void ui_node::update_material()
             {
                 manager.need_material_update();
             }
+
+            // ---- 光谱消光(逐波长):玉石颜色由此涌现 ----
+            if (ImGui::DragFloat3(MATERIAL_ABSORPTION.data(), glm::value_ptr(material_ptr->absorption_coefficient), 0.5f, 0.f, 200.f))
+            {
+                manager.need_material_update();
+            }
+
+            if (ImGui::DragFloat3(MATERIAL_ENGRAVE_ABSORB.data(), glm::value_ptr(material_ptr->engrave_absorption), 0.5f, 0.f, 200.f))
+            {
+                manager.need_material_update();
+            }
+
+            // ---- 贴图通道:法线 / ORM ----
+            if (ImGui::DragFloat(MATERIAL_NORMAL_SCALE.data(), &material_ptr->normal_scale, 0.01f, 0.f, 4.f))
+            {
+                manager.need_material_update();
+            }
+
+            if (ImGui::DragFloat(MATERIAL_OCCLUSION.data(), &material_ptr->occlusion_strength, 0.01f, 0.f, 1.f))
+            {
+                manager.need_material_update();
+            }
+
+            // 两个通道共用同一个文件选择与纹理缓存;清空用右键(ImGui 无内置清空)
+            const auto pick_map = [&](const char* _label, std::shared_ptr<scene_image>& _slot, sampler_type _type) {
+                ImGui::TextUnformatted(_label);
+                ImGui::SameLine();
+                if (_slot && textures.contains(_slot))
+                {
+                    ImGui::TextUnformatted(textures.at(_slot).generic_string().c_str());
+                }
+                else
+                {
+                    ImGui::TextUnformatted(MATERIAL_MAP_NONE.data());
+                }
+                ImGui::SameLine();
+                const std::string button_label = std::format("{}##{}", MATERIAL_MAP_PICK, _label);
+                if (ImGui::Button(button_label.c_str()))
+                {
+                    std::filesystem::path file_path;
+
+#ifdef _WIN32
+                    TCHAR szFile[MAX_PATH] = {0};
+                    OPENFILENAME ofn;
+                    ZeroMemory(&ofn, sizeof(ofn));
+                    ofn.lStructSize  = sizeof(ofn);
+                    ofn.lpstrFile    = szFile;
+                    ofn.nMaxFile     = sizeof(szFile);
+                    ofn.lpstrFilter  = L"image\0*.png;*.jpg;*.exr\0All\0*.*\0";
+                    ofn.nFilterIndex = 1;
+                    ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+                    if (GetOpenFileName(&ofn))
+                    {
+                        file_path = szFile;
+                    }
+#endif  // _WIN32
+
+                    if (!file_path.empty())
+                    {
+                        if (_slot)
+                        {
+                            std::erase_if(textures, [&](const auto& pair) { return pair.first == _slot; });
+                        }
+                        _slot = manager.create<scene_image>(file_path, false, _type);
+                        textures.emplace(_slot, file_path);
+                        manager.need_material_update();
+                    }
+                }
+                ImGui::SameLine();
+                const std::string clear_label = std::format("清除##{}", _label);
+                if (ImGui::Button(clear_label.c_str()) && _slot)
+                {
+                    std::erase_if(textures, [&](const auto& pair) { return pair.first == _slot; });
+                    _slot = nullptr;
+                    manager.need_material_update();
+                }
+            };
+
+            pick_map(MATERIAL_NORMAL_MAP.data(), material_ptr->normal_map, sampler_type::normal);
+            pick_map(MATERIAL_ORM_MAP.data(), material_ptr->orm_map, sampler_type::roughness);
 
             if (ImGui::Button(DELETE_MATERIAL.data()))
             {

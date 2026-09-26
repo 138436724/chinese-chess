@@ -1,6 +1,7 @@
 #include "ui_manager.h"
 
 #include "scene/scene_manager.h"
+#include "scene/scene_raytracing_render.h"
 #include "tools/font_loader.h"
 #include "ui_camera.h"
 #include "ui_light.h"
@@ -26,7 +27,23 @@ constexpr std::string_view SCENE_MANAGER             = "场景管理";
 constexpr std::string_view RENDER_MODE               = "渲染模式";
 constexpr std::string_view RENDER_MODE_RASTERIZATION = "光栅化";
 constexpr std::string_view RENDER_MODE_RAY_TRACING   = "光线追踪 (RT Pipeline)";
-constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)";
+
+// PBR 物理正确性调试面板
+constexpr std::string_view PBR_DEBUG           = "PBR 物理调试";
+constexpr std::string_view PBR_DISABLE_CLAMPS  = "关闭全部启发式钳制(能量实验必需)";
+constexpr std::string_view PBR_FORCE_MATERIAL  = "强制材质参数(白炉测试)";
+constexpr std::string_view PBR_FORCE_METALLIC  = "强制金属度";
+constexpr std::string_view PBR_FORCE_ROUGHNESS = "强制粗糙度";
+constexpr std::string_view PBR_FORCE_ALBEDO    = "强制反照率 = 白";
+constexpr std::string_view PBR_DISABLE_AMBIENT = "关闭恒定环境光";
+constexpr std::string_view PBR_VIZ             = "可视化通道";
+constexpr std::string_view PBR_VIZ_NONE        = "关闭";
+constexpr std::string_view PBR_VIZ_NORMAL      = "法线";
+constexpr std::string_view PBR_VIZ_F0          = "F0";
+constexpr std::string_view PBR_VIZ_ROUGHNESS   = "粗糙度";
+constexpr std::string_view PBR_VIZ_METALLIC    = "金属度";
+constexpr std::string_view PBR_VIZ_DIRECT      = "仅直接光";
+constexpr std::string_view PBR_DIRECT_ONLY     = "只显示直接光(隔离 NEE,排除天空与弹射)";
 
 #ifndef NDEBUG
 void imgui_callback(VkResult _result) noexcept
@@ -242,11 +259,135 @@ void ui_manager::render_mode_ui() noexcept
 {
     ImGui::SeparatorText(SCENE_MANAGER.data());
 
-    constexpr std::array render_mode_names = {RENDER_MODE_RASTERIZATION.data(), RENDER_MODE_RAY_TRACING.data(),
-                                              RENDER_MODE_RAY_QUERY.data()};
+    constexpr std::array render_mode_names = {RENDER_MODE_RASTERIZATION.data(), RENDER_MODE_RAY_TRACING.data()};
 
     if (ImGui::Combo(RENDER_MODE.data(), &current_mode, render_mode_names.data(), static_cast<int>(render_mode_names.size())))
     {
         manager.set_render_mode(static_cast<render_mode>(current_mode));
+    }
+
+    pbr_debug_ui();
+}
+
+void ui_manager::pbr_debug_ui() noexcept
+{
+    ImGui::SeparatorText(PBR_DEBUG.data());
+
+    // 光栅化模式不消费这些开关(渲染器实现为空操作),但仍允许读写以保留状态
+    if (current_mode != static_cast<int>(render_mode::ray_tracing))
+    {
+        ImGui::TextUnformatted("仅光线追踪模式生效");
+    }
+
+    uint32_t flags                    = manager.get_debug_flags();
+    bool     disable_clamps  = (flags & static_cast<uint32_t>(pbr_debug_flags::disable_firefly_clamp)) != 0u;
+    bool     force_material  = (flags & static_cast<uint32_t>(pbr_debug_flags::force_metallic)) != 0u;
+    bool     force_albedo    = (flags & static_cast<uint32_t>(pbr_debug_flags::force_albedo)) != 0u;
+    bool     disable_ambient = (flags & static_cast<uint32_t>(pbr_debug_flags::disable_ambient)) != 0u;
+
+    // ---- 一键白炉:关闭全部钳制 + 只把反照率强制为白 ----
+    // 注意**不**强制 metallic/roughness —— 那样会把球体阵抹成同一材质,
+    // 失去"逐格核查"的意义。要单独隔离某个参数时再用下面的强制开关。
+    ImGui::SeparatorText("白炉测试(能量守恒)");
+    if (ImGui::Button("启动白炉预设(保留每格材质)"))
+    {
+        manager.set_debug_flags(furnace_preset());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("白炉 + 关环境光"))
+    {
+        manager.set_debug_flags(furnace_preset_direct_only());
+    }
+    ImGui::TextUnformatted("配合「棋局管理 → 显示球体阵」逐格核查方向反射率");
+
+    // ---- 一键白炉:关闭全部钳制 + 强制白反照率 ----
+    constexpr uint32_t clamp_bits = static_cast<uint32_t>(pbr_debug_flags::disable_firefly_clamp)
+                                  | static_cast<uint32_t>(pbr_debug_flags::disable_direct_clamp)
+                                  | static_cast<uint32_t>(pbr_debug_flags::disable_throughput_clamp);
+    if (ImGui::Checkbox(PBR_DISABLE_CLAMPS.data(), &disable_clamps))
+    {
+        flags = disable_clamps ? (flags | clamp_bits) : (flags & ~clamp_bits);
+        manager.set_debug_flags(flags);
+    }
+
+    if (ImGui::Checkbox(PBR_FORCE_MATERIAL.data(), &force_material))
+    {
+        constexpr uint32_t force_bits = static_cast<uint32_t>(pbr_debug_flags::force_metallic)
+                                      | static_cast<uint32_t>(pbr_debug_flags::force_roughness);
+        flags = force_material ? (flags | force_bits) : (flags & ~force_bits);
+        manager.set_debug_flags(flags);
+    }
+
+    float force_metallic  = manager.get_debug_force_metallic();
+    float force_roughness = manager.get_debug_force_roughness();
+    // 两个 Slider 都要各自求值(不能 || 短路,否则先拖动的那个会吞掉另一个)
+    const bool metallic_changed  = ImGui::SliderFloat(PBR_FORCE_METALLIC.data(), &force_metallic, 0.0f, 1.0f);
+    const bool roughness_changed = ImGui::SliderFloat(PBR_FORCE_ROUGHNESS.data(), &force_roughness, 0.02f, 1.0f);
+    if (metallic_changed || roughness_changed)
+    {
+        manager.set_debug_mat_override(force_metallic, force_roughness);
+    }
+
+    if (ImGui::Checkbox(PBR_FORCE_ALBEDO.data(), &force_albedo))
+    {
+        flags = force_albedo ? (flags | static_cast<uint32_t>(pbr_debug_flags::force_albedo))
+                             : (flags & ~static_cast<uint32_t>(pbr_debug_flags::force_albedo));
+        manager.set_debug_flags(flags);
+    }
+
+    if (ImGui::Checkbox(PBR_DISABLE_AMBIENT.data(), &disable_ambient))
+    {
+        flags = disable_ambient ? (flags | static_cast<uint32_t>(pbr_debug_flags::disable_ambient))
+                                : (flags & ~static_cast<uint32_t>(pbr_debug_flags::disable_ambient));
+        manager.set_debug_flags(flags);
+    }
+
+    // ---- 可视化通道(互斥) ----
+    constexpr std::array viz_names = {PBR_VIZ_NONE.data(), PBR_VIZ_NORMAL.data(), PBR_VIZ_F0.data(),
+                                      PBR_VIZ_ROUGHNESS.data(), PBR_VIZ_METALLIC.data()};
+    constexpr uint32_t viz_mask = static_cast<uint32_t>(pbr_debug_flags::viz_normal)
+                                | static_cast<uint32_t>(pbr_debug_flags::viz_f0)
+                                | static_cast<uint32_t>(pbr_debug_flags::viz_roughness)
+                                | static_cast<uint32_t>(pbr_debug_flags::viz_metallic);
+
+    int viz_current = 0;
+    if ((flags & static_cast<uint32_t>(pbr_debug_flags::viz_normal)) != 0u)
+        viz_current = 1;
+    else if ((flags & static_cast<uint32_t>(pbr_debug_flags::viz_f0)) != 0u)
+        viz_current = 2;
+    else if ((flags & static_cast<uint32_t>(pbr_debug_flags::viz_roughness)) != 0u)
+        viz_current = 3;
+    else if ((flags & static_cast<uint32_t>(pbr_debug_flags::viz_metallic)) != 0u)
+        viz_current = 4;
+
+    if (ImGui::Combo(PBR_VIZ.data(), &viz_current, viz_names.data(), static_cast<int>(viz_names.size())))
+    {
+        flags &= ~viz_mask;
+        switch (viz_current)
+        {
+            case 1:
+                flags |= static_cast<uint32_t>(pbr_debug_flags::viz_normal);
+                break;
+            case 2:
+                flags |= static_cast<uint32_t>(pbr_debug_flags::viz_f0);
+                break;
+            case 3:
+                flags |= static_cast<uint32_t>(pbr_debug_flags::viz_roughness);
+                break;
+            case 4:
+                flags |= static_cast<uint32_t>(pbr_debug_flags::viz_metallic);
+                break;
+            default:
+                break;
+        }
+        manager.set_debug_flags(flags);
+    }
+
+    bool direct_only = (flags & static_cast<uint32_t>(pbr_debug_flags::viz_direct_only)) != 0u;
+    if (ImGui::Checkbox(PBR_DIRECT_ONLY.data(), &direct_only))
+    {
+        flags = direct_only ? (flags | static_cast<uint32_t>(pbr_debug_flags::viz_direct_only))
+                            : (flags & ~static_cast<uint32_t>(pbr_debug_flags::viz_direct_only));
+        manager.set_debug_flags(flags);
     }
 }
