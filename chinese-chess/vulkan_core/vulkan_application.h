@@ -14,6 +14,7 @@
 #include "vulkan_semaphore.h"
 #include "vulkan_swapchain.h"
 
+#include <cstdint>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -50,15 +51,15 @@ public:
     [[nodiscard]] const vulkan_swapchain&       get_swapchain() const noexcept;
 
 private:
+    static void pick_msaa_sample_count(const vulkan_physical_device& _physical_device) noexcept;
+    static void pick_depth_format(const vulkan_physical_device& _physical_device);
+
     // use in `init` and `create`
     void                   create_instance(const std::vector<const char*>& _instance_layers,
                                            const std::vector<const char*>& _instance_extensions,
                                            vk::InstanceCreateFlags         _flags = {});
     [[nodiscard]] uint32_t create_physical_device_and_logical_device(vk::SurfaceKHR _surface);
     void                   create_pipeline();
-
-    void pick_msaa_sample_count() const noexcept;
-    void pick_depth_format() const;
 
     std::vector<const char*> required_instance_layers;
     std::vector<const char*> required_instance_extensions;

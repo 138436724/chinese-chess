@@ -12,6 +12,8 @@
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/typedesc.h>
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>

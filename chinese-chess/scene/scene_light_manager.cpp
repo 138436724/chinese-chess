@@ -1,27 +1,17 @@
 #include "scene_light_manager.h"
 
-#include "scene_light.h"
-#include "vulkan_core/vulkan_common.h"
-#include "vulkan_core/vulkan_queue.h"
+#include "shared/cpu_shared_types.h"
+#include "shared/vulkan_shared_utils.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <glm/glm.hpp>
+#include <memory>
 #include <ranges>
 #include <span>
 #include <utility>
-
-namespace {
-struct gpu_light_data  // scalar layout
-{
-    glm::vec3 color            = glm::vec3(1.f);
-    uint32_t  active_type      = std::to_underlying(light_type::directional);
-    glm::vec3 direction        = glm::vec3(0.f, -1.f, 0.f);
-    float     intensity        = 1.f;
-    glm::vec3 position         = glm::vec3(0.f);
-    float     range            = 10.f;
-    float     inner_cone_angle = glm::radians(15.f);
-    float     outer_cone_angle = glm::radians(30.f);
-};
-}  // namespace
+#include <vector>
 
 scene_light_manager::scene_light_manager(const vma::raii::Allocator& _allocator,
                                          const vk::raii::Device&     _device,
@@ -38,9 +28,9 @@ scene_light_manager::scene_light_manager(const vma::raii::Allocator& _allocator,
 {
 }
 
-std::shared_ptr<scene_light> scene_light_manager::create()
+std::shared_ptr<cpu_light_data> scene_light_manager::create()
 {
-    auto light = std::make_shared<scene_light>();
+    const auto light = std::make_shared<cpu_light_data>();
     lights.push_back(light);
     is_dirty = true;
     return light;
@@ -104,11 +94,14 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
                                  })
                                  | std::ranges::to<std::vector>();
 
-        _waited_infos.push_back(vulkan_common::upload_buffer(
+        _waited_infos.push_back(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderRead,
-            std::span(reinterpret_cast<const uint8_t*>(lights_ssbo.data()), sizeof(lights_ssbo.front()) * lights_ssbo.size()),
+            vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader
+                | vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::AccessFlagBits2::eShaderRead,
+            std::span(reinterpret_cast<const uint8_t*>(lights_ssbo.data()),
+                      sizeof(decltype(lights_ssbo)::value_type) * lights_ssbo.size()),
             "light_ssbo"));
     }
 }

@@ -3,6 +3,7 @@
 #include "scene/scene_manager.h"
 
 #include <array>
+#include <cstdint>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <string_view>
@@ -20,6 +21,7 @@ constexpr std::string_view LEFT_RIGHT_BOTTOM_TOP = "左右下上";
 constexpr std::string_view FOV                   = "视场角";
 constexpr std::string_view ASPECT                = "宽高比";
 constexpr std::string_view NEAR_FAR              = "近平面和远平面";
+constexpr std::string_view EXPOSURE              = "曝光";
 }  // namespace
 
 
@@ -121,6 +123,12 @@ void ui_camera::update() noexcept
     if (ImGui::DragFloat3(CAMERA_WORLD_UP.data(), glm::value_ptr(world_up)))
     {
         manager.get_active_camera().set_world_up(world_up);
+        manager.need_camera_update();
+    }
+
+    if (ImGui::DragFloat(EXPOSURE.data(), &exposure, 0.01f, 0.001f, 1000.f, "%.3f", ImGuiSliderFlags_Logarithmic))
+    {
+        manager.get_active_camera().set_exposure(exposure);
         manager.need_camera_update();
     }
 }

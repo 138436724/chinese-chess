@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-struct scene_light;
+struct cpu_light_data;
 class scene_manager;
 
 class ui_light
@@ -19,6 +20,6 @@ public:
 private:
     scene_manager& manager;
 
-    int                                       add_light_type = 0;
-    std::vector<std::shared_ptr<scene_light>> lights;
+    int                                          add_light_type = 0;
+    std::vector<std::shared_ptr<cpu_light_data>> lights;
 };

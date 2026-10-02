@@ -1,5 +1,6 @@
 #include "vulkan_semaphore.h"
 
+#include <cstdint>
 #include <limits>
 
 void vulkan_semaphore::create(const vk::raii::Device& _device)
@@ -9,7 +10,7 @@ void vulkan_semaphore::create(const vk::raii::Device& _device)
     semaphore = vk::raii::Semaphore(_device, create_info.get());
 }
 
-vk::SemaphoreSubmitInfo vulkan_semaphore::next(vk::PipelineStageFlagBits2 _stage) noexcept
+vk::SemaphoreSubmitInfo vulkan_semaphore::next(vk::PipelineStageFlags2 _stage) noexcept
 {
     value.fetch_add(1, std::memory_order_release);
     return vk::SemaphoreSubmitInfo(*semaphore, value, _stage);

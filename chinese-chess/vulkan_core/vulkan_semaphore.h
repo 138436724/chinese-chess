@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_semaphore
@@ -15,7 +16,7 @@ public:
 
     void create(const vk::raii::Device& _device);
     [[nodiscard("semaphore submit info need submit!")]]
-    vk::SemaphoreSubmitInfo next(vk::PipelineStageFlagBits2 _stage = vk::PipelineStageFlagBits2::eAllCommands) noexcept;
+    vk::SemaphoreSubmitInfo next(vk::PipelineStageFlags2 _stage = vk::PipelineStageFlagBits2::eAllCommands) noexcept;
     void                    wait(uint64_t _value) const;
 
     [[nodiscard]] uint64_t                   get_gpu_value() const noexcept;

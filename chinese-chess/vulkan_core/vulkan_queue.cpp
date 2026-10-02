@@ -1,5 +1,8 @@
 #include "vulkan_queue.h"
 
+#include <concepts>
+#include <cstdint>
+#include <span>
 #include <utility>
 
 vulkan_queue::vulkan_queue(vulkan_queue&& _other) noexcept

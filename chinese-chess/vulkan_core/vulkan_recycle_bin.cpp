@@ -1,5 +1,7 @@
 #include "vulkan_recycle_bin.h"
 
+#include <cstdint>
+#include <print>
 #include <stdexcept>
 
 void vulkan_recycle_bin::create(const vulkan_semaphore* _semaphore)

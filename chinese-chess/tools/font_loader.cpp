@@ -2,9 +2,17 @@
 
 #include "string_helper.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <format>
 #include <freetype/freetype.h>
 #include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
 std::expected<std::vector<character_info>, std::string> font_loader::load_font(const std::filesystem::path& _font_path,
                                                                                uint32_t                     _font_size,

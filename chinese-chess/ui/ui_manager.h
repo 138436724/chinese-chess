@@ -8,6 +8,7 @@
 #include "vulkan_core/vulkan_semaphore.h"
 
 #include <GLFW/glfw3.h>
+#include <cstdint>
 #include <vector>
 
 class vulkan_application;

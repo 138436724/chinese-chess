@@ -26,11 +26,12 @@ find_package(VulkanUtilityLibraries CONFIG REQUIRED)
 
 file(GLOB_RECURSE MY_SOURCES "chinese-chess/*.cpp")
 file(GLOB_RECURSE MY_HEADERS "chinese-chess/*.h")
+file(GLOB_RECURSE MY_SHADERS "chinese-chess/*.slang")
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/chinese-chess"
-             FILES ${MY_SOURCES} ${MY_HEADERS})
+             FILES ${MY_SOURCES} ${MY_HEADERS} ${MY_SHADERS})
 
-add_executable(chinese-chess ${MY_SOURCES} ${MY_HEADERS})
+add_executable(chinese-chess ${MY_SOURCES} ${MY_HEADERS} ${MY_SHADERS})
 
 if(MSVC)
     target_compile_options(chinese-chess PRIVATE /std:c++23preview /utf-8 /W4 /WX)

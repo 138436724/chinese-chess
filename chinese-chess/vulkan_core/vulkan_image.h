@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 class vulkan_image
 {
@@ -16,7 +18,7 @@ public:
     void create(const vma::raii::Allocator& _allocator,
                 const vk::raii::Device&     _device,
                 const vk::ImageCreateInfo&  _image_info,
-                vk::ImageViewCreateInfo&    _imageview_info,
+                vk::ImageViewCreateInfo     _imageview_info,
                 vma::MemoryUsage            _usage,
                 vma::AllocationCreateFlags  _flags,
                 const vk::ClearValue&       _clear_value,

@@ -2,8 +2,13 @@
 
 #include "tools/shader_compiler.h"
 
+#include <array>
+#include <concepts>
+#include <cstdint>
 #include <filesystem>
 #include <ranges>
+#include <span>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -15,7 +20,7 @@ namespace {
     const std::filesystem::path&             _shader_path,
     const std::span<const shader_stage_info> _shader_stages)
 {
-    std::vector<std::string_view> entry_names =
+    const std::vector<std::string_view> entry_names =
         _shader_stages | std::views::transform(&shader_stage_info::name) | std::ranges::to<std::vector>();
 
     const auto spirv_code = SHADER_COMPILER.compile_shader_to_spv(_shader_path, entry_names);

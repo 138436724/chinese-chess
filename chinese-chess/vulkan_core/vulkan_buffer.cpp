@@ -2,10 +2,12 @@
 
 #include "vulkan_buffer.h"
 
-#include "vulkan_common.h"
-
 #include <bit>
+#include <concepts>
+#include <cstdint>
+#include <format>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 vulkan_buffer::vulkan_buffer(vulkan_buffer&& _other) noexcept
@@ -32,12 +34,12 @@ vulkan_buffer& vulkan_buffer::operator=(vulkan_buffer&& _other) noexcept
     return *this;
 }
 
-void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
-                           const vk::raii::Device&     _device,
-                           const vk::BufferCreateInfo& _buffer_info,
-                           vma::MemoryUsage            _usage,
-                           vma::AllocationCreateFlags  _flags,
-                           const std::string&          _name)
+void vulkan_buffer::create(const vma::raii::Allocator&         _allocator,
+                           const vk::raii::Device&             _device,
+                           const vk::BufferCreateInfo&         _buffer_info,
+                           vma::MemoryUsage                    _usage,
+                           vma::AllocationCreateFlags          _flags,
+                           [[maybe_unused]] const std::string& _name)
 {
     if (_buffer_info.queueFamilyIndexCount != 1 || _buffer_info.sharingMode != vk::SharingMode::eExclusive)
     {
@@ -65,8 +67,6 @@ void vulkan_buffer::create(const vma::raii::Allocator& _allocator,
 #ifndef NDEBUG
     _device.setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(
         buffer.objectType, std::bit_cast<uint64_t>(static_cast<VkBuffer>(*buffer)), std::format("Buffer{}", _name).c_str()));
-#else
-    (void)_name;
 #endif  // !NDEBUG
 }
 

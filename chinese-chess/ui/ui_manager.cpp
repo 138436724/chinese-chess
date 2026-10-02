@@ -1,20 +1,23 @@
 #include "ui_manager.h"
 
 #include "scene/scene_manager.h"
+#include "shared/vulkan_shared_utils.h"
 #include "tools/font_loader.h"
 #include "ui_camera.h"
 #include "ui_light.h"
 #include "ui_node.h"
 #include "ui_record.h"
 #include "vulkan_core/vulkan_application.h"
-#include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <iostream>
 #include <print>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -83,13 +86,13 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
         vk::DescriptorPoolSize(vk::DescriptorType::eSampler, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE)};
     const vk::DescriptorPoolCreateInfo pool_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
                                                  (IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE + IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE)
-                                                     * vulkan_common::MAX_FRAMES_IN_FLIGHT,
+                                                     * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
                                                  pool_size);
     descriptor_pool = vk::raii::DescriptorPool(*app.get_device(), pool_info);
 
     color_format                                    = app.get_swapchain().get_format();
     const ImGui_ImplVulkan_PipelineInfo create_info = {
-        .MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_common::MSAA_SAMPLE_COUNT),
+        .MSAASamples = static_cast<VkSampleCountFlagBits>(vulkan_shared_utils::MSAA_SAMPLE_COUNT),
         .PipelineRenderingCreateInfo =
             vk::PipelineRenderingCreateInfo({}, color_format, vk::Format::eUndefined, vk::Format::eUndefined, nullptr),
     };
@@ -102,8 +105,8 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
         .QueueFamily         = graphic_queue.get_index(),
         .Queue               = *(graphic_queue.get_queue()),
         .DescriptorPool      = *descriptor_pool,
-        .MinImageCount       = vulkan_common::MAX_FRAMES_IN_FLIGHT,
-        .ImageCount          = vulkan_common::MAX_FRAMES_IN_FLIGHT,
+        .MinImageCount       = vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
+        .ImageCount          = vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
         .PipelineInfoMain    = create_info,
         .UseDynamicRendering = true,
 #ifndef NDEBUG
@@ -115,7 +118,7 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
     commandbuffers = vulkan_commandbuffer::create(*app.get_device(),
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
-                                                                                vulkan_common::MAX_FRAMES_IN_FLIGHT),
+                                                                                vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
     resize(_width, _height);
@@ -136,22 +139,22 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     const std::array queue_array = {graphic_queue.get_index()};
     // render_output
     recycle_bin.retire(std::move(render_output), "ui old render output.");
-    vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1,
-                                          vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-                                          vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
-                                          vk::SharingMode::eExclusive, queue_array);
-    vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
-                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+    const vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1),
+                                                1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                                                vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+                                                vk::SharingMode::eExclusive, queue_array);
+    const vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
+                                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
                          vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
     // msaa color
     recycle_bin.retire(std::move(color_image), "ui old color image.");
-    vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1), 1, 1,
-                                         vulkan_common::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal,
-                                         vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, queue_array);
-    vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
-                                            vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+    const vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(_width, _height, 1),
+                                               1, 1, vulkan_shared_utils::MSAA_SAMPLE_COUNT, vk::ImageTiling::eOptimal,
+                                               vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, queue_array);
+    const vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
+                                                  vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     color_image.create(app.get_allocator(), *app.get_device(), color_image_info, color_view_info,
                        vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 0.f));
 
@@ -223,7 +226,7 @@ vk::SemaphoreSubmitInfo ui_manager::render()
         ImGui::RenderPlatformWindowsDefault();
     }
 
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
 
     return commandbuffer.get_submit_info();
 }

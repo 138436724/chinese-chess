@@ -12,7 +12,7 @@
 
 #define SHADER_COMPILER shader_compiler::get_shader_compiler()
 
-constexpr std::string_view SHADERS_PATH = "resources\\shaders\\";
+constexpr std::string_view SHADERS_PATH = "shaders\\";
 
 class shader_compiler
 {
@@ -34,7 +34,7 @@ private:
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;
 
-    std::array<slang::CompilerOptionEntry, 5> options;
+    std::array<slang::CompilerOptionEntry, 6> options;
     slang::TargetDesc                         target_desc;
     slang::SessionDesc                        session_desc;
 

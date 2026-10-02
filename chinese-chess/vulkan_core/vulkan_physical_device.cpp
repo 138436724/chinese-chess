@@ -1,5 +1,7 @@
 #include "vulkan_physical_device.h"
 
+#include <concepts>
+#include <cstdint>
 #include <utility>
 
 vulkan_physical_device::vulkan_physical_device(vulkan_physical_device&& _other) noexcept

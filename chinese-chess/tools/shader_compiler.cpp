@@ -3,20 +3,34 @@
 #include "file_watcher.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <print>
 #include <ranges>
 #include <slang-com-helper.h>
 #include <slang-com-ptr.h>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 shader_compiler shader_compiler::compiler;
 
 namespace {
 
-constexpr std::string_view shader_cache_path   = "resources\\cache\\shader_cache.cache";
+#ifndef NDEBUG
+constexpr std::string_view shader_cache_path = "resources\\cache\\shader_cache_debug.cache";
+#else
+constexpr std::string_view shader_cache_path = "resources\\cache\\shader_cache.cache";
+#endif  // !NDEBUG
 constexpr std::string_view shader_cache_header = "shader_cache_header";
 constexpr char             split_char          = '\n';
 
@@ -53,7 +67,7 @@ void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Sla
                 | std::views::transform([](const auto& num) static { return std::format("{:02X}", num); })
                 | std::views::join | std::ranges::to<std::string>();
 
-            std::println("callIdx: {}, entrypoint: {}, target: {}, hash: {}", global_counter, entrypoint_index, target_index, hash_str);
+            std::println("callIdx: {:2}, entrypoint: {:2}, target: {:2}, hash: {}", global_counter, entrypoint_index, target_index, hash_str);
             global_counter++;
         });
     });
@@ -171,6 +185,17 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
     return (hashes | std::views::join_with(split_char) | std::ranges::to<std::string>()) == _fingerprint;
 }
 
+[[nodiscard]] std::string generate_cache_key(std::string_view _shader_path, const std::vector<std::string_view>& _entry_names)
+{
+    return std::string(_shader_path) + split_char
+           + (_entry_names | std::views::join_with(split_char) | std::ranges::to<std::string>());
+}
+
+[[nodiscard]] std::string_view get_path_from_cache_key(std::string_view _cache_key) noexcept
+{
+    return _cache_key.substr(0, _cache_key.find(split_char));
+}
+
 }  // namespace
 
 shader_compiler::shader_compiler()
@@ -190,10 +215,17 @@ shader_compiler::shader_compiler()
             slang::CompilerOptionName::VulkanUseEntryPointName,
             {slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},
         },
+#ifndef NDEBUG
+        slang::CompilerOptionEntry{
+            slang::CompilerOptionName::Optimization,
+            {slang::CompilerOptionValueKind::Int, SlangOptimizationLevel::SLANG_OPTIMIZATION_LEVEL_NONE, 0, nullptr, nullptr},
+        },
+#else
         slang::CompilerOptionEntry{
             slang::CompilerOptionName::Optimization,
             {slang::CompilerOptionValueKind::Int, SlangOptimizationLevel::SLANG_OPTIMIZATION_LEVEL_MAXIMAL, 0, nullptr, nullptr},
         },
+#endif  // !NDEBUG
         slang::CompilerOptionEntry{
             slang::CompilerOptionName::MatrixLayoutColumn,
             {slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},
@@ -201,6 +233,10 @@ shader_compiler::shader_compiler()
         slang::CompilerOptionEntry{
             slang::CompilerOptionName::Capability,
             {slang::CompilerOptionValueKind::Int, global_session->findCapability("spvRayQueryKHR"), 0, nullptr, nullptr},
+        },
+        slang::CompilerOptionEntry{
+            slang::CompilerOptionName::ForceCLayout,
+            {slang::CompilerOptionValueKind::Int, true, 0, nullptr, nullptr},
         },
     };
 
@@ -258,7 +294,8 @@ shader_compiler::shader_compiler()
 
 shader_compiler::~shader_compiler()
 {
-    std::erase_if(shader_cache, [](const auto& item) static { return !std::filesystem::exists(item.first); });
+    std::erase_if(shader_cache,
+                  [](const auto& item) static { return !std::filesystem::exists(get_path_from_cache_key(item.first)); });
 
     std::filesystem::create_directories(std::filesystem::path(shader_cache_path).parent_path());
     std::ofstream cache_file(std::filesystem::path(shader_cache_path), std::ios::binary | std::ios::trunc);
@@ -296,8 +333,10 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
                                                                                      const std::vector<std::string_view>& _entry_name) const
 {
     const std::string shader_path = _shader_path.generic_string();
-    if (const auto iter = shader_cache.find(shader_path); iter != shader_cache.end() && !iter->second.dependence.empty()
-                                                          && verify_dependencies(iter->second.dependence, iter->second.fingerprint))
+    const std::string cache_key   = generate_cache_key(shader_path, _entry_name);
+
+    if (const auto iter = shader_cache.find(cache_key); iter != shader_cache.end() && !iter->second.dependence.empty()
+                                                        && verify_dependencies(iter->second.dependence, iter->second.fingerprint))
     {
         return iter->second.spirv;
     }
@@ -340,7 +379,7 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
 
     if (!dependence.empty())
     {
-        shader_cache.insert_or_assign(shader_path, shader_cache_info{std::move(dependence), std::move(fingerprint), spirv});
+        shader_cache.insert_or_assign(cache_key, shader_cache_info{std::move(dependence), std::move(fingerprint), spirv});
     }
 
     return spirv;

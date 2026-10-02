@@ -1,16 +1,19 @@
 #include "ui_node.h"
 
 #include "scene/scene_manager.h"
-#include "scene/scene_material.h"
-#include "scene/scene_model.h"
+#include "shared/cpu_shared_types.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <format>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <imgui.h>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -20,20 +23,24 @@
 
 
 namespace {
-constexpr std::string_view MATERIAL_MANAGER          = "材质管理";
-constexpr std::string_view ADD_MATERIAL              = "添加材质";
-constexpr std::string_view MATERIAL                  = "材质";
-constexpr std::string_view MATERIAL_INDEX            = "材质ID";
-constexpr std::string_view MATERIAL_BACKGROUND_COLOR = "背景色";
-constexpr std::string_view MATERIAL_FOREGROUND_COLOR = "前景色";
-constexpr std::string_view MATERIAL_ROUGHNESS        = "粗糙度";
-constexpr std::string_view MATERIAL_METALLIC         = "金属度";
-constexpr std::string_view MATERIAL_OPACITY          = "不透明度";
-constexpr std::string_view MATERIAL_IOR              = "折射率";
-constexpr std::string_view MATERIAL_TRANSMISSION     = "透射强度";
-constexpr std::string_view DELETE_MATERIAL           = "删除材质";
-constexpr std::string_view NO_MATERIAL               = "无材质";
-constexpr std::string_view ADD_IMAGE                 = "添加贴图";
+constexpr std::string_view MATERIAL_MANAGER           = "材质管理";
+constexpr std::string_view ADD_MATERIAL               = "添加材质";
+constexpr std::string_view MATERIAL                   = "材质";
+constexpr std::string_view MATERIAL_INDEX             = "材质ID";
+constexpr std::string_view MATERIAL_BACKGROUND_COLOR  = "背景色";
+constexpr std::string_view MATERIAL_FOREGROUND_COLOR  = "前景色";
+constexpr std::string_view MATERIAL_ROUGHNESS         = "粗糙度";
+constexpr std::string_view MATERIAL_METALLIC          = "金属度";
+constexpr std::string_view MATERIAL_REFLECTANCE       = "镜面反射率";
+constexpr std::string_view MATERIAL_OPACITY           = "阴影透射率";
+constexpr std::string_view MATERIAL_IOR               = "折射率";
+constexpr std::string_view MATERIAL_TRANSMISSION      = "透射占比";
+constexpr std::string_view MATERIAL_ABSORPTION        = "介质吸收系数";
+constexpr std::string_view MATERIAL_EMISSION          = "自发光颜色";
+constexpr std::string_view MATERIAL_EMISSION_STRENGTH = "自发光强度";
+constexpr std::string_view DELETE_MATERIAL            = "删除材质";
+constexpr std::string_view NO_MATERIAL                = "无材质";
+constexpr std::string_view ADD_IMAGE                  = "添加贴图";
 
 constexpr std::string_view MODEL_MANAGER     = "物体管理";
 constexpr std::string_view ADD_MODEL         = "添加物体";
@@ -68,7 +75,7 @@ void ui_node::update_material()
 
     if (ImGui::Button(ADD_MATERIAL.data()))
     {
-        materials.push_back(manager.create<scene_material>());
+        materials.push_back(manager.create<cpu_material_data>());
     }
 
     std::optional<size_t> delete_index = std::nullopt;
@@ -128,18 +135,25 @@ void ui_node::update_material()
                     {
                         std::erase_if(textures, [&](const auto& pair) { return pair.first == material_ptr->alpha_map; });
                     }
-                    material_ptr->alpha_map = manager.create<scene_image>(file_path, false, sampler_type::font);
+                    material_ptr->alpha_map = manager.create<cpu_image_data>(file_path, false, sampler_type::font);
                     textures.emplace(material_ptr->alpha_map, file_path);
                     manager.need_material_update();
                 }
             }
 
-            if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.04f, 1.f))
+            // 粗糙度下限交给着色器（alpha 有数值下限），UI 允许到 0（完美镜面）
+            if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.f, 1.f))
             {
                 manager.need_material_update();
             }
 
             if (ImGui::DragFloat(MATERIAL_METALLIC.data(), &material_ptr->metallic, 0.01f, 0.f, 1.f))
+            {
+                manager.need_material_update();
+            }
+
+            // 电介质镜面反射率：F0 = 0.08 · reflectance（0.5 → 4%，金属度 1 时被反照率取代）
+            if (ImGui::DragFloat(MATERIAL_REFLECTANCE.data(), &material_ptr->reflectance, 0.01f, 0.f, 1.f))
             {
                 manager.need_material_update();
             }
@@ -155,6 +169,22 @@ void ui_node::update_material()
             }
 
             if (ImGui::DragFloat(MATERIAL_TRANSMISSION.data(), &material_ptr->transmission, 0.01f, 0.f, 1.f))
+            {
+                manager.need_material_update();
+            }
+
+            // 介质吸收系数 σ_a（Beer-Lambert，单位 1/世界单位）：仅 transmission > 0 时生效
+            if (ImGui::DragFloat3(MATERIAL_ABSORPTION.data(), glm::value_ptr(material_ptr->absorption), 0.01f, 0.f, 100.f))
+            {
+                manager.need_material_update();
+            }
+
+            if (ImGui::ColorEdit3(MATERIAL_EMISSION.data(), glm::value_ptr(material_ptr->emission)))
+            {
+                manager.need_material_update();
+            }
+
+            if (ImGui::DragFloat(MATERIAL_EMISSION_STRENGTH.data(), &material_ptr->emission_strength, 0.01f, 0.f, 1000.f))
             {
                 manager.need_material_update();
             }
@@ -208,7 +238,7 @@ void ui_node::update_model()
 
         if (!file_path.empty())
         {
-            models.push_back(manager.create<scene_model>(file_path));
+            models.push_back(manager.create<cpu_model_data>(file_path));
         }
     }
 
@@ -235,8 +265,8 @@ void ui_node::update_model()
             glm::vec4 perspective;
             if (glm::decompose(model_ptr->model_matrix, scale, rotate, translate, skew, perspective))
             {
-                glm::vec3 euler_radians = glm::eulerAngles(rotate);
-                glm::vec3 euler_degrees = glm::degrees(euler_radians);
+                const glm::vec3 euler_radians = glm::eulerAngles(rotate);
+                glm::vec3       euler_degrees = glm::degrees(euler_radians);
 
                 bool modified = false;
                 modified |= ImGui::DragFloat3(MODEL_TRANSLATION.data(), glm::value_ptr(translate), 0.1f);
@@ -297,7 +327,7 @@ void ui_node::update_model()
     }
 }
 
-std::optional<int> ui_node::get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept
+std::optional<int> ui_node::get_material_index(const std::weak_ptr<cpu_material_data>& _material) const noexcept
 {
     const auto materials_with_index = materials | std::views::enumerate;
 

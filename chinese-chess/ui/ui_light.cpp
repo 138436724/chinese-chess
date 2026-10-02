@@ -1,10 +1,12 @@
 #include "ui_light.h"
 
-#include "scene/scene_light.h"
 #include "scene/scene_manager.h"
+#include "shared/cpu_shared_types.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
@@ -40,11 +42,11 @@ constexpr float max_cone_angle = glm::radians(90.f);
 ui_light::ui_light(scene_manager& _manager)
     : manager(_manager)
 {
-    auto light = manager.create<scene_light>();
-    *light     = scene_light{.active_type = light_type::directional,
-                             .color       = glm::vec3(1.0f, 0.95f, 0.85f),
-                             .intensity   = 5.f,
-                             .direction   = glm::vec3(1.f, 1.f, 10.f)};
+    auto light = manager.create<cpu_light_data>();
+    *light     = cpu_light_data{.active_type = light_type::directional,
+                                .color       = glm::vec3(1.0f, 0.95f, 0.85f),
+                                .intensity   = 5.f,
+                                .direction   = glm::vec3(1.f, 1.f, 10.f)};
     lights.push_back(std::move(light));
 }
 
@@ -59,7 +61,7 @@ void ui_light::update()
 
     if (ImGui::Button(ADD_LIGHT.data()))
     {
-        auto light         = manager.create<scene_light>();
+        auto light         = manager.create<cpu_light_data>();
         light->active_type = static_cast<light_type>(add_light_type);
         lights.push_back(std::move(light));
     }

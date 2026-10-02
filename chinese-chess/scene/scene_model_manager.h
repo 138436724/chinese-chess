@@ -3,13 +3,14 @@
 #include "vulkan_core/vulkan_acceleration_structure.h"
 #include "vulkan_core/vulkan_buffer.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-struct scene_model;
-struct model_information;
+struct cpu_model_data;
+struct cpu_model_info;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
@@ -28,7 +29,7 @@ public:
                         scene_material_manager&         _material_manager) noexcept;
     ~scene_model_manager() = default;
 
-    [[nodiscard]] std::shared_ptr<scene_model> create(const std::filesystem::path& _model_path);
+    [[nodiscard]] std::shared_ptr<cpu_model_data> create(const std::filesystem::path& _model_path);
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear();
@@ -60,9 +61,9 @@ private:
     bool is_dirty     = true;
     bool meshes_dirty = true;
 
-    std::vector<std::weak_ptr<scene_model>>                                     models;
-    std::vector<std::shared_ptr<model_information>>                             meshes;        // submit to gpu in order
-    std::unordered_map<std::filesystem::path, std::weak_ptr<model_information>> models_cache;  // no need order
+    std::vector<std::weak_ptr<cpu_model_data>>                               models;
+    std::vector<std::shared_ptr<cpu_model_info>>                             meshes;        // submit to gpu in order
+    std::unordered_map<std::filesystem::path, std::weak_ptr<cpu_model_info>> models_cache;  // no need order
 
     vulkan_buffer vertices_buffer;
     vulkan_buffer indices_buffer;

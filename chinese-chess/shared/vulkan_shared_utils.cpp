@@ -1,12 +1,20 @@
-#include "vulkan_common.h"
+#include "shared/vulkan_shared_utils.h"
 
-#include "vulkan_buffer.h"
-#include "vulkan_commandbuffer.h"
-#include "vulkan_image.h"
-#include "vulkan_queue.h"
-#include "vulkan_recycle_bin.h"
+#include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_commandbuffer.h"
+#include "vulkan_core/vulkan_image.h"
+#include "vulkan_core/vulkan_queue.h"
+#include "vulkan_core/vulkan_recycle_bin.h"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <format>
+#include <span>
+#include <string>
+#include <utility>
 #include <vulkan/utility/vk_format_utils.h>
 
 namespace {
@@ -14,18 +22,18 @@ constexpr vk::DeviceSize UPLOAD_BUFFER_INLINE_MAX     = 64u * 1024u;
 constexpr vk::DeviceSize UPLOAD_BUFFER_INLINE_PADDING = 4u;
 }  // namespace
 
-vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&    _allocator,
-                                                     const vk::raii::Device&        _device,
-                                                     vulkan_recycle_bin&            _recycle_bin,
-                                                     vulkan_semaphore&              _semaphore,
-                                                     const vulkan_queue&            _owner_queue,
-                                                     const vulkan_queue&            _transfer_queue,
-                                                     vulkan_buffer&                 _buffer,
-                                                     vk::BufferUsageFlags           _usage,
-                                                     vk::PipelineStageFlags2        _consumer_stages,
-                                                     vk::AccessFlags2               _consumer_access,
-                                                     const std::span<const uint8_t> _data,
-                                                     const std::string&             _buffer_name)
+vk::SemaphoreSubmitInfo vulkan_shared_utils::upload_buffer(const vma::raii::Allocator&    _allocator,
+                                                           const vk::raii::Device&        _device,
+                                                           vulkan_recycle_bin&            _recycle_bin,
+                                                           vulkan_semaphore&              _semaphore,
+                                                           const vulkan_queue&            _owner_queue,
+                                                           const vulkan_queue&            _transfer_queue,
+                                                           vulkan_buffer&                 _buffer,
+                                                           vk::BufferUsageFlags           _usage,
+                                                           vk::PipelineStageFlags2        _consumer_stages,
+                                                           vk::AccessFlags2               _consumer_access,
+                                                           const std::span<const uint8_t> _data,
+                                                           const std::string&             _buffer_name)
 {
     const vk::DeviceSize data_size = _data.size();
     if (data_size <= UPLOAD_BUFFER_INLINE_MAX && data_size % UPLOAD_BUFFER_INLINE_PADDING == 0)
@@ -152,21 +160,21 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_buffer(const vma::raii::Allocator&
     return submit_info;
 }
 
-vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator&    _allocator,
-                                                    const vk::raii::Device&        _device,
-                                                    vulkan_recycle_bin&            _recycle_bin,
-                                                    vulkan_semaphore&              _semaphore,
-                                                    const vulkan_queue&            _owner_queue,
-                                                    const vulkan_queue&            _transfer_queue,
-                                                    vk::ImageType                  _image_type,
-                                                    vk::ImageViewType              _image_view_type,
-                                                    vk::Format                     _image_format,
-                                                    const vk::Extent3D&            _image_extent,
-                                                    vulkan_image&                  _image,
-                                                    vk::PipelineStageFlags2        _consumer_stages,
-                                                    vk::AccessFlags2               _consumer_access,
-                                                    const std::span<const uint8_t> _data,
-                                                    const std::string&             _image_name)
+vk::SemaphoreSubmitInfo vulkan_shared_utils::upload_image(const vma::raii::Allocator&    _allocator,
+                                                          const vk::raii::Device&        _device,
+                                                          vulkan_recycle_bin&            _recycle_bin,
+                                                          vulkan_semaphore&              _semaphore,
+                                                          const vulkan_queue&            _owner_queue,
+                                                          const vulkan_queue&            _transfer_queue,
+                                                          vk::ImageType                  _image_type,
+                                                          vk::ImageViewType              _image_view_type,
+                                                          vk::Format                     _image_format,
+                                                          const vk::Extent3D&            _image_extent,
+                                                          vulkan_image&                  _image,
+                                                          vk::PipelineStageFlags2        _consumer_stages,
+                                                          vk::AccessFlags2               _consumer_access,
+                                                          const std::span<const uint8_t> _data,
+                                                          const std::string&             _image_name)
 {
     // create image
     const std::array          image_queue_array = {_owner_queue.get_index()};
@@ -287,16 +295,16 @@ vk::SemaphoreSubmitInfo vulkan_common::upload_image(const vma::raii::Allocator& 
     return submit_info;
 }
 
-vk::SemaphoreSubmitInfo vulkan_common::download_image(const vma::raii::Allocator&    _allocator,
-                                                      const vk::raii::Device&        _device,
-                                                      vulkan_recycle_bin&            _recycle_bin,
-                                                      vulkan_semaphore&              _semaphore,
-                                                      const vulkan_queue&            _owner_queue,
-                                                      const vulkan_queue&            _transfer_queue,
-                                                      const vk::SemaphoreSubmitInfo& _waited_info,
-                                                      vulkan_image&                  _image,
-                                                      vulkan_buffer&                 _buffer,
-                                                      const std::string&             _buffer_name)
+vk::SemaphoreSubmitInfo vulkan_shared_utils::download_image(const vma::raii::Allocator&    _allocator,
+                                                            const vk::raii::Device&        _device,
+                                                            vulkan_recycle_bin&            _recycle_bin,
+                                                            vulkan_semaphore&              _semaphore,
+                                                            const vulkan_queue&            _owner_queue,
+                                                            const vulkan_queue&            _transfer_queue,
+                                                            const vk::SemaphoreSubmitInfo& _waited_info,
+                                                            vulkan_image&                  _image,
+                                                            vulkan_buffer&                 _buffer,
+                                                            const std::string&             _buffer_name)
 {
     const auto [image_width, image_height]     = _image.get_extent();
     const VkFormat                image_format = static_cast<VkFormat>(_image.get_format());

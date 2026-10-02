@@ -3,16 +3,22 @@
 #include "string_helper.h"
 
 #include <array>
+#include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <type_traits>
 #include <unicode/errorcode.h>
 #include <unicode/parseerr.h>
 #include <unicode/regex.h>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 constexpr std::string_view RECORDS_PATH = "resources\\records\\";

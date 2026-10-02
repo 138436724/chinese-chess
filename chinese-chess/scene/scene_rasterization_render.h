@@ -4,7 +4,8 @@
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_pipeline.h"
 
-#include <glm/glm.hpp>
+#include <cstdint>
+#include <vector>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -41,6 +42,7 @@ public:
     void reset_accumulation() noexcept;
 
 private:
+    [[nodiscard]] vulkan_pipeline create_sky_pipeline(vk::Format _color_format);
     [[nodiscard]] vulkan_pipeline create_pipeline(vk::Format _color_format);
     void                          update_descriptor();
 
@@ -69,6 +71,7 @@ private:
 
     vulkan_image                         color_image;
     vulkan_image                         depth_image;
+    vulkan_pipeline                      sky_pipeline;
     vulkan_pipeline                      pipeline;
     vk::raii::DescriptorPool             descriptor_pool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptor_sets;

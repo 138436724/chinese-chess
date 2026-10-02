@@ -1,11 +1,18 @@
 #include "file_watcher.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <memory>
 #include <openssl/evp.h>
 #include <ranges>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace {
 constexpr std::string_view hash_cache_path   = "resources\\cache\\hash_cache.cache";
@@ -106,7 +113,7 @@ std::expected<std::string, std::string> file_watcher::generate_file_hash(const s
     }
 
     std::array<unsigned char, EVP_MAX_MD_SIZE> hash{};
-    unsigned int                               hash_len;
+    unsigned int                               hash_len = 0;
     EVP_DigestFinal_ex(sha256.get(), hash.data(), &hash_len);
 
     return hash | std::views::take(hash_len)

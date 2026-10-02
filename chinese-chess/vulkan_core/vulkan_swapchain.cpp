@@ -1,10 +1,14 @@
 #include "vulkan_swapchain.h"
 
-#include "vulkan_common.h"
+#include "shared/vulkan_shared_utils.h"
 
 #include <algorithm>
+#include <concepts>
+#include <cstdint>
 #include <limits>
 #include <print>
+#include <stdexcept>
+#include <system_error>
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
@@ -56,7 +60,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
 
     const auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
     const auto format_iter       = std::ranges::find_if(available_formats, [](const auto& format) static {
-        if constexpr (vulkan_common::USE_OCIO)
+        if constexpr (vulkan_shared_utils::USE_OCIO)
         {
             return format.format == vk::Format::eB8G8R8A8Unorm && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
         }
@@ -95,10 +99,10 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
                                                    surface_capabilities.maxImageExtent.height));
     }
 
-    const auto requested_count = std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
-    const auto image_count     = surface_capabilities.maxImageCount == 0 ?
-                                     requested_count :
-                                     std::min(requested_count, surface_capabilities.maxImageCount);
+    const auto requested_count = std::max(vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
+    const auto image_count = surface_capabilities.maxImageCount == 0 ?
+                                 requested_count :
+                                 std::min(requested_count, surface_capabilities.maxImageCount);
 
     const vk::SwapchainCreateInfoKHR swapchain_create_info(
         {}, surface, image_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1,
@@ -114,10 +118,10 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
 
     for (const auto& image : images)
     {
-        const vk::ImageViewCreateInfo viewInfo({}, image, vk::ImageViewType::e2D, format, {},
-                                               vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+        const vk::ImageViewCreateInfo view_info({}, image, vk::ImageViewType::e2D, format, {},
+                                                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
 
-        imageviews.emplace_back(_device, viewInfo);
+        imageviews.emplace_back(_device, view_info);
 
         before_rendering.emplace_back(_device, vk::SemaphoreCreateInfo());
 
@@ -136,14 +140,14 @@ bool vulkan_swapchain::acquire_image()
         (void)result;  // vulkan will check result and throw exception
         return true;
     }
-    catch (vk::OutOfDateKHRError e)
+    catch ([[maybe_unused]] const vk::OutOfDateKHRError& e)
     {
 #ifndef NDEBUG
         std::println("acquire image: {}", e.what());
 #endif  // !NDEBUG
         return false;
     }
-    catch (std::system_error)
+    catch (const std::system_error&)
     {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
@@ -158,14 +162,14 @@ void vulkan_swapchain::present_image()
         (void)result;  // vulkan will check result and throw exception
         return;
     }
-    catch (vk::OutOfDateKHRError e)
+    catch ([[maybe_unused]] const vk::OutOfDateKHRError& e)
     {
 #ifndef NDEBUG
         std::println("present image: {}", e.what());
 #endif  // !NDEBUG
         return;
     }
-    catch (std::system_error)
+    catch (const std::system_error&)
     {
         throw std::runtime_error("failed to present swap chain image!");
     }

@@ -11,7 +11,9 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <chrono>
+#include <cstdint>
 #include <format>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 

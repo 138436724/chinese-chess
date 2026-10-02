@@ -1,11 +1,17 @@
 #include "model_loader.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
+#include <filesystem>
+#include <string>
+#include <utility>
 
-std::expected<model_loader::model_data, std::string> model_loader::load_model(const std::filesystem::path& _file_path) noexcept
+std::expected<model_loader::gltf_model_data, std::string> model_loader::load_model(const std::filesystem::path& _file_path) noexcept
 {
     auto read_data = fastgltf::GltfDataBuffer::FromPath(_file_path);
     if (read_data.error() != fastgltf::Error::None)
@@ -24,7 +30,7 @@ std::expected<model_loader::model_data, std::string> model_loader::load_model(co
 
     const fastgltf::Asset gltf = std::move(asset.get());
 
-    model_data result;
+    gltf_model_data result;
 
     for (const auto& _mesh : gltf.meshes)
     {
@@ -52,7 +58,7 @@ std::expected<model_loader::model_data, std::string> model_loader::load_model(co
             result.vertices.resize(result.vertices.size() + position_accessor.count);
 
             fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, position_accessor, [&](glm::vec3 _position, size_t _index) {
-                model_vertex vertex(_position, glm::vec3(1.f, 0.f, 0.f), glm::vec2(1.f, 1.f));
+                const gpu_model_vertex vertex(_position, glm::vec3(1.f, 0.f, 0.f), glm::vec2(1.f, 1.f));
                 result.vertices.at(initial_vtx + _index) = vertex;
             });
 

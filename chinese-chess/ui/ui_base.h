@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <proxy/proxy.h>
 #include <proxy/proxy_macros.h>
 

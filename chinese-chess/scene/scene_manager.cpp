@@ -3,18 +3,30 @@
 #include "scene_rasterization_render.h"
 #include "scene_rayquery_render.h"
 #include "scene_raytracing_render.h"
+#include "shared/vulkan_shared_utils.h"
 #include "tools/image_helper.h"
 #include "tools/ocio_helper.h"
 #include "vulkan_core/vulkan_application.h"
-#include "vulkan_core/vulkan_common.h"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <filesystem>
+#include <format>
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <print>
 #include <ranges>
 #include <span>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vulkan/utility/vk_format_utils.h>
@@ -39,12 +51,12 @@ void save_frame(image_save_info _info)
     _info.semaphore->wait(_info.wait_value);
     _info.staging_buffer.invalidate();
 
-    std::span<T> pixels(static_cast<T*>(_info.staging_buffer.get_buffer_address().hostAddress), _info.pixel_count);
+    const std::span<T> pixels(static_cast<T*>(_info.staging_buffer.get_buffer_address().hostAddress), _info.pixel_count);
 
     try
     {
         ocio_helper::apply_on_image<T>(_info.ocio_config_path, _info.width, _info.height, pixels);
-        if (auto result = image_helper::write_image<T>(_info.save_path, _info.width, _info.height, pixels); !result)
+        if (const auto result = image_helper::write_image<T>(_info.save_path, _info.width, _info.height, pixels); !result)
         {
             std::println(std::cerr, "Write image {} failed: {}", _info.save_path.generic_string(), result.error());
         }
@@ -87,10 +99,10 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     commandbuffers = vulkan_commandbuffer::create(*app.get_device(),
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
-                                                                                vulkan_common::MAX_FRAMES_IN_FLIGHT),
+                                                                                vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
-    skybox_image = create(std::type_identity<scene_image>{},
+    skybox_image = create(std::type_identity<cpu_image_data>{},
                           std::filesystem::path(TEXTURES_PATH) / u8"cracked ground.hdr", true, sampler_type::sky_box);
 
     scene_renders.insert_or_assign(render_mode::rasterization,
@@ -126,13 +138,13 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
     // recreate render_output
     recycle_bin.retire(std::move(render_output), "scene manager old render output.");
-    vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1, 1,
-                                          vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-                                          vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-                                              | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage,
-                                          vk::SharingMode::eExclusive, queue_array);
-    vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
-                                             vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
+    const vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1,
+                                                1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                                                vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
+                                                    | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage,
+                                                vk::SharingMode::eExclusive, queue_array);
+    const vk::ImageViewCreateInfo render_view_info({}, {}, vk::ImageViewType::e2D, color_format, {},
+                                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, {}, 1, 0, 1), nullptr);
     render_output.create(app.get_allocator(), *app.get_device(), render_image_info, render_view_info,
                          vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
@@ -188,7 +200,7 @@ vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
         submit_info = capture_frame(submit_info);
     }
 
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
 
     return submit_info;
 }
@@ -281,34 +293,34 @@ vulkan_image& scene_manager::get_render_image() noexcept
     return render_output;
 }
 
-std::shared_ptr<scene_light> scene_manager::create(std::type_identity<scene_light>)
+std::shared_ptr<cpu_light_data> scene_manager::create(std::type_identity<cpu_light_data>)
 {
     return light_manager.create();
 }
 
-std::shared_ptr<scene_model> scene_manager::create(std::type_identity<scene_model>, const std::filesystem::path& _model_name)
+std::shared_ptr<cpu_model_data> scene_manager::create(std::type_identity<cpu_model_data>, const std::filesystem::path& _model_name)
 {
     return model_manager.create(_model_name);
 }
 
-std::shared_ptr<scene_material> scene_manager::create(std::type_identity<scene_material>)
+std::shared_ptr<cpu_material_data> scene_manager::create(std::type_identity<cpu_material_data>)
 {
     return material_manager.create();
 }
 
-std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
-                                                   const std::filesystem::path& _font_path,
-                                                   uint32_t                     _font_size,
-                                                   std::wstring_view            _characters,
-                                                   uint32_t                     _padding)
+std::shared_ptr<cpu_image_data> scene_manager::create(std::type_identity<cpu_image_data>,
+                                                      const std::filesystem::path& _font_path,
+                                                      uint32_t                     _font_size,
+                                                      std::wstring_view            _characters,
+                                                      uint32_t                     _padding)
 {
     return material_manager.create(_font_path, _font_size, _characters, waited_infos, _padding);
 }
 
-std::shared_ptr<scene_image> scene_manager::create(std::type_identity<scene_image>,
-                                                   const std::filesystem::path& _image_path,
-                                                   bool                         _is_hdr,
-                                                   sampler_type                 _type)
+std::shared_ptr<cpu_image_data> scene_manager::create(std::type_identity<cpu_image_data>,
+                                                      const std::filesystem::path& _image_path,
+                                                      bool                         _is_hdr,
+                                                      sampler_type                 _type)
 {
     return material_manager.create(_image_path, _is_hdr, _type, waited_infos);
 }
@@ -326,8 +338,9 @@ vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitIn
     }
 
     vulkan_buffer staging_buffer;
-    const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
-                                                          transfer_queue, _waited_info, render_output, staging_buffer);
+    const auto    wait_value =
+        vulkan_shared_utils::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore,
+                                            graphic_queue, transfer_queue, _waited_info, render_output, staging_buffer);
 
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));

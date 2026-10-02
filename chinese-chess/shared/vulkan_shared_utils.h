@@ -1,9 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <expected>
 #include <format>
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ranges>
 #include <span>
@@ -18,7 +20,7 @@ class vulkan_queue;
 class vulkan_buffer;
 class vulkan_image;
 
-namespace vulkan_common {
+namespace vulkan_shared_utils {
 
 inline constinit vk::SampleCountFlagBits MSAA_SAMPLE_COUNT    = vk::SampleCountFlagBits::e1;
 inline constinit vk::Format              DEPTH_FORMAT         = vk::Format::eUndefined;
@@ -98,4 +100,4 @@ inline constexpr bool                    USE_OCIO             = true;
                                                      vulkan_image&                  _image,
                                                      vulkan_buffer&                 _buffer,
                                                      const std::string&             _buffer_name = "");
-}  // namespace vulkan_common
+}  // namespace vulkan_shared_utils

@@ -2,6 +2,7 @@
 
 #include "vulkan_buffer.h"
 
+#include <cstdint>
 #include <vulkan/vulkan_raii.hpp>
 
 class vulkan_shader_binding_table

@@ -1,9 +1,11 @@
 #include "vulkan_acceleration_structure.h"
 
-#include "tools/model_loader.h"
-#include "vulkan_common.h"
+#include "shared/gpu_shared_types.h"
+#include "shared/vulkan_shared_utils.h"
 
 #include <algorithm>
+#include <concepts>
+#include <cstdint>
 #include <utility>
 
 vulkan_acceleration_structure::vulkan_acceleration_structure(vulkan_acceleration_structure&& _other) noexcept
@@ -41,7 +43,7 @@ vulkan_buffer vulkan_acceleration_structure::create_bottom_level_acceleration_st
                                                                                         uint32_t _queue)
 {
     const vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data =
-        vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(model_vertex),
+        vk::AccelerationStructureGeometryTrianglesDataKHR(vk::Format::eR32G32B32Sfloat, _vertex_data, sizeof(gpu_model_vertex),
                                                           _vertex_count, vk::IndexType::eUint32, _index_data);
 
     geometry = vk::AccelerationStructureGeometryKHR(vk::GeometryTypeKHR::eTriangles, triangles_data,
@@ -149,14 +151,14 @@ vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const
 
     address = _device.getAccelerationStructureAddressKHR(address_info);
 
-    VkDeviceSize scratch_size = vulkan_common::align_up(build_size.buildScratchSize, scratch_alignment);
+    VkDeviceSize scratch_size = vulkan_shared_utils::align_up(build_size.buildScratchSize, scratch_alignment);
     if (_flags & vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate)
     {
         const vk::AccelerationStructureBuildGeometryInfoKHR update_build_info(
             _type, _flags, vk::BuildAccelerationStructureModeKHR::eUpdate, {}, acceleration_structure, geometry);
         const auto update_size = _device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice,
                                                                                update_build_info, range_info.primitiveCount);
-        scratch_size = std::max(scratch_size, vulkan_common::align_up(update_size.updateScratchSize, scratch_alignment));
+        scratch_size = std::max(scratch_size, vulkan_shared_utils::align_up(update_size.updateScratchSize, scratch_alignment));
     }
 
     vulkan_buffer scratch_buffer;

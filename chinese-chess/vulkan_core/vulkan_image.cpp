@@ -1,8 +1,11 @@
 #include "vulkan_image.h"
 
 #include <bit>
+#include <concepts>
+#include <cstdint>
 #include <format>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
@@ -35,14 +38,14 @@ vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
     return *this;
 }
 
-void vulkan_image::create(const vma::raii::Allocator& _allocator,
-                          const vk::raii::Device&     _device,
-                          const vk::ImageCreateInfo&  _image_info,
-                          vk::ImageViewCreateInfo&    _imageview_info,
-                          vma::MemoryUsage            _usage,
-                          vma::AllocationCreateFlags  _flags,
-                          const vk::ClearValue&       _clear_value,
-                          const std::string&          _name)
+void vulkan_image::create(const vma::raii::Allocator&         _allocator,
+                          const vk::raii::Device&             _device,
+                          const vk::ImageCreateInfo&          _image_info,
+                          vk::ImageViewCreateInfo             _imageview_info,
+                          vma::MemoryUsage                    _usage,
+                          vma::AllocationCreateFlags          _flags,
+                          const vk::ClearValue&               _clear_value,
+                          [[maybe_unused]] const std::string& _name)
 {
     if (_image_info.format != _imageview_info.format || _image_info.arrayLayers != _imageview_info.subresourceRange.layerCount)
     {
@@ -70,8 +73,6 @@ void vulkan_image::create(const vma::raii::Allocator& _allocator,
     _device.setDebugUtilsObjectNameEXT(
         vk::DebugUtilsObjectNameInfoEXT(imageview.objectType, std::bit_cast<uint64_t>(static_cast<VkImageView>(*imageview)),
                                         std::format("ImageView{}", _name).c_str()));
-#else
-    (void)_name;
 #endif  // !NDEBUG
 }
 

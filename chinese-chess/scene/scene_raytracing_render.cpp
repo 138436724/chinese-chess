@@ -4,19 +4,26 @@
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
+#include "shared/gpu_shared_types.h"
+#include "shared/vulkan_shared_utils.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_core/vulkan_commandbuffer.h"
-#include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
+#include <algorithm>
 #include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <iterator>
-#include <limits>
 #include <ranges>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 enum class stage_indices : uint32_t
@@ -33,21 +40,6 @@ constexpr std::string_view RAY_MISS_ENTRY_NAME           = "rayMissMain";
 constexpr std::string_view RAY_SHADOW_MISS_ENTRY_NAME    = "rayShadowMissMain";
 constexpr std::string_view RAY_CLOSEST_HIT_ENTRY_NAME    = "rayClosestHitMain";
 constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain";
-
-struct uniform_buffer  // std140 layout
-{
-    alignas(16) glm::mat4x4 proj_inv_matrix{};
-    alignas(16) glm::mat4x4 view_inv_matrix{};
-    alignas(16) vk::DeviceAddress models_address = 0;
-    vk::DeviceAddress materials_address          = 0;
-    alignas(16) vk::DeviceAddress lights_address = 0;
-    uint32_t model_count                         = 0;
-    uint32_t material_count                      = 0;
-    alignas(16) uint32_t light_count             = 0;
-    uint32_t texture_count                       = 0;
-    uint32_t skybox_index                        = std::numeric_limits<uint32_t>::max();
-    uint32_t frame_index                         = 0;
-};
 
 }  // namespace
 
@@ -76,12 +68,12 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     , light_manager(_light_manager)
     , render_output(_render_output)
 {
-    ubo_offset = vulkan_common::align_up(sizeof(uniform_buffer),
-                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_shared_utils::align_up(sizeof(rt_scene_data),
+                                               physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
-               vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
+               vk::BufferCreateInfo({}, ubo_offset * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray tracing ubo");
 
@@ -124,18 +116,19 @@ void scene_raytracing_render::reset_accumulation() noexcept
 void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
 {
     // update ubo
-    uniform_buffer ubo_data{
-        .proj_inv_matrix   = _camera.get_inv_projection_matrix(),
-        .view_inv_matrix   = _camera.get_inv_view_matrix(),
-        .models_address    = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .materials_address = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .lights_address    = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .model_count       = static_cast<uint32_t>(model_manager.get_models_size()),
-        .material_count    = static_cast<uint32_t>(material_manager.get_materials_size()),
-        .light_count       = static_cast<uint32_t>(light_manager.get_lights_size()),
-        .texture_count     = static_cast<uint32_t>(material_manager.get_textures_size()),
-        .skybox_index      = _skybox_index,
-        .frame_index       = frame_index,
+    const rt_scene_data ubo_data{
+        .proj_inv_matrix = _camera.get_inv_projection_matrix(),
+        .view_inv_matrix = _camera.get_inv_view_matrix(),
+        .lights          = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .materials       = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .models          = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .light_count     = static_cast<uint32_t>(light_manager.get_lights_size()),
+        .texture_count   = static_cast<uint32_t>(material_manager.get_textures_size()),
+        .material_count  = static_cast<uint32_t>(material_manager.get_materials_size()),
+        .model_count     = static_cast<uint32_t>(model_manager.get_models_size()),
+        .skybox_index    = _skybox_index,
+        .frame_index     = frame_index,
+        .exposure        = _camera.get_exposure(),
     };
 
     auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
@@ -167,7 +160,7 @@ void scene_raytracing_render::render(const scene_camera& _camera, const vk::raii
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
     frame_index++;
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
 }
 
 std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render::create_pipeline_and_sbt()
@@ -210,7 +203,8 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
     const auto props =
         physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
     const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    new_pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::filesystem::path(SHADERS_PATH) / "ray_tracing.slang",
+    new_pipeline.create_from_shader(device, pipeline_cache, bindings, {},
+                                    std::filesystem::path(SHADERS_PATH) / "scene_raytracing_render.slang",
                                     shader_stages, shader_groups, properties.maxRayRecursionDepth);
 
 
@@ -242,28 +236,29 @@ void scene_raytracing_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_pool), "ray tracing descriptor pool.");
 
     constexpr std::array pool_size = {
-        vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
+        vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT)};
 
-    vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                                  vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
+    const vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                                        vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(device, pool_create_info);
 
     // descriptor set
-    std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
-    auto alloc_info = vk::DescriptorSetAllocateInfo(descriptor_pool, layouts);
-    descriptor_sets = device.allocateDescriptorSets(alloc_info);
+    const std::vector<vk::DescriptorSetLayout> layouts(vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
+                                                       pipeline.get_descriptor_set_layout());
+    const auto                                 alloc_info = vk::DescriptorSetAllocateInfo(descriptor_pool, layouts);
+    descriptor_sets                                       = device.allocateDescriptorSets(alloc_info);
 
     const auto descriptor_infos = material_manager.get_descriptor_info();
     std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _frame_pair) {
-        const auto& [frame_index, descriptor_set] = _frame_pair;
+        const auto& [frame_index_set, descriptor_set] = _frame_pair;
 
         std::vector<vk::WriteDescriptorSet> write_sets;
 
         const vk::DescriptorBufferInfo as_buffer_info(model_manager.get_tlas().get_buffer(), 0, vk::WholeSize);
-        vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
+        const vk::StructureChain<vk::WriteDescriptorSet, vk::WriteDescriptorSetAccelerationStructureKHR> as_write_set(
             vk::WriteDescriptorSet(descriptor_set, 0, {}, vk::DescriptorType::eAccelerationStructureKHR, {}, as_buffer_info),
             vk::WriteDescriptorSetAccelerationStructureKHR(*(model_manager.get_tlas().get_acceleration_structure())));
         write_sets.push_back(as_write_set.get());
@@ -272,8 +267,8 @@ void scene_raytracing_render::update_descriptor()
         write_sets.emplace_back(
             vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageImage, storage_image_info, {}));
 
-        const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), static_cast<vk::DeviceSize>(frame_index) * ubo_offset,
-                                                          sizeof(uniform_buffer));
+        const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), static_cast<vk::DeviceSize>(frame_index_set) * ubo_offset,
+                                                          sizeof(rt_scene_data));
         write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 2, 0, vk::DescriptorType::eUniformBuffer, {}, scene_uniform_info));
 
         write_sets.reserve(write_sets.size() + descriptor_infos.size());

@@ -2,10 +2,19 @@
 
 #include "shader_compiler.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <expected>
+#include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <ranges>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
 
 OCIO::GpuShaderDescRcPtr ocio_helper::generate_shader_info(const std::filesystem::path& _ocio_path)
 {

@@ -28,6 +28,11 @@ void scene_camera::set_projection_type(projection_type _type) noexcept
     update_camera_matrix();
 }
 
+void scene_camera::set_exposure(float _exposure) noexcept
+{
+    exposure = _exposure;
+}
+
 void scene_camera::set_position(const glm::vec3& _position) noexcept
 {
     position = _position;
@@ -49,6 +54,11 @@ void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 projection_type scene_camera::get_projection_type() const noexcept
 {
     return active_type;
+}
+
+float scene_camera::get_exposure() const noexcept
+{
+    return exposure;
 }
 
 glm::vec3 scene_camera::get_position() const noexcept

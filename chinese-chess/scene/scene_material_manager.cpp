@@ -1,37 +1,35 @@
 #include "scene_material_manager.h"
 
-#include "scene_material.h"
+#include "shared/cpu_shared_types.h"
+#include "shared/vulkan_shared_utils.h"
 #include "tools/file_watcher.h"
 #include "tools/font_loader.h"
-#include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_image.h"
-#include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <format>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <print>
 #include <ranges>
+#include <span>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
+#include <vector>
 #include <vulkan/utility/vk_format_utils.h>
 
 namespace {
-
-struct gpu_material_data  // scalar layout
-{
-    glm::vec3 background_color = glm::vec3(1.f, 1.f, 1.f);
-    uint32_t  texture_index    = std::numeric_limits<uint32_t>::max();
-    glm::vec3 foreground_color = glm::vec3(1.f, 1.f, 1.f);
-    float     roughness        = 0.5f;
-    float     metallic         = 0.0f;
-    float     opacity          = 1.0f;
-    float     ior              = 1.5f;
-    float     transmission     = 0.0f;
-};
 
 [[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_and_compress_to_ktx2(const std::filesystem::path& _source_path, bool _is_hdr)
 {
@@ -86,35 +84,35 @@ scene_material_manager::scene_material_manager(const vma::raii::Allocator&     _
     skybox_sampler.create(_physical_device, _device, sampler_type::sky_box);
 
     compressed_hdr_format =
-        vulkan_common::find_supported_format(_physical_device, {vk::Format::eBc6HUfloatBlock}, vk::ImageTiling::eOptimal,
-                                             vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
+        vulkan_shared_utils::find_supported_format(_physical_device, {vk::Format::eBc6HUfloatBlock}, vk::ImageTiling::eOptimal,
+                                                   vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
             .value_or(vk::Format::eUndefined);
 
     compressed_ldr_format =
-        vulkan_common::find_supported_format(_physical_device, {vk::Format::eBc7UnormBlock}, vk::ImageTiling::eOptimal,
-                                             vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
+        vulkan_shared_utils::find_supported_format(_physical_device, {vk::Format::eBc7UnormBlock}, vk::ImageTiling::eOptimal,
+                                                   vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
             .value_or(vk::Format::eUndefined);
 
     compressed_font_format =
-        vulkan_common::find_supported_format(_physical_device, {vk::Format::eBc4UnormBlock, vk::Format::eEacR11UnormBlock},
-                                             vk::ImageTiling::eOptimal,
-                                             vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
+        vulkan_shared_utils::find_supported_format(_physical_device, {vk::Format::eBc4UnormBlock, vk::Format::eEacR11UnormBlock},
+                                                   vk::ImageTiling::eOptimal,
+                                                   vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst)
             .value_or(vk::Format::eUndefined);
 }
 
-std::shared_ptr<scene_material> scene_material_manager::create()
+std::shared_ptr<cpu_material_data> scene_material_manager::create()
 {
-    auto material = std::make_shared<scene_material>();
+    const auto material = std::make_shared<cpu_material_data>();
     materials.emplace_back(material);
     is_dirty = true;
     return material;
 }
 
-std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path&          _font_path,
-                                                            uint32_t                              _font_size,
-                                                            std::wstring_view                     _characters,
-                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
-                                                            uint32_t                              _padding)
+std::shared_ptr<cpu_image_data> scene_material_manager::create(const std::filesystem::path&          _font_path,
+                                                               uint32_t                              _font_size,
+                                                               std::wstring_view                     _characters,
+                                                               std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
+                                                               uint32_t                              _padding)
 {
     // find in cache
     const auto cache_key = _font_path / std::to_wstring(_font_size) / std::wstring(_characters) / std::to_wstring(_padding);
@@ -122,15 +120,15 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     {
         if (!iter->second.expired())
         {
-            return std::shared_ptr<scene_image>(iter->second);
+            return std::shared_ptr<cpu_image_data>(iter->second);
         }
     }
 
     // load font and transition to image
-    const auto image = std::make_shared<scene_image>();
+    const auto image = std::make_shared<cpu_image_data>();
     image->type      = sampler_type::font;
 
-    auto fonts_info_result = font_loader::load_font(_font_path, _font_size, _characters);
+    const auto fonts_info_result = font_loader::load_font(_font_path, _font_size, _characters);
     if (!fonts_info_result)
     {
         throw std::runtime_error(fonts_info_result.error());
@@ -150,8 +148,8 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     const uint32_t all_height = max_bearing_height_up + max_bearing_height_down + 2 * _padding;
 
     const bool compressible = compressed_font_format != vk::Format::eUndefined;
-    const uint32_t atlas_width = compressible ? static_cast<uint32_t>(vulkan_common::align_up(all_width, 4)) : all_width;
-    const uint32_t atlas_height = compressible ? static_cast<uint32_t>(vulkan_common::align_up(all_height, 4)) : all_height;
+    const uint32_t atlas_width = compressible ? static_cast<uint32_t>(vulkan_shared_utils::align_up(all_width, 4)) : all_width;
+    const uint32_t atlas_height = compressible ? static_cast<uint32_t>(vulkan_shared_utils::align_up(all_height, 4)) : all_height;
     const uint32_t atlas_channels = compressible ? 4 : 1;
     const int32_t  offset_x       = compressible ? static_cast<int32_t>((atlas_width - all_width) / 2) : 0;
     const int32_t  offset_y       = compressible ? static_cast<int32_t>((atlas_height - all_height) / 2) : 0;
@@ -186,7 +184,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
             {
                 images.emplace_back(image);
                 images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters / std::to_wstring(_padding),
-                                     std::weak_ptr<scene_image>(image));
+                                     std::weak_ptr<cpu_image_data>(image));
                 is_dirty = true;
                 return image;
             }
@@ -214,7 +212,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         r8_fallback   = std::move(*r8);
         upload_buffer = &r8_fallback.buffer;
     }
-    _waited_infos.push_back(vulkan_common::upload_image(
+    _waited_infos.push_back(vulkan_shared_utils::upload_image(
         allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
         vk::ImageViewType::e2D, vk::Format::eR8Unorm, vk::Extent3D(atlas_width, atlas_height, 1), image->image,
         vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
@@ -222,26 +220,26 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
 
     images.emplace_back(image);
     images_cache.emplace(_font_path / std::to_wstring(_font_size) / _characters / std::to_wstring(_padding),
-                         std::weak_ptr<scene_image>(image));
+                         std::weak_ptr<cpu_image_data>(image));
     is_dirty = true;
     return image;
 }
 
-std::shared_ptr<scene_image> scene_material_manager::create(const std::filesystem::path&          _image_path,
-                                                            bool                                  _is_hdr,
-                                                            sampler_type                          _type,
-                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+std::shared_ptr<cpu_image_data> scene_material_manager::create(const std::filesystem::path&          _image_path,
+                                                               bool                                  _is_hdr,
+                                                               sampler_type                          _type,
+                                                               std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
 {
     // find in cache
     if (auto iter = images_cache.find(_image_path); iter != images_cache.end())
     {
         if (!iter->second.expired())
         {
-            return std::shared_ptr<scene_image>(iter->second);
+            return std::shared_ptr<cpu_image_data>(iter->second);
         }
     }
 
-    const auto image = std::make_shared<scene_image>();
+    const auto image = std::make_shared<cpu_image_data>();
     image->type      = _type;
 
     const auto       target_format = _is_hdr ? compressed_hdr_format : compressed_ldr_format;
@@ -280,7 +278,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         if (auto result = upload_ktx2(ktx2, target_format, image->image, _waited_infos, "material_texture"); result)
         {
             images.emplace_back(image);
-            images_cache.emplace(_image_path, std::weak_ptr<scene_image>(image));
+            images_cache.emplace(_image_path, std::weak_ptr<cpu_image_data>(image));
             is_dirty = true;
             return image;
         }
@@ -293,7 +291,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     if (_is_hdr)
     {
         constexpr vk::Format image_format = vk::Format::eR16G16B16A16Sfloat;
-        auto                 image_data_result =
+        const auto           image_data_result =
             image_helper::read_image<half>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
         if (!image_data_result)
         {
@@ -301,20 +299,20 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         }
 
         const auto& image_data = *image_data_result;
-        _waited_infos.push_back(vulkan_common::upload_image(
+        _waited_infos.push_back(vulkan_shared_utils::upload_image(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), image->image,
             vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
                 | vk::PipelineStageFlagBits2::eComputeShader,
             vk::AccessFlagBits2::eShaderSampledRead,
             std::span(reinterpret_cast<const uint8_t*>(image_data.buffer.data()),
-                      image_data.buffer.size() * sizeof(image_data.buffer.front())),
+                      image_data.buffer.size() * sizeof(decltype(image_data.buffer)::value_type)),
             "material_texture"));
     }
     else
     {
         constexpr vk::Format image_format = vk::Format::eR8G8B8A8Unorm;
-        auto                 image_data_result =
+        const auto           image_data_result =
             image_helper::read_image<uint8_t>(_image_path, vkuFormatComponentCount(static_cast<VkFormat>(image_format)));
         if (!image_data_result)
         {
@@ -322,7 +320,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
         }
 
         const auto& image_data = *image_data_result;
-        _waited_infos.push_back(vulkan_common::upload_image(
+        _waited_infos.push_back(vulkan_shared_utils::upload_image(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), image->image,
             vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
@@ -331,7 +329,7 @@ std::shared_ptr<scene_image> scene_material_manager::create(const std::filesyste
     }
 
     images.emplace_back(image);
-    images_cache.emplace(_image_path, std::weak_ptr<scene_image>(image));
+    images_cache.emplace(_image_path, std::weak_ptr<cpu_image_data>(image));
     is_dirty = true;
     return image;
 }
@@ -346,8 +344,8 @@ bool scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waite
     const auto retires = std::ranges::stable_partition(images, [](const auto& sp) static { return sp.use_count() != 1; });
     if (retires.begin() != images.end())
     {
-        std::vector<std::shared_ptr<scene_image>> retire_images(std::make_move_iterator(retires.begin()),
-                                                                std::make_move_iterator(retires.end()));
+        std::vector<std::shared_ptr<cpu_image_data>> retire_images(std::make_move_iterator(retires.begin()),
+                                                                   std::make_move_iterator(retires.end()));
         recycle_bin.retire(std::move(retire_images), "scene material manager unused images.");
         images.erase(retires.begin(), retires.end());
         is_dirty = true;
@@ -396,7 +394,7 @@ const vulkan_buffer& scene_material_manager::get_ssbo_buffer() const noexcept
     return ssbo;
 }
 
-std::optional<uint32_t> scene_material_manager::get_material_index(const std::weak_ptr<scene_material>& _material) const noexcept
+std::optional<uint32_t> scene_material_manager::get_material_index(const std::weak_ptr<cpu_material_data>& _material) const noexcept
 {
     const auto materials_with_index = materials | std::views::enumerate;
 
@@ -415,7 +413,7 @@ std::optional<uint32_t> scene_material_manager::get_material_index(const std::we
     }
 }
 
-std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<scene_image>& _texture) const noexcept
+std::optional<uint32_t> scene_material_manager::get_texture_index(const std::weak_ptr<cpu_image_data>& _texture) const noexcept
 {
     const auto images_with_index = images | std::views::enumerate;
 
@@ -486,19 +484,18 @@ bool scene_material_manager::reload_textures(std::vector<vk::SemaphoreSubmitInfo
         }
         else if (is_hdr)
         {
-            auto image_data = image_helper::read_image<half>(source_path, 4);
+            const auto image_data = image_helper::read_image<half>(source_path, 4);
             if (image_data)
             {
-                _waited_infos.push_back(
-                    vulkan_common::upload_image(allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                                vk::ImageType::e2D, vk::ImageViewType::e2D, vk::Format::eR16G16B16A16Sfloat,
-                                                vk::Extent3D(image_data->width, image_data->height, 1), new_image,
-                                                vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
-                                                    | vk::PipelineStageFlagBits2::eComputeShader,
-                                                vk::AccessFlagBits2::eShaderSampledRead,
-                                                std::span(reinterpret_cast<const uint8_t*>(image_data->buffer.data()),
-                                                          image_data->buffer.size() * sizeof(image_data->buffer.front())),
-                                                "material texture reload"));
+                _waited_infos.push_back(vulkan_shared_utils::upload_image(
+                    allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
+                    vk::Format::eR16G16B16A16Sfloat, vk::Extent3D(image_data->width, image_data->height, 1), new_image,
+                    vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
+                        | vk::PipelineStageFlagBits2::eComputeShader,
+                    vk::AccessFlagBits2::eShaderSampledRead,
+                    std::span(reinterpret_cast<const uint8_t*>(image_data->buffer.data()),
+                              image_data->buffer.size() * sizeof(decltype(image_data->buffer)::value_type)),
+                    "material texture reload"));
                 load_result = {};
             }
             else
@@ -508,10 +505,10 @@ bool scene_material_manager::reload_textures(std::vector<vk::SemaphoreSubmitInfo
         }
         else
         {
-            auto image_data = image_helper::read_image<uint8_t>(source_path, 4);
+            const auto image_data = image_helper::read_image<uint8_t>(source_path, 4);
             if (image_data)
             {
-                _waited_infos.push_back(vulkan_common::upload_image(
+                _waited_infos.push_back(vulkan_shared_utils::upload_image(
                     allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D, vk::ImageViewType::e2D,
                     vk::Format::eR8G8B8A8Unorm, vk::Extent3D(image_data->width, image_data->height, 1), new_image,
                     vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
@@ -589,7 +586,7 @@ std::expected<void, std::string> scene_material_manager::upload_ktx2(const ktx2_
     const auto* data = reinterpret_cast<const uint8_t*>(_ktx2->pData) + offset;
     const auto  size = _ktx2->dataSize - offset;
 
-    _waited_infos.push_back(vulkan_common::upload_image(
+    _waited_infos.push_back(vulkan_shared_utils::upload_image(
         allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
         vk::ImageViewType::e2D, _target_format, vk::Extent3D(_ktx2->baseWidth, _ktx2->baseHeight, 1), _image,
         vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
@@ -608,23 +605,27 @@ void scene_material_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _
                 return gpu_material_data{.background_color = sp->background_color,
                                          .texture_index =
                                              get_texture_index(sp->alpha_map).value_or(std::numeric_limits<uint32_t>::max()),
-                                         .foreground_color = sp->foreground_color,
-                                         .roughness        = sp->roughness,
-                                         .metallic         = sp->metallic,
-                                         .opacity          = sp->opacity,
-                                         .ior              = sp->ior,
-                                         .transmission     = sp->transmission};
+                                         .foreground_color  = sp->foreground_color,
+                                         .roughness         = sp->roughness,
+                                         .emission          = sp->emission,
+                                         .emission_strength = sp->emission_strength,
+                                         .absorption        = sp->absorption,
+                                         .metallic          = sp->metallic,
+                                         .reflectance       = sp->reflectance,
+                                         .ior               = sp->ior,
+                                         .transmission      = sp->transmission,
+                                         .opacity           = sp->opacity};
             })
             | std::ranges::to<std::vector>();
 
-        _waited_infos.push_back(vulkan_common::upload_buffer(
+        _waited_infos.push_back(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
                 | vk::PipelineStageFlagBits2::eComputeShader,
             vk::AccessFlagBits2::eShaderRead,
             std::span(reinterpret_cast<const uint8_t*>(materials_ssbo.data()),
-                      sizeof(materials_ssbo.front()) * materials_ssbo.size()),
+                      sizeof(decltype(materials_ssbo)::value_type) * materials_ssbo.size()),
             "material_ssbo"));
     }
 }

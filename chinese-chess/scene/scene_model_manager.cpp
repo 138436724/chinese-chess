@@ -1,28 +1,27 @@
 #include "scene_model_manager.h"
 
 #include "scene_material_manager.h"
-#include "scene_model.h"
+#include "shared/cpu_shared_types.h"
+#include "shared/vulkan_shared_utils.h"
 #include "tools/model_loader.h"
 #include "vulkan_core/vulkan_commandbuffer.h"
-#include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <format>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <span>
-
-namespace {
-struct gpu_model_data  // scalar layout
-{
-    glm::mat4         model_matrix   = glm::mat4(1.f);
-    uint32_t          material_index = std::numeric_limits<uint32_t>::max();
-    vk::DeviceAddress vertex_address = 0;
-    vk::DeviceAddress index_address  = 0;
-};
-}  // namespace
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _allocator,
                                          const vk::raii::PhysicalDevice& _physical_device,
@@ -43,15 +42,15 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
 {
 }
 
-std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::path& _model_path)
+std::shared_ptr<cpu_model_data> scene_model_manager::create(const std::filesystem::path& _model_path)
 {
     // find in cache
     if (auto iter = models_cache.find(_model_path); iter != models_cache.end())
     {
         if (!iter->second.expired())
         {
-            auto model        = std::make_shared<scene_model>();
-            model->model_info = std::shared_ptr<model_information>(iter->second);
+            const auto model  = std::make_shared<cpu_model_data>();
+            model->model_info = std::shared_ptr<cpu_model_info>(iter->second);
             models.emplace_back(model);
             is_dirty = true;
             return model;
@@ -59,8 +58,8 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
     }
 
     // read vertex and index data from model file
-    auto mesh         = std::make_shared<model_information>();
-    auto loaded_model = model_loader::load_model(_model_path);
+    const auto mesh         = std::make_shared<cpu_model_info>();
+    auto       loaded_model = model_loader::load_model(_model_path);
     if (!loaded_model)
     {
         throw std::runtime_error(std::format("Failed to load model {}: {}", _model_path.generic_string(), loaded_model.error()));
@@ -70,9 +69,9 @@ std::shared_ptr<scene_model> scene_model_manager::create(const std::filesystem::
     mesh->indices  = std::move(loaded_model->indices);
 
     meshes.emplace_back(mesh);
-    models_cache.emplace(_model_path, std::weak_ptr<model_information>(mesh));
+    models_cache.emplace(_model_path, std::weak_ptr<cpu_model_info>(mesh));
 
-    auto model        = std::make_shared<scene_model>();
+    const auto model  = std::make_shared<cpu_model_data>();
     model->model_info = mesh;
     models.emplace_back(model);
 
@@ -99,8 +98,8 @@ bool scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
 
     if (retires.begin() != meshes.end())
     {
-        std::vector<std::shared_ptr<model_information>> retire_meshes(std::make_move_iterator(retires.begin()),
-                                                                      std::make_move_iterator(retires.end()));
+        std::vector<std::shared_ptr<cpu_model_info>> retire_meshes(std::make_move_iterator(retires.begin()),
+                                                                   std::make_move_iterator(retires.end()));
         recycle_bin.retire(std::move(retire_meshes), "scene model manager meshes blas.");
         meshes.erase(retires.begin(), retires.end());
         is_dirty = true;
@@ -196,23 +195,23 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
         const vk::DeviceSize vertices_size =
             std::ranges::fold_left(meshes, static_cast<size_t>(0), [](size_t s, const auto& sp) static {
                 sp->vertex_offset = s;
-                return s + sp->vertices.size() * sizeof(sp->vertices.front());
+                return s + sp->vertices.size() * sizeof(decltype(sp->vertices)::value_type);
             });
 
         std::vector<uint8_t> staging_vertex(vertices_size);
         std::ranges::for_each(meshes, [&](const auto& sp) {
             std::memcpy(staging_vertex.data() + sp->vertex_offset, sp->vertices.data(),
-                        sp->vertices.size() * sizeof(sp->vertices.front()));
+                        sp->vertices.size() * sizeof(decltype(sp->vertices)::value_type));
         });
 
-        const auto vertex_upload = vulkan_common::upload_buffer(
+        const auto vertex_upload = vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vertices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             vk::PipelineStageFlagBits2::eVertexAttributeInput | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
                 | vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
             vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-            staging_vertex, "model_vertex");
+            staging_vertex, "gpu_model_vertex");
         _waited_infos.push_back(vertex_upload);
 
 
@@ -220,16 +219,16 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
         const vk::DeviceSize indices_size =
             std::ranges::fold_left(meshes, static_cast<size_t>(0), [](size_t s, const auto& sp) static {
                 sp->index_offset = s;
-                return s + sp->indices.size() * sizeof(sp->indices.front());
+                return s + sp->indices.size() * sizeof(decltype(sp->indices)::value_type);
             });
 
         std::vector<uint8_t> staging_index(indices_size);
         std::ranges::for_each(meshes, [&](const auto& sp) {
             std::memcpy(staging_index.data() + sp->index_offset, sp->indices.data(),
-                        sp->indices.size() * sizeof(sp->indices.front()));
+                        sp->indices.size() * sizeof(decltype(sp->indices)::value_type));
         });
 
-        const auto index_upload = vulkan_common::upload_buffer(
+        const auto index_upload = vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, indices_buffer,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
                 | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -319,12 +318,13 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
     if (tlas_instance_count != 0 && instances.size() == tlas_instance_count)
     {
         vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
+        commandbuffer.add_waited_info(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
+            std::span(reinterpret_cast<const uint8_t*>(instances.data()),
+                      sizeof(decltype(instances)::value_type) * instances.size()),
             "tlas_instance"));
 
         tlas.update_top_level_acceleration_structure(*commandbuffer, static_cast<uint32_t>(instances.size()),
@@ -339,12 +339,13 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
         recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
 
         vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
+        commandbuffer.add_waited_info(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-            std::span(reinterpret_cast<const uint8_t*>(instances.data()), sizeof(instances.front()) * instances.size()),
+            std::span(reinterpret_cast<const uint8_t*>(instances.data()),
+                      sizeof(decltype(instances)::value_type) * instances.size()),
             "tlas_instance"));
 
         tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(
@@ -376,7 +377,7 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
                     return vk::DrawIndexedIndirectCommand(
                         static_cast<uint32_t>(sp->model_info->indices.size()), sp->is_show ? 1u : 0u,
                         static_cast<uint32_t>(sp->model_info->index_offset / sizeof(uint32_t)),
-                        static_cast<int32_t>(sp->model_info->vertex_offset / sizeof(model_vertex)), 0u);
+                        static_cast<int32_t>(sp->model_info->vertex_offset / sizeof(gpu_model_vertex)), 0u);
                 }
                 else
                 {
@@ -385,12 +386,12 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
             })
             | std::ranges::to<std::vector>();
 
-        _waited_infos.push_back(vulkan_common::upload_buffer(
+        _waited_infos.push_back(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, draw_commands,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             vk::PipelineStageFlagBits2::eDrawIndirect, vk::AccessFlagBits2::eIndirectCommandRead,
             std::span(reinterpret_cast<const uint8_t*>(all_draw_commands.data()),
-                      sizeof(all_draw_commands.front()) * all_draw_commands.size()),
+                      sizeof(decltype(all_draw_commands)::value_type) * all_draw_commands.size()),
             "draw_commands"));
     }
 }
@@ -413,13 +414,14 @@ void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
             })
             | std::ranges::to<std::vector>();
 
-        _waited_infos.push_back(vulkan_common::upload_buffer(
+        _waited_infos.push_back(vulkan_shared_utils::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
                 | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
             vk::AccessFlagBits2::eShaderRead,
-            std::span(reinterpret_cast<const uint8_t*>(models_ssbo.data()), sizeof(models_ssbo.front()) * models_ssbo.size()),
+            std::span(reinterpret_cast<const uint8_t*>(models_ssbo.data()),
+                      sizeof(decltype(models_ssbo)::value_type) * models_ssbo.size()),
             "model_ssbo"));
     }
 }

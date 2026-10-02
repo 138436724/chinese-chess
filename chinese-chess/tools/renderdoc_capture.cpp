@@ -2,6 +2,7 @@
 
 #include "renderdoc_app.h"
 
+#include <cstdint>
 #include <string_view>
 
 namespace {

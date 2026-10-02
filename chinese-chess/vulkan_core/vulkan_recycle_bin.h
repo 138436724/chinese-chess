@@ -2,10 +2,13 @@
 
 #include "vulkan_semaphore.h"
 
+#include <concepts>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <print>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 class vulkan_recycle_bin

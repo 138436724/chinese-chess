@@ -2,6 +2,7 @@
 
 #include "vulkan_queue.h"
 
+#include <cstdint>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 

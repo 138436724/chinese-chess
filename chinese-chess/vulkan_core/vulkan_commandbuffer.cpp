@@ -4,8 +4,11 @@
 #include "vulkan_semaphore.h"
 
 #include <array>
+#include <concepts>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
+#include <vector>
 
 vulkan_commandbuffer::vulkan_commandbuffer(vulkan_commandbuffer&& _other) noexcept
     : commandbuffer(std::exchange(_other.commandbuffer, nullptr))

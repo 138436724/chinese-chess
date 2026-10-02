@@ -1,5 +1,7 @@
 #include "vulkan_pipeline_cache.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -52,7 +54,7 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
     }
 }
 
-[[nodiscard]] bool is_cache_valid(const vk::raii::PhysicalDevice& _physical_device, std::span<const uint8_t> _data) noexcept
+[[nodiscard]] bool is_cache_valid(const vk::raii::PhysicalDevice& _physical_device, std::span<const uint8_t> _data)
 {
     if (_data.size() < sizeof(vk::PipelineCacheHeaderVersionOne))
     {
@@ -74,7 +76,7 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
 
 }  // namespace
 
-void vulkan_pipeline_cache::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device) noexcept
+void vulkan_pipeline_cache::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device)
 {
     const std::vector<uint8_t> data = read_file(pipeline_cache_path);
     if (data.empty() || !is_cache_valid(_physical_device, data))

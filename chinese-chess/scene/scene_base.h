@@ -2,6 +2,7 @@
 
 #include "scene_camera.h"
 
+#include <cstdint>
 #include <proxy/proxy.h>
 #include <proxy/proxy_macros.h>
 #include <vector>

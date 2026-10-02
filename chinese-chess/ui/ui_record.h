@@ -3,13 +3,15 @@
 #include "tools/record_loader.h"
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
-struct scene_model;
-struct scene_material;
+struct cpu_model_data;
+struct cpu_material_data;
 class scene_manager;
 
 class ui_record
@@ -40,11 +42,11 @@ private:
 
     scene_manager& manager;
 
-    std::shared_ptr<scene_model>                 chess_board;
-    std::shared_ptr<scene_model>                 chess_board_line;
-    std::array<std::shared_ptr<scene_model>, 32> all_chess_pieces;
+    std::shared_ptr<cpu_model_data>                 chess_board;
+    std::shared_ptr<cpu_model_data>                 chess_board_line;
+    std::array<std::shared_ptr<cpu_model_data>, 32> all_chess_pieces;
 
-    std::vector<all_board_state>                                    board_state = {record_loader::get_init_all_board()};
-    std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> red_chess_piece_materials;
-    std::unordered_map<PIECE_TYPE, std::shared_ptr<scene_material>> black_chess_piece_materials;
+    std::vector<all_board_state> board_state = {record_loader::get_init_all_board()};
+    std::unordered_map<PIECE_TYPE, std::shared_ptr<cpu_material_data>> red_chess_piece_materials;
+    std::unordered_map<PIECE_TYPE, std::shared_ptr<cpu_material_data>> black_chess_piece_materials;
 };

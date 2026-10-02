@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -19,11 +20,13 @@ public:
     void set_perspective_projection(float _fov_y, float _aspect, float _near, float _far) noexcept;
 
     void set_projection_type(projection_type _type) noexcept;
+    void set_exposure(float _exposure) noexcept;
     void set_position(const glm::vec3& _position) noexcept;
     void set_direction(const glm::vec3& _direction) noexcept;
     void set_world_up(const glm::vec3& _world_up) noexcept;
 
     [[nodiscard]] projection_type  get_projection_type() const noexcept;
+    [[nodiscard]] float            get_exposure() const noexcept;
     [[nodiscard]] glm::vec3        get_position() const noexcept;
     [[nodiscard]] glm::vec3        get_direction() const noexcept;
     [[nodiscard]] const glm::mat4& get_projection_matrix() const noexcept;
@@ -36,6 +39,7 @@ private:
     void update_camera_matrix() noexcept;
 
     projection_type active_type = projection_type::orthographic;
+    float           exposure    = 1.0f;
 
     // orthographic parameters
     float left              = -10.f;

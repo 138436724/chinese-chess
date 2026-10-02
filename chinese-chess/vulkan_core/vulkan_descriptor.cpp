@@ -1,7 +1,12 @@
 #include "vulkan_descriptor.h"
 
+#include <algorithm>
+#include <concepts>
+#include <cstdint>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
+#include <vector>
 
 vulkan_descriptor::vulkan_descriptor(vulkan_descriptor&& _other) noexcept
     : max_size(std::exchange(_other.max_size, {}))

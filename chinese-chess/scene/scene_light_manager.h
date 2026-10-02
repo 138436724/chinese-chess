@@ -2,10 +2,11 @@
 
 #include "vulkan_core/vulkan_buffer.h"
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
-struct scene_light;
+struct cpu_light_data;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
@@ -21,7 +22,7 @@ public:
                         const vulkan_queue&         _transfer_queue) noexcept;
     ~scene_light_manager() = default;
 
-    [[nodiscard]] std::shared_ptr<scene_light> create();
+    [[nodiscard]] std::shared_ptr<cpu_light_data> create();
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear() noexcept;
@@ -44,7 +45,7 @@ private:
 
     bool is_dirty = true;
 
-    std::vector<std::weak_ptr<scene_light>> lights;
+    std::vector<std::weak_ptr<cpu_light_data>> lights;
 
     vulkan_buffer ssbo;
 };

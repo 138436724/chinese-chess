@@ -1,5 +1,10 @@
 #include "image_helper.h"
 
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <string>
+
 std::expected<ktx2_texture_ptr, std::string> image_helper::read_ktx2(const std::filesystem::path& _ktx2_path) noexcept
 {
     ktxTexture2* raw_tex = nullptr;

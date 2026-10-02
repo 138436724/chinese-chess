@@ -11,6 +11,7 @@
 #include "vulkan_core/vulkan_sampler.h"
 
 #include <concepts>
+#include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -18,6 +19,7 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class vulkan_application;
@@ -47,8 +49,8 @@ public:
     void need_model_update() noexcept;
 
     template <typename T, typename... Args>
-        requires(std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image>
-                 || std::same_as<T, scene_light>)
+        requires(std::same_as<T, cpu_model_data> || std::same_as<T, cpu_material_data>
+                 || std::same_as<T, cpu_image_data> || std::same_as<T, cpu_light_data>)
     [[nodiscard]] auto create(Args&&... args);
 
     void set_render_mode(render_mode _mode);
@@ -58,18 +60,18 @@ public:
     [[nodiscard]] vulkan_image& get_render_image() noexcept;
 
 private:
-    [[nodiscard]] std::shared_ptr<scene_light> create(std::type_identity<scene_light>);
-    [[nodiscard]] std::shared_ptr<scene_model> create(std::type_identity<scene_model>, const std::filesystem::path& _model_name);
-    [[nodiscard]] std::shared_ptr<scene_material> create(std::type_identity<scene_material>);
-    [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
-                                                         const std::filesystem::path& _font_path,
-                                                         uint32_t                     _font_size,
-                                                         std::wstring_view            _characters,
-                                                         uint32_t                     _padding);
-    [[nodiscard]] std::shared_ptr<scene_image>    create(std::type_identity<scene_image>,
-                                                         const std::filesystem::path& _image_path,
-                                                         bool                         _is_hdr,
-                                                         sampler_type                 _type);
+    [[nodiscard]] std::shared_ptr<cpu_light_data> create(std::type_identity<cpu_light_data>);
+    [[nodiscard]] std::shared_ptr<cpu_model_data> create(std::type_identity<cpu_model_data>, const std::filesystem::path& _model_name);
+    [[nodiscard]] std::shared_ptr<cpu_material_data> create(std::type_identity<cpu_material_data>);
+    [[nodiscard]] std::shared_ptr<cpu_image_data>    create(std::type_identity<cpu_image_data>,
+                                                            const std::filesystem::path& _font_path,
+                                                            uint32_t                     _font_size,
+                                                            std::wstring_view            _characters,
+                                                            uint32_t                     _padding);
+    [[nodiscard]] std::shared_ptr<cpu_image_data>    create(std::type_identity<cpu_image_data>,
+                                                            const std::filesystem::path& _image_path,
+                                                            bool                         _is_hdr,
+                                                            sampler_type                 _type);
 
     [[nodiscard]] vk::SemaphoreSubmitInfo capture_frame(const vk::SemaphoreSubmitInfo& _waited_info);
 
@@ -77,8 +79,8 @@ private:
     bool is_dirty        = true;
     bool is_render_dirty = true;
 
-    uint32_t                     skybox_index = std::numeric_limits<uint32_t>::max();
-    std::shared_ptr<scene_image> skybox_image = nullptr;
+    uint32_t                        skybox_index = std::numeric_limits<uint32_t>::max();
+    std::shared_ptr<cpu_image_data> skybox_image = nullptr;
 
     vulkan_application& app;
 
@@ -112,8 +114,8 @@ private:
 };
 
 template <typename T, typename... Args>
-    requires(std::same_as<T, scene_model> || std::same_as<T, scene_material> || std::same_as<T, scene_image>
-             || std::same_as<T, scene_light>)
+    requires(std::same_as<T, cpu_model_data> || std::same_as<T, cpu_material_data> || std::same_as<T, cpu_image_data>
+             || std::same_as<T, cpu_light_data>)
 inline auto scene_manager::create(Args&&... args)
 {
     is_dirty = true;

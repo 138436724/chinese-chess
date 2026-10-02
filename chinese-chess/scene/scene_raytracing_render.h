@@ -4,9 +4,9 @@
 #include "vulkan_core/vulkan_pipeline.h"
 #include "vulkan_core/vulkan_shader_binding_table.h"
 
-#include <glm/glm.hpp>
-#include <limits>
+#include <cstdint>
 #include <utility>
+#include <vector>
 #include <vulkan-memory-allocator-hpp/vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan_raii.hpp>
 

@@ -1,7 +1,10 @@
 #include "vulkan_device.h"
 
 #include <algorithm>
+#include <concepts>
+#include <cstdint>
 #include <ranges>
+#include <span>
 #include <utility>
 #include <vector>
 
