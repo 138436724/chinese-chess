@@ -1,5 +1,5 @@
 import shader_utils;
-import gpu_shared_types;
+import vulkan_data_type;
 import pbr;
 import lighting;
 
@@ -23,15 +23,15 @@ import lighting;
 // 描述符）；本文件已把直接光照集中在 estimate_direct_lighting 一处，便于替换。
 //
 // 绑定（与 scene_rasterization_render.cpp 的 bindings 序一致）：
-//   b0 = scene_params (ConstantBuffer<raster_scene_data>)
+//   b0 = scene_params (ConstantBuffer<vulkan_raster_scene_data>)
 //   b1 = samplers     (bindless Sampler2D[])
 // 顶点输入：location 0 = position，1 = normal，2 = uv
 //（与 scene_rasterization_render::create_pipeline 的 attribute 列表一一对应：
 //  Slang 按结构体成员声明顺序分配 location）
 // ============================================================================
 
-ConstantBuffer<raster_scene_data, ScalarDataLayout> scene_params;  // b0
-Sampler2D[] samplers;                                              // b1
+ConstantBuffer<vulkan_raster_scene_data, ScalarDataLayout> scene_params;  // b0
+Sampler2D[] samplers;                                                     // b1
 
 // 顶点输入（局部空间）
 struct raster_vertex
@@ -57,9 +57,10 @@ struct raster_varying
 environment make_environment()
 {
   environment env;
-  env.skybox_index  = scene_params.skybox_index;
-  env.texture_count = scene_params.texture_count;
-  env.has_hdr       = env.skybox_index < env.texture_count;
+  env.environment_index     = scene_params.environment_index;
+  env.texture_count         = scene_params.texture_count;
+  env.has_hdr               = env.environment_index < env.texture_count;
+  env.environment_intensity = scene_params.environment_intensity;
   return env;
 }
 
@@ -69,7 +70,7 @@ float3 environment_radiance(environment env, float3 direction)
 {
   if(env.has_hdr)
   {
-    return env.equirect_radiance(direction, samplers[env.skybox_index]);
+    return env.equirect_radiance(direction, samplers[env.environment_index]);
   }
   return env.procedural_sky(direction);
 }
@@ -189,14 +190,14 @@ float4 fragMain(raster_varying input)
     return float4(color, 1.0);
   }
 
-  gpu_material_data gpu_material = scene_params.materials[input.material_index];
+  vulkan_material_data material_data = scene_params.materials[input.material_index];
 
-  // 图案权重：纹理索引守卫成立才取 bindless 槽（越界解引用是未定义行为）
-  bool  has_pattern    = gpu_material.texture_index < scene_params.texture_count;
-  float pattern_weight = 0.0;
-  if(has_pattern)
+  // 反照率贴图：纹理索引守卫成立才取 bindless 槽（越界解引用是未定义行为）
+  bool   has_albedo_map = material_data.texture_index < scene_params.texture_count;
+  float3 albedo_map     = float3(0.0);
+  if(has_albedo_map)
   {
-    pattern_weight = samplers[gpu_material.texture_index].Sample(input.uv).x;
+    albedo_map = samplers[material_data.texture_index].Sample(input.uv).rgb;
   }
 
   // 几何：把几何法线定向到朝向观察者的一侧
@@ -204,7 +205,7 @@ float4 fragMain(raster_varying input)
   float3 wo          = safe_normalize(scene_params.view_position - input.world_position);
   bool   front_face  = dot(n_geometric, wo) > 0.0;
 
-  pbr_material material = make_material(gpu_material, resolve_pattern_albedo(gpu_material, has_pattern, pattern_weight));
+  pbr_material material = make_material(material_data, resolve_albedo(material_data, albedo_map, has_albedo_map));
 
   shading_context ctx;
   ctx.material   = material;
@@ -240,14 +241,14 @@ float4 fragMain(raster_varying input)
 // 绘制顺序：深度测试 / 写入全部关闭（`_use_depth = false`），先铺满整屏，
 // 几何随后正常覆盖 —— 不需要 `eLessOrEqual` 之类的深度约定。
 // ============================================================================
-struct sky_varying
+struct environment_varying
 {
   float4 position : SV_Position;
   float3 view_ray;  // 未归一化的世界空间方向
 };
 
 [shader("vertex")]
-sky_varying skyVertMain(uint vertex_id: SV_VertexID)
+environment_varying environmentVertMain(uint vertex_id: SV_VertexID)
 {
   // 全屏三角形 (-1,-1) / (3,-1) / (-1,3)：覆盖整个 NDC，无需顶点缓冲
   uint2  corner = uint2((vertex_id << 1u) & 2u, vertex_id & 2u);
@@ -262,14 +263,14 @@ sky_varying skyVertMain(uint vertex_id: SV_VertexID)
   float3 world_near = mul(scene_params.view_inv_matrix, near_point).xyz;
   float3 world_far  = mul(scene_params.view_inv_matrix, far_point).xyz;
 
-  sky_varying output;
+  environment_varying output;
   output.position = float4(ndc, 1.0, 1.0);   // z = 远平面；w = 1 → 仿射插值
   output.view_ray = world_far - world_near;  // 未归一化：随 NDC 仿射 → 插值精确
   return output;
 }
 
 [shader("fragment")]
-float4 skyFragMain(sky_varying input)
+float4 environmentFragMain(environment_varying input)
     : SV_Target
 {
   float3 direction = safe_normalize(input.view_ray);

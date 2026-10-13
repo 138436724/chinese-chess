@@ -20,12 +20,13 @@ class vulkan_queue;
 class vulkan_buffer;
 class vulkan_image;
 
-namespace vulkan_shared_utils {
+namespace vulkan_common {
 
-inline constinit vk::SampleCountFlagBits MSAA_SAMPLE_COUNT    = vk::SampleCountFlagBits::e1;
-inline constinit vk::Format              DEPTH_FORMAT         = vk::Format::eUndefined;
-inline constexpr uint32_t                MAX_FRAMES_IN_FLIGHT = 3;
-inline constexpr bool                    USE_OCIO             = true;
+inline constinit vk::SampleCountFlagBits MSAA_SAMPLE_COUNT     = vk::SampleCountFlagBits::e1;
+inline constinit vk::Format              DEPTH_FORMAT          = vk::Format::eUndefined;
+inline constexpr uint32_t                MAX_FRAMES_IN_FLIGHT  = 3;
+inline constexpr bool                    USE_OCIO              = true;
+inline constexpr uint32_t                MAX_BINDLESS_TEXTURES = 1024;
 
 [[nodiscard]] inline std::expected<vk::Format, std::string> find_supported_format(const vk::raii::PhysicalDevice& _physical_device,
                                                                                   const std::vector<vk::Format>& _candidates,
@@ -100,4 +101,4 @@ inline constexpr bool                    USE_OCIO             = true;
                                                      vulkan_image&                  _image,
                                                      vulkan_buffer&                 _buffer,
                                                      const std::string&             _buffer_name = "");
-}  // namespace vulkan_shared_utils
+}  // namespace vulkan_common

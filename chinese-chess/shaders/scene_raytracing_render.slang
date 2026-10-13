@@ -1,5 +1,5 @@
 import shader_utils;
-import gpu_shared_types;
+import vulkan_data_type;
 import pbr;
 import lighting;
 import path_tracing;
@@ -26,21 +26,21 @@ import path_tracing;
 // 绑定（与 scene_raytracing_render.cpp 的 bindings 序一致）：
 //   b0 = top_level_acceleration_structure
 //   b1 = render_output (RWTexture2D<float4>)
-//   b2 = scene_params   (ConstantBuffer<rt_scene_data>)
+//   b2 = scene_params   (ConstantBuffer<vulkan_rt_scene_data>)
 //   b3 = samplers       (bindless Sampler2D[])
 // ============================================================================
 
-RaytracingAccelerationStructure top_level_acceleration_structure;  // b0
-RWTexture2D<float4> render_output;                                 // b1
-ConstantBuffer<rt_scene_data, ScalarDataLayout>   scene_params;                      // b2
-Sampler2D[]                     samplers;                          // b3
+RaytracingAccelerationStructure                        top_level_acceleration_structure;  // b0
+RWTexture2D<float4>                                    render_output;                     // b1
+ConstantBuffer<vulkan_rt_scene_data, ScalarDataLayout> scene_params;                      // b2
+Sampler2D[] samplers;                                                                     // b3
 
 // ---------------------------------------------------------------------------
 // 阴影光线载荷
 // ---------------------------------------------------------------------------
 struct shadow_payload
 {
-  bool is_shadowed;
+  bool     is_shadowed;
   uint64_t seed;  // 与主路径 RNG 解耦：any-hit 用局部种子自行推进
 };
 
@@ -50,9 +50,10 @@ struct shadow_payload
 environment make_environment()
 {
   environment env;
-  env.skybox_index  = scene_params.skybox_index;
-  env.texture_count = scene_params.texture_count;
-  env.has_hdr       = env.skybox_index < env.texture_count;
+  env.environment_index     = scene_params.environment_index;
+  env.texture_count         = scene_params.texture_count;
+  env.has_hdr               = env.environment_index < env.texture_count;
+  env.environment_intensity = scene_params.environment_intensity;
   return env;
 }
 
@@ -60,24 +61,24 @@ environment make_environment()
 // bindless 取值必须在索引守卫成立的分支内（越界索引解引用是未定义行为）。
 float3 environment_radiance(environment env, float3 direction)
 {
-  if (env.has_hdr)
+  if(env.has_hdr)
   {
-    return env.equirect_radiance(direction, samplers[env.skybox_index]);
+    return env.equirect_radiance(direction, samplers[env.environment_index]);
   }
   return env.procedural_sky(direction);
 }
 
-// 图案权重采样：同样受 texture_count 守卫
-float sample_pattern_weight(material_lookup lookup, float2 uv, out bool has_pattern)
+// 反照率贴图采样：同样受 texture_count 守卫
+float3 sample_albedo_map(material_lookup lookup, float2 uv, out bool has_albedo_map)
 {
-  has_pattern = false;
-  if (!lookup.valid || lookup.data.texture_index >= scene_params.texture_count)
+  has_albedo_map = false;
+  if(!lookup.valid || lookup.data.texture_index >= scene_params.texture_count)
   {
-    return 0.0;
+    return float3(0.0);
   }
 
-  has_pattern = true;
-  return samplers[lookup.data.texture_index].SampleLevel(uv, 0.0).x;
+  has_albedo_map = true;
+  return samplers[lookup.data.texture_index].SampleLevel(uv, 0.0).rgb;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,20 +115,20 @@ bool trace_shadow_ray(float3 origin, float3 direction, float tmax, inout rng r)
 // ---------------------------------------------------------------------------
 float3 estimate_direct_lighting(shading_context ctx, resolved_surface surface, inout rng r)
 {
-  float3 direct = float3(0.0);
+  float3 direct        = float3(0.0);
   float3 shadow_origin = surface.position + surface.normal * SHADOW_EPSILON;
 
-  for (uint i = 0; i < scene_params.light_count; ++i)
+  for(uint i = 0; i < scene_params.light_count; ++i)
   {
     light_source light;
     light.data = scene_params.lights[i];
-    if (!light.enabled())
+    if(!light.enabled())
     {
       continue;
     }
 
     light_sample ls = light.sample(surface.position);
-    if (!ls.valid || all(ls.radiance <= 0.0))
+    if(!ls.valid || all(ls.radiance <= 0.0))
     {
       continue;
     }
@@ -137,10 +138,10 @@ float3 estimate_direct_lighting(shading_context ctx, resolved_surface surface, i
   }
 
   // 环境光 NEE：均匀球面采样（pdf = 1/4π），与 BSDF 采样用能量启发式 MIS 组合
-  environment   env      = make_environment();
-  light_sample  es       = env.sample(r);
-  float         env_vis  = trace_shadow_ray(shadow_origin, es.direction, es.distance, r) ? 0.0 : 1.0;
-  if (env_vis > 0.0)
+  environment  env     = make_environment();
+  light_sample es      = env.sample(r);
+  float        env_vis = trace_shadow_ray(shadow_origin, es.direction, es.distance, r) ? 0.0 : 1.0;
+  if(env_vis > 0.0)
   {
     float3 env_radiance = environment_radiance(env, es.direction);
     direct += nee_environment_contribution(ctx, es.direction, env_radiance, env_vis);
@@ -160,13 +161,14 @@ void rayGenMain()
 
   // RNG 种子：像素 + 帧号 → 帧间独立同分布（时域累积无偏的前提）
   path_vertex path;
-  path.radiance      = float3(0.0);
-  path.throughput    = float3(1.0);
-  path.bsdf_pdf      = 0.0;
-  path.depth         = 0;
-  path.ray_inside    = false;
-  path.has_bsdf_pdf  = false;  // 相机主光线没有 MIS 伙伴 → 环境权重取 1
-  path.rng_state.reset(uint64_t(launch_id.x) * 1664525ull + uint64_t(launch_id.y) * 1013904223ull + uint64_t(scene_params.frame_index) * 0x9e3779b9ull);
+  path.radiance     = float3(0.0);
+  path.throughput   = float3(1.0);
+  path.bsdf_pdf     = 0.0;
+  path.depth        = 0;
+  path.ray_inside   = false;
+  path.has_bsdf_pdf = false;  // 相机主光线没有 MIS 伙伴 → 环境权重取 1
+  path.rng_state.reset(uint64_t(launch_id.x) * 1664525ull + uint64_t(launch_id.y) * 1013904223ull
+                       + uint64_t(scene_params.frame_index) * 0x9e3779b9ull);
 
   // 子像素抖动：每帧在像素内均匀取一点 → 时域累积即为无偏的抗锯齿
   float2 clip = (float2(launch_id) + path.rng_state.next_float2()) / launch_size * 2.0 - 1.0;
@@ -175,7 +177,7 @@ void rayGenMain()
   float4 near_point_v = mul(scene_params.proj_inv_matrix, float4(clip, 0.0, 1.0));
   float4 far_point_v  = mul(scene_params.proj_inv_matrix, float4(clip, 1.0, 1.0));
   near_point_v /= near_point_v.w;
-  far_point_v  /= far_point_v.w;
+  far_point_v /= far_point_v.w;
 
   float3 world_near = mul(scene_params.view_inv_matrix, near_point_v).xyz;
   float3 world_far  = mul(scene_params.view_inv_matrix, far_point_v).xyz;
@@ -200,16 +202,16 @@ void rayGenMain()
 void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAttributes attr)
 {
   // ---- 几何与材质解析 ----
-  gpu_model_data model = scene_params.models[InstanceIndex()];
+  vulkan_model_data model = scene_params.models[InstanceIndex()];
 
   hit_geometry geom = interpolate_hit(model, PrimitiveIndex(), attr.barycentrics, WorldRayOrigin(), WorldRayDirection());
 
   material_lookup lookup = fetch_material(scene_params.materials, scene_params.material_count, model.material_index);
 
-  bool  has_pattern    = false;
-  float pattern_weight = sample_pattern_weight(lookup, geom.uv, has_pattern);
-  lookup.has_pattern    = has_pattern;
-  lookup.pattern_weight = pattern_weight;
+  bool   has_albedo_map = false;
+  float3 albedo_map     = sample_albedo_map(lookup, geom.uv, has_albedo_map);
+  lookup.has_albedo_map = has_albedo_map;
+  lookup.albedo_map     = albedo_map;
 
   resolved_surface surface = make_surface(geom, lookup, WorldRayDirection());
   shading_context  ctx     = surface.make_context();
@@ -224,21 +226,21 @@ void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAtt
   path.radiance += path.throughput * estimate_direct_lighting(ctx, surface, path.rng_state);
 
   // ---- 间接光照：深度上限（安全网）----
-  if (path.depth >= MAX_BOUNCES)
+  if(path.depth >= MAX_BOUNCES)
   {
     return;
   }
 
   // ---- 俄罗斯轮盘赌：无偏终止（存活时按真实概率归一）----
   float rr_scale = russian_roulette_scale(path.rng_state, path.throughput, path.depth);
-  if (rr_scale <= 0.0)
+  if(rr_scale <= 0.0)
   {
     return;
   }
 
   // ---- BSDF 采样 ----
   bsdf_sample bs = ctx.sample(path.rng_state);
-  if (!bs.valid)
+  if(!bs.valid)
   {
     return;  // 该方向 BRDF 值为 0（或 pdf 为 0），路径自然结束，无偏差
   }
@@ -248,11 +250,11 @@ void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAtt
   //   界面镜面反射：仍停留在原侧，状态不变
   //   不透明波瓣（漫反射 / 粗糙镜面）：视为离开介质
   bool next_inside = false;
-  if (bs.is_transmission)
+  if(bs.is_transmission)
   {
     next_inside = !surface.front_face;
   }
-  else if (bs.is_delta)
+  else if(bs.is_delta)
   {
     next_inside = path.ray_inside;
   }
@@ -279,8 +281,8 @@ void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAtt
   TraceRay(top_level_acceleration_structure, 0u, 0xFFu, 0, 0, 0, bounce_ray, next);
 
   // 回写：父级（raygen 或上一层 closest-hit）只关心累积辐射度与随机数状态
-  path.radiance   = next.radiance;
-  path.rng_state  = next.rng_state;
+  path.radiance  = next.radiance;
+  path.rng_state = next.rng_state;
 }
 
 // ============================================================================
@@ -289,7 +291,7 @@ void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAtt
 [shader("miss")]
 void rayMissMain(inout path_vertex path)
 {
-  environment env         = make_environment();
+  environment env          = make_environment();
   float3      env_radiance = environment_radiance(env, WorldRayDirection());
 
   path.radiance += environment_miss_contribution(path, env_radiance);
@@ -312,18 +314,18 @@ void rayShadowMissMain(inout shadow_payload payload)
 [shader("anyhit")]
 void rayShadowAnyHitMain(inout shadow_payload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
-  // 只按需取材质的不透明度，避免整拷 gpu_model_data / gpu_material_data
+  // 只按需取材质的不透明度，避免整拷 vulkan_model_data / vulkan_material_data
   // （any-hit 是调用最频繁的入口之一）
   float opacity        = 1.0;
   uint  material_index = scene_params.models[InstanceIndex()].material_index;
 
   // 计数上界守卫：0xFFFFFFFF（无材质）与越界 / 悬空索引都按不透明处理
-  if (material_index < scene_params.material_count)
+  if(material_index < scene_params.material_count)
   {
     opacity = clamp(scene_params.materials[material_index].opacity, 0.0, 1.0);
   }
 
-  if (opacity >= 1.0)
+  if(opacity >= 1.0)
   {
     payload.is_shadowed = true;
     AcceptHitAndEndSearch();
@@ -337,7 +339,7 @@ void rayShadowAnyHitMain(inout shadow_payload payload, in BuiltInTriangleInterse
   float u         = local_rng.next_float();
   payload.seed    = local_rng.state;
 
-  if (u >= opacity)
+  if(u >= opacity)
   {
     IgnoreHit();  // 概率穿透：本表面不遮挡，继续遍历
     return;

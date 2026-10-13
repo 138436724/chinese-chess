@@ -1,9 +1,12 @@
 #include "ui_node.h"
 
+#include "scene/scene_data_type.h"
 #include "scene/scene_manager.h"
-#include "shared/cpu_shared_types.h"
+#include "tools/file_watcher.h"
+#include "vulkan_core/vulkan_data_type.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -12,7 +15,6 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <imgui.h>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -23,12 +25,12 @@
 
 
 namespace {
+
 constexpr std::string_view MATERIAL_MANAGER           = "材质管理";
 constexpr std::string_view ADD_MATERIAL               = "添加材质";
 constexpr std::string_view MATERIAL                   = "材质";
 constexpr std::string_view MATERIAL_INDEX             = "材质ID";
-constexpr std::string_view MATERIAL_BACKGROUND_COLOR  = "背景色";
-constexpr std::string_view MATERIAL_FOREGROUND_COLOR  = "前景色";
+constexpr std::string_view MATERIAL_ALBEDO            = "反照率";
 constexpr std::string_view MATERIAL_ROUGHNESS         = "粗糙度";
 constexpr std::string_view MATERIAL_METALLIC          = "金属度";
 constexpr std::string_view MATERIAL_REFLECTANCE       = "镜面反射率";
@@ -51,6 +53,39 @@ constexpr std::string_view MODEL_ROTATION    = "旋转";
 constexpr std::string_view MODEL_SCALING     = "缩放";
 constexpr std::string_view DELETE_MODEL      = "删除物体";
 constexpr std::string_view NO_MODEL          = "无物体";
+
+struct texture_channel_name_map
+{
+    texture_channel  channel;
+    std::string_view label;
+};
+constexpr std::array CHANNEL_NAME_MAP = {texture_channel_name_map{texture_channel::albedo, ADD_IMAGE}};
+
+[[nodiscard]] std::filesystem::path pick_image_file()
+{
+    std::filesystem::path file_path;
+
+#ifdef _WIN32
+    TCHAR szFile[MAX_PATH] = {0};
+
+    OPENFILENAME ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize  = sizeof(ofn);
+    ofn.lpstrFile    = szFile;
+    ofn.nMaxFile     = sizeof(szFile);
+    ofn.lpstrFilter  = L"image\0*.png\0All\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+
+    if (GetOpenFileName(&ofn))
+    {
+        file_path = szFile;
+    }
+#endif  // _WIN32
+
+    return file_path;
+}
+
 }  // namespace
 
 
@@ -63,6 +98,15 @@ void ui_node::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
 
 void ui_node::update()
 {
+    for (const auto& [path, handle] : textures)
+    {
+        if (manager.get(handle) != nullptr && FILE_WATCHER.is_file_modified(path))
+        {
+            std::ignore = manager.reload_texture(handle);
+        }
+    }
+    std::erase_if(textures, [this](const auto& _pair) { return manager.get(_pair.second) == nullptr; });
+
     update_model();
     update_material();
 }
@@ -75,70 +119,64 @@ void ui_node::update_material()
 
     if (ImGui::Button(ADD_MATERIAL.data()))
     {
-        materials.push_back(manager.create<cpu_material_data>());
+        materials.push_back(manager.create_material());
     }
 
     std::optional<size_t> delete_index = std::nullopt;
     std::string           header_label;
     for (size_t i = 0; i < materials.size(); ++i)
     {
-        ImGui::PushID(static_cast<int>(i));
+        auto* material_ptr = manager.get(materials.at(i));
+        if (material_ptr == nullptr)
+        {
+            continue;
+        }
 
-        auto& material_ptr = materials.at(i);
+        ImGui::PushID(static_cast<int>(i));
 
         header_label.clear();
         std::format_to(std::back_inserter(header_label), "{} {}", MATERIAL, i);
 
         if (ImGui::CollapsingHeader(header_label.c_str(), ImGuiTreeNodeFlags_None))
         {
-            if (ImGui::ColorEdit3(MATERIAL_BACKGROUND_COLOR.data(), glm::value_ptr(material_ptr->background_color)))
+            if (ImGui::ColorEdit3(MATERIAL_ALBEDO.data(), glm::value_ptr(material_ptr->albedo)))
             {
                 manager.need_material_update();
             }
 
-            if (ImGui::ColorEdit3(MATERIAL_FOREGROUND_COLOR.data(), glm::value_ptr(material_ptr->foreground_color)))
+            for (const auto& row : CHANNEL_NAME_MAP)
             {
-                manager.need_material_update();
-            }
+                const auto& channel_map = material_ptr->textures[std::to_underlying(row.channel)];
 
-            if (!textures.empty())
-            {
-                ImGui::TextUnformatted(textures.at(material_ptr->alpha_map).generic_string().c_str());
-                ImGui::SameLine();
-            }
-
-            if (ImGui::Button(ADD_IMAGE.data()))
-            {
-                std::filesystem::path file_path;
-
-#ifdef _WIN32
-                TCHAR szFile[MAX_PATH] = {0};
-
-                OPENFILENAME ofn;
-                ZeroMemory(&ofn, sizeof(ofn));
-                ofn.lStructSize  = sizeof(ofn);
-                ofn.lpstrFile    = szFile;
-                ofn.nMaxFile     = sizeof(szFile);
-                ofn.lpstrFilter  = L"image\0*.png\0All\0*.*\0";
-                ofn.nFilterIndex = 1;
-                ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-
-                if (GetOpenFileName(&ofn))
+                if (!textures.empty())
                 {
-                    file_path = szFile;
-                }
-#endif  // _WIN32
-
-                if (!file_path.empty())
-                {
-                    if (material_ptr->alpha_map)
+                    const auto texture_path = std::ranges::find_if(textures, [&channel_map](const auto& _pair) {
+                        return _pair.second == channel_map;
+                    });
+                    if (texture_path != textures.end())
                     {
-                        std::erase_if(textures, [&](const auto& pair) { return pair.first == material_ptr->alpha_map; });
+                        ImGui::TextUnformatted(texture_path->first.generic_string().c_str());
+                        ImGui::SameLine();
                     }
-                    material_ptr->alpha_map = manager.create<cpu_image_data>(file_path, false, sampler_type::font);
-                    textures.emplace(material_ptr->alpha_map, file_path);
-                    manager.need_material_update();
                 }
+
+                ImGui::PushID(static_cast<int>(std::to_underlying(row.channel)));
+
+                if (ImGui::Button(row.label.data()))
+                {
+                    const std::filesystem::path file_path = pick_image_file();
+                    if (!file_path.empty())
+                    {
+                        const auto handle = manager.create_texture(file_path, texture_usage::color);
+                        if (handle.is_valid())
+                        {
+                            manager.set_material_texture(materials.at(i), row.channel, handle);
+                            textures.insert_or_assign(file_path, handle);
+                        }
+                    }
+                }
+
+                ImGui::PopID();
             }
 
             // 粗糙度下限交给着色器（alpha 有数值下限），UI 允许到 0（完美镜面）
@@ -200,8 +238,8 @@ void ui_node::update_material()
 
     if (delete_index.has_value())
     {
+        manager.destroy(materials.at(*delete_index));
         materials.erase(materials.begin() + static_cast<std::ptrdiff_t>(*delete_index));
-        manager.need_material_update();
     }
 
     if (materials.empty())
@@ -238,7 +276,11 @@ void ui_node::update_model()
 
         if (!file_path.empty())
         {
-            models.push_back(manager.create<cpu_model_data>(file_path));
+            const auto handle = manager.create_model(file_path);
+            if (handle.is_valid())
+            {
+                models.push_back(handle);
+            }
         }
     }
 
@@ -246,9 +288,13 @@ void ui_node::update_model()
     std::string           header_label;
     for (size_t i = 0; i < models.size(); ++i)
     {
-        ImGui::PushID(static_cast<int>(i));
+        auto* model_ptr = manager.get(models.at(i));
+        if (model_ptr == nullptr)
+        {
+            continue;
+        }
 
-        auto& model_ptr = models.at(i);
+        ImGui::PushID(static_cast<int>(i));
 
         header_label.clear();
         std::format_to(std::back_inserter(header_label), "{} {}", MODEL, i);
@@ -298,10 +344,10 @@ void ui_node::update_model()
                 }
                 all_material_items.push_back('\0');
 
-                int material_index = get_material_index(model_ptr->material).value_or(-1);
+                int material_index = material_index_of(model_ptr->material).value_or(-1);
                 if (ImGui::Combo(MATERIAL_INDEX.data(), &material_index, all_material_items.c_str()))
                 {
-                    model_ptr->material = materials.at(material_index);
+                    model_ptr->material = materials.at(static_cast<size_t>(material_index));
                     manager.need_model_update();
                 }
             }
@@ -317,8 +363,8 @@ void ui_node::update_model()
 
     if (delete_index.has_value())
     {
+        manager.destroy(models.at(*delete_index));
         models.erase(models.begin() + static_cast<std::ptrdiff_t>(*delete_index));
-        manager.need_model_update();
     }
 
     if (models.empty())
@@ -327,21 +373,12 @@ void ui_node::update_model()
     }
 }
 
-std::optional<int> ui_node::get_material_index(const std::weak_ptr<cpu_material_data>& _material) const noexcept
+std::optional<int> ui_node::material_index_of(material_handle _material) const noexcept
 {
-    const auto materials_with_index = materials | std::views::enumerate;
-
-    const std::owner_less<void> cmp;
-    const auto                  iter = std::ranges::find_if(materials_with_index, [&](const auto& p) {
-        return !cmp(std::get<1>(p), _material) && !cmp(_material, std::get<1>(p));
-    });
-
-    if (iter != materials_with_index.end())
-    {
-        return static_cast<int>(std::get<0>(*iter));
-    }
-    else
+    const auto iter = std::ranges::find(materials, _material);
+    if (iter == materials.end())
     {
         return std::nullopt;
     }
+    return static_cast<int>(std::distance(materials.begin(), iter));
 }

@@ -1,17 +1,17 @@
 #pragma once
 
+#include "scene/scene_handle.h"
 #include "tools/record_loader.h"
 
 #include <array>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
+#include <glm/glm.hpp>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
-struct cpu_model_data;
-struct cpu_material_data;
 class scene_manager;
 
 class ui_record
@@ -29,6 +29,13 @@ private:
     //all_board_state capture_board_state();
     void restore_board_state(uint32_t _index) noexcept;
 
+    void rebuild_piece_materials(std::unordered_map<PIECE_TYPE, material_handle>& _materials,
+                                 std::wstring_view                                _characters,
+                                 std::u16string_view                              _piece_names,
+                                 const glm::vec3&                                 _background_color,
+                                 const glm::vec3&                                 _foreground_color,
+                                 const glm::vec3&                                 _absorption);
+
     void prev_step() noexcept;
     void next_step() noexcept;
 
@@ -42,11 +49,11 @@ private:
 
     scene_manager& manager;
 
-    std::shared_ptr<cpu_model_data>                 chess_board;
-    std::shared_ptr<cpu_model_data>                 chess_board_line;
-    std::array<std::shared_ptr<cpu_model_data>, 32> all_chess_pieces;
+    model_handle                 chess_board;
+    model_handle                 chess_board_line;
+    std::array<model_handle, 32> all_chess_pieces;
 
-    std::vector<all_board_state> board_state = {record_loader::get_init_all_board()};
-    std::unordered_map<PIECE_TYPE, std::shared_ptr<cpu_material_data>> red_chess_piece_materials;
-    std::unordered_map<PIECE_TYPE, std::shared_ptr<cpu_material_data>> black_chess_piece_materials;
+    std::vector<all_board_state>                    board_state = {record_loader::get_init_all_board()};
+    std::unordered_map<PIECE_TYPE, material_handle> red_chess_piece_materials;
+    std::unordered_map<PIECE_TYPE, material_handle> black_chess_piece_materials;
 };

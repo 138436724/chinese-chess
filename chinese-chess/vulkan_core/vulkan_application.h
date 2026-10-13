@@ -87,9 +87,9 @@ private:
     vulkan_recycle_bin                recycle_bin;
     std::vector<vulkan_commandbuffer> commandbuffers;
 
-    vulkan_buffer                  ocio_ubo;
-    std::vector<vulkan_image>      ocio_images;
-    std::vector<vk::raii::Sampler> ocio_samplers;
+    vulkan_buffer               ocio_ubo;
+    std::vector<vulkan_image>   ocio_images;
+    std::vector<vulkan_sampler> ocio_samplers;
 
     vulkan_image*  bind_scene_image = nullptr;
     vulkan_image*  bind_ui_image    = nullptr;

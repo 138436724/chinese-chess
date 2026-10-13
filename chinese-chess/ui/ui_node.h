@@ -1,15 +1,13 @@
 #pragma once
 
+#include "scene/scene_handle.h"
+
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
 
-struct cpu_model_data;
-struct cpu_material_data;
-struct cpu_image_data;
 class scene_manager;
 
 class ui_node
@@ -26,11 +24,12 @@ private:
     void update_material();
     void update_model();
 
-    [[nodiscard]] std::optional<int> get_material_index(const std::weak_ptr<cpu_material_data>& _material) const noexcept;
+    [[nodiscard]] std::optional<int> material_index_of(material_handle _material) const noexcept;
 
     scene_manager& manager;
 
-    std::vector<std::shared_ptr<cpu_material_data>>                            materials;
-    std::vector<std::shared_ptr<cpu_model_data>>                               models;
-    std::unordered_map<std::shared_ptr<cpu_image_data>, std::filesystem::path> textures;
+    std::vector<material_handle> materials;
+    std::vector<model_handle>    models;
+
+    std::unordered_map<std::filesystem::path, texture_handle> textures;
 };

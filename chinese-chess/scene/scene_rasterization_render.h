@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_data_type.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_pipeline.h"
 
@@ -16,6 +17,7 @@ class vulkan_queue;
 class scene_model_manager;
 class scene_material_manager;
 class scene_light_manager;
+class scene_texture_manager;
 
 class scene_rasterization_render
 {
@@ -31,18 +33,19 @@ public:
                                const scene_model_manager&      _model_manager,
                                const scene_material_manager&   _material_manager,
                                const scene_light_manager&      _light_manager,
+                               const scene_texture_manager&    _texture_manager,
                                vulkan_image&                   _render_output,
                                vk::Format                      _color_format);
     ~scene_rasterization_render() = default;
 
     void resize(uint32_t _width, uint32_t _height);
     void update();
-    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index);
+    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, const vulkan_environment_data& _environment);
     void recreate();
     void reset_accumulation() noexcept;
 
 private:
-    [[nodiscard]] vulkan_pipeline create_sky_pipeline(vk::Format _color_format);
+    [[nodiscard]] vulkan_pipeline create_environment_pipeline(vk::Format _color_format);
     [[nodiscard]] vulkan_pipeline create_pipeline(vk::Format _color_format);
     void                          update_descriptor();
 
@@ -59,6 +62,7 @@ private:
     const scene_model_manager&    model_manager;
     const scene_material_manager& material_manager;
     const scene_light_manager&    light_manager;
+    const scene_texture_manager&  texture_manager;
     vulkan_image&                 render_output;
 
     uint32_t         width         = 0;
@@ -71,7 +75,7 @@ private:
 
     vulkan_image                         color_image;
     vulkan_image                         depth_image;
-    vulkan_pipeline                      sky_pipeline;
+    vulkan_pipeline                      environment_pipeline;
     vulkan_pipeline                      pipeline;
     vk::raii::DescriptorPool             descriptor_pool = nullptr;
     std::vector<vk::raii::DescriptorSet> descriptor_sets;

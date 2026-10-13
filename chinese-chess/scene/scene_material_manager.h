@@ -1,96 +1,73 @@
 #pragma once
 
-#include "tools/image_helper.h"
+#include "scene_data_type.h"
+#include "scene_handle.h"
+#include "scene_handle_map.h"
 #include "vulkan_core/vulkan_buffer.h"
-#include "vulkan_core/vulkan_sampler.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <expected>
-#include <filesystem>
-#include <memory>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <unordered_map>
+#include <ranges>
 #include <vector>
 
-struct cpu_material_data;
-struct cpu_image_data;
-class vulkan_image;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
+class scene_texture_manager;
 
 class scene_material_manager
 {
 public:
-    scene_material_manager(const vma::raii::Allocator&     _allocator,
-                           const vk::raii::PhysicalDevice& _physical_device,
-                           const vk::raii::Device&         _device,
-                           vulkan_recycle_bin&             _recycle_bin,
-                           vulkan_semaphore&               _semaphore,
-                           const vulkan_queue&             _graphic_queue,
-                           const vulkan_queue&             _transfer_queue);
+    scene_material_manager(const vma::raii::Allocator& _allocator,
+                           const vk::raii::Device&     _device,
+                           vulkan_recycle_bin&         _recycle_bin,
+                           vulkan_semaphore&           _semaphore,
+                           const vulkan_queue&         _graphic_queue,
+                           const vulkan_queue&         _transfer_queue,
+                           scene_texture_manager&      _texture_manager) noexcept;
     ~scene_material_manager() = default;
 
-    [[nodiscard]] std::shared_ptr<cpu_material_data> create();
-    [[nodiscard]] std::shared_ptr<cpu_image_data>    create(const std::filesystem::path&          _font_path,
-                                                            uint32_t                              _font_size,
-                                                            std::wstring_view                     _characters,
-                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
-                                                            uint32_t                              _padding);
-    [[nodiscard]] std::shared_ptr<cpu_image_data>    create(const std::filesystem::path&          _image_path,
-                                                            bool                                  _is_hdr,
-                                                            sampler_type                          _type,
-                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    [[nodiscard]] material_handle      create();
+    [[nodiscard]] scene_material_data* get(material_handle _handle) noexcept;
+    [[nodiscard]] bool                 destroy(material_handle _handle) noexcept;
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear();
 
     void need_update() noexcept;
 
-    [[nodiscard]] bool reload_textures(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void set_texture(material_handle _handle, texture_channel _channel, texture_handle _texture);
 
     [[nodiscard]] size_t               get_materials_size() const noexcept;
-    [[nodiscard]] size_t               get_textures_size() const noexcept;
     [[nodiscard]] const vulkan_buffer& get_ssbo_buffer() const noexcept;
-    [[nodiscard]] std::optional<uint32_t> get_material_index(const std::weak_ptr<cpu_material_data>& _material) const noexcept;
-    [[nodiscard]] std::optional<uint32_t> get_texture_index(const std::weak_ptr<cpu_image_data>& _texture) const noexcept;
-    [[nodiscard]] std::vector<vk::DescriptorImageInfo> get_descriptor_info() const;
+    [[nodiscard]] uint32_t             get_material_binding(material_handle _handle) const noexcept;
+
+    [[nodiscard]] auto live_texture_references() const noexcept
+    {
+        return materials.live()
+               | std::views::transform([](const auto& _entry) -> const auto& { return _entry.value.data.textures; })
+               | std::views::join;
+    }
 
 private:
-    [[nodiscard]] std::expected<void, std::string> upload_ktx2(const ktx2_texture_ptr&               _ktx2,
-                                                               vk::Format                            _target_format,
-                                                               vulkan_image&                         _image,
-                                                               std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
-                                                               const std::string&                    _name) const;
+    struct material_entry
+    {
+        scene_material_data data;
+        uint32_t            binding = scene_handle<material_tag>::npos;
+    };
 
     void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
 
-    [[nodiscard]] const vk::raii::Sampler& get_sampler(sampler_type _type) const noexcept;
-
-    const vma::raii::Allocator&     allocator;
-    const vk::raii::PhysicalDevice& physical_device;
-    const vk::raii::Device&         device;
-    vulkan_recycle_bin&             recycle_bin;
-    vulkan_semaphore&               semaphore;
-    const vulkan_queue&             graphic_queue;
-    const vulkan_queue&             transfer_queue;
+    const vma::raii::Allocator& allocator;
+    const vk::raii::Device&     device;
+    vulkan_recycle_bin&         recycle_bin;
+    vulkan_semaphore&           semaphore;
+    const vulkan_queue&         graphic_queue;
+    const vulkan_queue&         transfer_queue;
+    scene_texture_manager&      texture_manager;
 
     bool is_dirty = true;
 
-    std::vector<std::weak_ptr<cpu_material_data>>                            materials;
-    std::vector<std::shared_ptr<cpu_image_data>>                             images;  // need order
-    std::unordered_map<std::filesystem::path, std::weak_ptr<cpu_image_data>> images_cache;
-
-    vulkan_sampler diffuse_sampler;
-    vulkan_sampler font_sampler;
-    vulkan_sampler skybox_sampler;
-
-    vk::Format compressed_hdr_format  = vk::Format::eBc6HUfloatBlock;
-    vk::Format compressed_ldr_format  = vk::Format::eBc7UnormBlock;
-    vk::Format compressed_font_format = vk::Format::eBc4UnormBlock;
-
-    vulkan_buffer ssbo;
+    scene_handle_map<material_entry, material_tag> materials;
+    vulkan_buffer                                  ssbo;
 };

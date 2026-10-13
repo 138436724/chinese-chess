@@ -48,12 +48,31 @@ target_compile_definitions(chinese-chess PRIVATE
 )
 
 if(WIN32)
+    # add defination
     target_compile_definitions(chinese-chess PRIVATE
         NOMINMAX
         UNICODE
         _UNICODE
         VK_USE_PLATFORM_WIN32_KHR
     )
+
+    # find renderdoc
+    set(RenderDoc_ROOT "" CACHE PATH "RenderDoc install directory must contains renderdoc_app.h")
+    find_program(RENDERDOC_EXECUTABLE NAMES qrenderdoc renderdoccmd)
+    set(_renderdoc_hints "${RenderDoc_ROOT}" "$ENV{RENDERDOC_ROOT}")
+    if(RENDERDOC_EXECUTABLE)
+        get_filename_component(_renderdoc_exe_dir "${RENDERDOC_EXECUTABLE}" DIRECTORY)
+        list(APPEND _renderdoc_hints "${_renderdoc_exe_dir}")
+    endif()
+    find_path(RENDERDOC_INCLUDE_DIR
+        NAMES renderdoc_app.h
+        HINTS ${_renderdoc_hints}
+        PATHS "$ENV{ProgramFiles}/RenderDoc" "$ENV{LOCALAPPDATA}/Programs/RenderDoc"
+    )
+    if(RENDERDOC_INCLUDE_DIR)
+        target_include_directories(chinese-chess PRIVATE "${RENDERDOC_INCLUDE_DIR}")
+        target_compile_definitions(chinese-chess PRIVATE HAS_RENDERDOC)
+    endif()
 endif()
 
 

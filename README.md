@@ -58,7 +58,7 @@
 | **时间线信号量 + 回收站** | 资源与 signal 值配对，GPU 越过即销毁；一次性 CB 立即提交，`begin_record` 不做 CPU 等待，帧槽 pacing 由循环顶部 `wait_frame()` 承担；帧循环无 Fence / 无 `vkDeviceWaitIdle` |
 | **智能队列选择** | `cartesian_product` 穷举队列族组合（专用传输队列 10× 加分）；BLAS/TLAS 构建与全部帧提交都在 graphics 队列 |
 | **显式同步与上传** | 消费者 stage/access 由调用点传入（几何含 AS 构建读、间接参数 `eDrawIndirect`、纹理 `eShaderSampledRead`），barrier 一律由 `transition_state()` 依追踪状态生成；≤ 64 KiB 且 4 字节对齐的上传走 `vkCmdUpdateBuffer` 内联，超限才走两段式 QFOT |
-| **管理器架构** | model（顶点/索引、BLAS/TLAS、间接绘制）/ material（材质、bindless 纹理、KTX2）/ light 三个 manager 各自自查 `is_dirty`，`scene_manager` 折叠 `any_dirty \|\| is_render_dirty` 决定重建描述符或仅重置累积；`meshes_dirty` 区分几何与实例更新 |
+| **管理器架构** | model（顶点/索引、BLAS/TLAS、间接绘制）/ material（材质、bindless 纹理、KTX2）/ light 三个 manager 各自自查 `is_dirty`，`scene_manager` 折叠四个 `update()` 的返回值 + `need_descriptor_update` 决定重建描述符或仅重置累积；`meshes_dirty` 区分几何与实例更新 |
 | **异步截图** | 三段式 QFOT 回读后把 wait 值 + staging buffer 交给 `std::jthread`：等 GPU 信号 → `invalidate()` → CPU OCIO → OIIO 写 EXR/PNG |
 | **KTX2 纹理管线** | 纹理与字体图集统一 **UASTC 中间格式**（内存压缩 → 同步写 sidecar → 加载时按设备转码），F6 同槽位换图，旧 imageview 走回收站 |
 | **Pipeline / 着色器缓存** | pipeline cache 单实例 RAII（启动读盘、退出写盘、F5 不写盘，校验 vendor/device/UUID）；着色器缓存为依赖感知的单一序列化文件 `resources/cache/shader_cache.cache`（Debug 版 `shader_cache_debug.cache`），键 = 路径 + 入口集合 |
@@ -175,7 +175,7 @@ UI「渲染模式」下拉框（`光栅化` / `光线追踪 (RT Pipeline)` / `�
 
 **分层与命名**：`window/` 只碰窗口与帧循环，`ui/` 经 `scene_manager&` 操作场景，`scene/` 直接持有三个 manager 的具体类型；UI 面板与渲染器都做 `pro::proxy` 类型擦除。命名：`gpu_*` = 与 Slang 共用声明的 GPU 结构、`cpu_*` = CPU 侧场景数据（都在 `shared/`）、`scene_*` = 场景层管理器 / 渲染器与 `scene_camera`、`vulkan_*` = Vulkan RAII 包装（命名空间 `vulkan_shared_utils` 是唯一例外）。数据路径：`model_loader` → `cpu_model_info`（顶点/索引 + BLAS）→ `scene_model_manager` 上传缓冲并构建 TLAS，材质与灯光数组经各自 manager 上传，纹理走 bindless 槽。
 
-**每帧数据流**：`wait_frame()`（等本帧槽上次 signal）→ `glfwPollEvents()` → `ui->update()` → `scene->update()`（脏检查：重传数组、重建 BLAS/TLAS 与间接绘制命令，`meshes_dirty` 才重传顶点索引；`any_dirty || is_render_dirty` 时重建描述符，否则仅重置累积）→ `ui->render()` 与 `scene->render(need_capture)`（各自写场景 UBO、提交并 signal timeline）→ `app->render({ui_wait, scene_wait})`（回收站 release → acquire swapchain → barrier → blend 全屏三角形合成 scene+UI → present）。`vulkan_application` 为两步初始化：先 `init` 建 Instance，再 `create` 建设备/交换链/管线，其间创建 Window Surface。
+**每帧数据流**：`wait_frame()`（等本帧槽上次 signal）→ `glfwPollEvents()` → `ui->update()` → `scene->update()`（脏检查：重传数组、重建 BLAS/TLAS 与间接绘制命令，`meshes_dirty` 才重传顶点索引；四个 `update()` 任一报告变化或 `need_descriptor_update` 时重建描述符，只有相机动时仅重置累积）→ `ui->render()` 与 `scene->render(need_capture)`（各自写场景 UBO、提交并 signal timeline）→ `app->render({ui_wait, scene_wait})`（回收站 release → acquire swapchain → barrier → blend 全屏三角形合成 scene+UI → present）。`vulkan_application` 为两步初始化：先 `init` 建 Instance，再 `create` 建设备/交换链/管线，其间创建 Window Surface。
 
 ---
 
@@ -189,7 +189,7 @@ UI「渲染模式」下拉框（`光栅化` / `光线追踪 (RT Pipeline)` / `�
 ### 光栅化管线（`scene_rasterization_render.slang`）
 
 - 前向 PBR + MSAA/resolve（自动取设备最高采样数），单次 `drawIndexedIndirect`（`is_show` → instanceCount 0/1），顶点输入 `{position, normal, uv}` + 深度测试 + 背面剔除；与光追共用 BRDF 与光源采样，环境光为解析式廉价 IBL。**没有可见性项 ⇒ 无阴影 / 无 AO**。
-- **天空盒**：`skyVertMain` / `skyFragMain` 全屏三角形（无顶点输入、深度测试/写入全关），方向由 `proj_inv` / `view_inv` 反投影近远平面之差得到（与 `rayGenMain` 同一套），直接采样 equirect 2D HDR、**不生成 CubeMap**；与几何管线共用同一批 descriptor set（`b0` UBO、`b1` bindless 纹理）。
+- **天空盒**：`environmentVertMain` / `environmentFragMain` 全屏三角形（无顶点输入、深度测试/写入全关），方向由 `proj_inv` / `view_inv` 反投影近远平面之差得到（与 `rayGenMain` 同一套），直接采样 equirect 2D HDR、**不生成 CubeMap**；与几何管线共用同一批 descriptor set（`b0` UBO、`b1` bindless 纹理）。
 
 ### 色彩管理与纹理
 
@@ -206,7 +206,7 @@ UI「渲染模式」下拉框（`光栅化` / `光线追踪 (RT Pipeline)` / `�
 |--------|------|--------|------|
 | `scene_raytracing_render.slang` | RT | `rayGenMain` / `rayClosestHitMain` / `rayMissMain` / `rayShadowMissMain` / `rayShadowAnyHitMain` | 参考实现：无偏 MC 路径追踪 |
 | `scene_rayquery_render.slang` | Compute | `rayQueryComputeMain`（`[numthreads(8,8,1)]`） | 与 RT 逐像素同分布，只换求交 API |
-| `scene_rasterization_render.slang` | Graphics | `vertMain` / `fragMain`（几何）、`skyVertMain` / `skyFragMain`（天空盒） | 前向 PBR + MSAA + 全屏三角形天空盒 |
+| `scene_rasterization_render.slang` | Graphics | `vertMain` / `fragMain`（几何）、`environmentVertMain` / `environmentFragMain`（天空盒） | 前向 PBR + MSAA + 全屏三角形天空盒 |
 | `vulkan_blend_image.slang` | Graphics | `vertMain` / `fragMain` | scene + UI alpha 合成；`ocio_conversion()` 桩须保持单行（按整行替换注入 OCIO） |
 | `path_tracing.slang` | 模块 | — | 两条光追路径共享的上下文（命中几何、材质解析、插值、RR 权重、环境 miss 贡献、累积写入） |
 | `pbr.slang` | 模块 | — | `microfacet`（GGX + Smith + VNDF 采样/eval/pdf）、`pbr_material`、`bsdf_sample`、`shading_context` |

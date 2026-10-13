@@ -1,6 +1,6 @@
 #include "vulkan_shader_binding_table.h"
 
-#include "shared/vulkan_shared_utils.h"
+#include "vulkan_common.h"
 
 #include <array>
 #include <concepts>
@@ -66,7 +66,7 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     // - miss_region:   points to Group 1 (2 entries: miss_primary + miss_shadow, stride = miss_entry_size)
     // - hit_region:    points to Group 3 (2 entries: hit_primary + hit_shadow, stride = hit_entry_size)
 
-    const uint32_t raygen_entry_size = static_cast<uint32_t>(vulkan_shared_utils::align_up(handle_size, handle_alignment));
+    const uint32_t raygen_entry_size = static_cast<uint32_t>(vulkan_common::align_up(handle_size, handle_alignment));
     const uint32_t miss_entry_count = _group_count >= 5 ? 2 : 1;  // 2 miss shaders (primary + shadow) if 5 groups present
     const uint32_t hit_entry_count = _group_count >= 5 ? 2 : 1;  // 2 hit shaders (primary + shadow) if 5 groups present
 
@@ -75,19 +75,19 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     const uint32_t raygen_offset = 0;
     // Group 1: miss_primary
     const uint32_t miss_primary_offset =
-        static_cast<uint32_t>(vulkan_shared_utils::align_up(raygen_offset + raygen_entry_size, base_alignment));
+        static_cast<uint32_t>(vulkan_common::align_up(raygen_offset + raygen_entry_size, base_alignment));
     // Group 2: miss_shadow
     const uint32_t miss_shadow_offset =
-        static_cast<uint32_t>(vulkan_shared_utils::align_up(miss_primary_offset + raygen_entry_size, base_alignment));
+        static_cast<uint32_t>(vulkan_common::align_up(miss_primary_offset + raygen_entry_size, base_alignment));
     // Group 3: hit_primary
     const uint32_t hit_primary_offset =
-        static_cast<uint32_t>(vulkan_shared_utils::align_up(miss_shadow_offset + raygen_entry_size, base_alignment));
+        static_cast<uint32_t>(vulkan_common::align_up(miss_shadow_offset + raygen_entry_size, base_alignment));
     // Group 4: hit_shadow
     const uint32_t hit_shadow_offset =
-        static_cast<uint32_t>(vulkan_shared_utils::align_up(hit_primary_offset + raygen_entry_size, base_alignment));
+        static_cast<uint32_t>(vulkan_common::align_up(hit_primary_offset + raygen_entry_size, base_alignment));
     // Total size
     const vk::DeviceSize buffer_size =
-        static_cast<uint64_t>(vulkan_shared_utils::align_up(hit_shadow_offset + raygen_entry_size, base_alignment));
+        static_cast<uint64_t>(vulkan_common::align_up(hit_shadow_offset + raygen_entry_size, base_alignment));
 
     // Stride must match actual spacing between groups (base_alignment-aligned), not handle_alignment-aligned
     const uint32_t miss_stride = miss_shadow_offset - miss_primary_offset;

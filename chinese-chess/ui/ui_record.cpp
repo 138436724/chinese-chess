@@ -1,9 +1,10 @@
 #include "ui_record.h"
 
+#include "scene/scene_data_type.h"
 #include "scene/scene_manager.h"
-#include "shared/cpu_shared_types.h"
 #include "tools/font_loader.h"
 #include "tools/model_loader.h"
+#include "vulkan_core/vulkan_data_type.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -13,7 +14,7 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 #include <iostream>
-#include <memory>
+#include <iterator>
 #include <print>
 #include <ranges>
 #include <string>
@@ -38,6 +39,17 @@ constexpr uint32_t board_font_padding = 2;
 constexpr float chess_board_z      = -1.5f;
 constexpr float chess_board_line_z = -1.45f;
 constexpr float chess_piece_z      = -1.4f;
+
+constexpr glm::vec3 board_background_color = glm::vec3(0.87843f, 0.69020f, 0.48627f);
+constexpr glm::vec3 board_foreground_color = glm::vec3(0.0f, 0.0f, 0.0f);
+
+constexpr glm::vec3 red_piece_background_color = glm::vec3(0.95f, 0.92f, 0.85f);
+constexpr glm::vec3 red_piece_foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
+constexpr glm::vec3 red_piece_absorption       = glm::vec3(1.5f, 1.2f, 1.0f);
+
+constexpr glm::vec3 black_piece_background_color = glm::vec3(0.15f, 0.45f, 0.32f);
+constexpr glm::vec3 black_piece_foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
+constexpr glm::vec3 black_piece_absorption       = glm::vec3(4.0f, 1.6f, 1.0f);
 
 [[nodiscard]] constexpr glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
 {
@@ -85,90 +97,115 @@ ui_record::ui_record(scene_manager& _manager)
     : manager(_manager)
 {
     // create board
-    auto chess_board_material              = manager.create<cpu_material_data>();
-    chess_board_material->background_color = glm::vec3(0.87843, 0.69020, 0.48627);
-    chess_board_material->foreground_color = glm::vec3(0., 0., 0.);
-    chess_board_material->roughness        = 0.4f;
-    chess_board_material->reflectance      = 0.4f;
+    const auto chess_board_material = manager.create_material();
+    if (auto* material = manager.get(chess_board_material))
+    {
+        material->albedo      = glm::vec3(1.f);
+        material->roughness   = 0.4f;
+        material->reflectance = 0.4f;
+    }
 
-    chess_board               = manager.create<cpu_model_data>(std::string(MODELS_PATH) + "chess_board.glb");
-    chess_board->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_z));
-    chess_board->custom_index = 0u;
-    chess_board->material     = std::move(chess_board_material);
+    chess_board = manager.create_model(std::string(MODELS_PATH) + "chess_board.glb");
+    if (auto* model = manager.get(chess_board))
+    {
+        model->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_z));
+        model->material     = chess_board_material;
+    }
 
 
     // create board line
-    chess_board_line               = manager.create<cpu_model_data>(std::string(MODELS_PATH) + "chess_board_line.glb");
-    chess_board_line->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_line_z));
-    chess_board_line->custom_index = 1u;
+    chess_board_line = manager.create_model(std::string(MODELS_PATH) + "chess_board_line.glb");
+    if (auto* model = manager.get(chess_board_line))
+    {
+        model->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_board_line_z));
+    }
 
 
-    // create all pieces and all materials
-    std::ranges::for_each(all_chess_pieces, [this](auto& p) {
-        p               = manager.create<cpu_model_data>(std::string(MODELS_PATH) + "chess_piece.glb");
-        p->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_piece_z));
-        p->custom_index = 2u;
-    });
+    // create all pieces
+    for (auto& piece : all_chess_pieces)
+    {
+        piece = manager.create_model(std::string(MODELS_PATH) + "chess_piece.glb");
+        if (auto* model = manager.get(piece))
+        {
+            model->model_matrix = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, chess_piece_z));
+        }
+    }
 }
 
 void ui_record::resize(uint32_t _width, uint32_t _height)
 {
-    width  = _width;
-    height = _height;
+    const bool size_changed = _height != height;
+    width                   = _width;
+    height                  = _height;
 
-    chess_board->material->alpha_map =
-        manager.create<cpu_image_data>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                       static_cast<uint32_t>(height / 9.0 * 2), L"楚河汉界", board_font_padding);
+    if (!size_changed)
+    {
+        return;
+    }
 
-    std::ranges::for_each(std::views::zip(std::wstring_view(L"帥仕相傌俥炮兵"), std::u16string_view(u"帥仕相傌俥炮兵")),
-                          [this](const auto& _pair) {
-                              const auto& [chw, chu]           = _pair;
-                              auto piece_material              = manager.create<cpu_material_data>();
-                              piece_material->background_color = glm::vec3(0.95f, 0.92f, 0.85f);
-                              piece_material->foreground_color = glm::vec3(0.45f, 0.08f, 0.06f);
+    const std::string font_path = std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf";
 
-                              piece_material->roughness    = 0.25f;
-                              piece_material->reflectance  = 0.5f;
-                              piece_material->metallic     = 0.0f;
-                              piece_material->ior          = 1.5f;
-                              piece_material->transmission = 0.35f;
-                              piece_material->absorption   = glm::vec3(1.5f, 1.2f, 1.0f);
-                              piece_material->opacity      = 1.0f;
+    if (auto* board = manager.get(chess_board); board != nullptr)
+    {
+        manager.set_material_texture(board->material, texture_channel::albedo,
+                                     manager.create_texture(font_path, static_cast<uint32_t>(height / 9.0 * 2), L"楚河汉界",
+                                                            board_font_padding, board_foreground_color, board_background_color));
+    }
 
-                              const auto piece_image =
-                                  manager.create<cpu_image_data>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                                                 static_cast<uint32_t>(height / 9.0 * 2),
-                                                                 std::wstring(1, chw), board_font_padding);
-                              piece_material->alpha_map = piece_image;
+    rebuild_piece_materials(red_chess_piece_materials, L"帥仕相傌俥炮兵", u"帥仕相傌俥炮兵", red_piece_background_color,
+                            red_piece_foreground_color, red_piece_absorption);
+    rebuild_piece_materials(black_chess_piece_materials, L"將士象馬車砲卒", u"將士象馬車砲卒",
+                            black_piece_background_color, black_piece_foreground_color, black_piece_absorption);
 
-                              red_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
-                          });
+    manager.need_material_update();
 
-    std::ranges::for_each(
-        std::views::zip(std::wstring_view(L"將士象馬車砲卒"), std::u16string_view(u"將士象馬車砲卒")), [this](const auto& _pair) {
-            const auto& [chw, chu]           = _pair;
-            auto piece_material              = manager.create<cpu_material_data>();
-            piece_material->background_color = glm::vec3(0.15f, 0.45f, 0.32f);
-            piece_material->foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
+    restore_board_state(static_cast<uint32_t>(now_record_index));
+}
 
-            piece_material->roughness    = 0.25f;
-            piece_material->reflectance  = 0.5f;
-            piece_material->metallic     = 0.0f;
-            piece_material->ior          = 1.5f;
-            piece_material->transmission = 0.35f;
-            piece_material->absorption   = glm::vec3(4.0f, 1.6f, 1.0f);
-            piece_material->opacity      = 1.0f;
+void ui_record::rebuild_piece_materials(std::unordered_map<PIECE_TYPE, material_handle>& _materials,
+                                        std::wstring_view                                _characters,
+                                        std::u16string_view                              _piece_names,
+                                        const glm::vec3&                                 _background_color,
+                                        const glm::vec3&                                 _foreground_color,
+                                        const glm::vec3&                                 _absorption)
+{
+    const std::string font_path = std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf";
+    const uint32_t    font_size = static_cast<uint32_t>(height / 9.0 * 2);
 
-            const auto piece_image = manager.create<cpu_image_data>(std::string(FONTS_PATH) + "LXGWWenKaiGB-Medium.ttf",
-                                                                    static_cast<uint32_t>(height / 9.0 * 2),
-                                                                    std::wstring(1, chw), board_font_padding);
-            piece_material->alpha_map = piece_image;
+    std::ranges::for_each(std::views::zip(_characters, _piece_names), [&](const auto& _pair) {
+        const auto& [character, piece_name] = _pair;
+        const auto type                     = record_loader::get_piece_type(piece_name);
 
-            black_chess_piece_materials.emplace(record_loader::get_piece_type(chu), std::move(piece_material));
-        });
+        material_handle handle;
+        if (const auto iter = _materials.find(type); iter != _materials.end())
+        {
+            handle = iter->second;
+        }
+        else
+        {
+            handle = manager.create_material();
+            _materials.emplace(type, handle);
+        }
 
-    // init
-    restore_board_state(0);
+        auto* material = manager.get(handle);
+        if (material == nullptr)
+        {
+            return;
+        }
+
+        material->albedo       = glm::vec3(1.f);
+        material->roughness    = 0.25f;
+        material->reflectance  = 0.5f;
+        material->metallic     = 0.0f;
+        material->ior          = 1.5f;
+        material->transmission = 0.35f;
+        material->absorption   = _absorption;
+        material->opacity      = 1.0f;
+
+        manager.set_material_texture(handle, texture_channel::albedo,
+                                     manager.create_texture(font_path, font_size, std::wstring(1, character),
+                                                            board_font_padding, _foreground_color, _background_color));
+    });
 }
 
 void ui_record::update()
@@ -296,14 +333,24 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         return;
     }
 
-    std::ranges::for_each(all_chess_pieces, [](const auto& p) static { p->is_show = false; });
+    std::ranges::for_each(all_chess_pieces, [this](const auto& _handle) {
+        if (auto* model = manager.get(_handle); model != nullptr)
+        {
+            model->is_show = false;
+        }
+    });
 
     const all_board_state& state        = board_state.at(_index);
     size_t                 index_offset = 0;
     std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::BLACK)) | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& sp             = all_chess_pieces.at(index + index_offset);
-        sp->material = std::shared_ptr<cpu_material_data>(black_chess_piece_materials.at(piece.piece_type));
+        const auto& handle         = all_chess_pieces.at(index + index_offset);
+        auto*       sp             = manager.get(handle);
+        if (sp == nullptr)
+        {
+            return;
+        }
+        sp->material = black_chess_piece_materials.at(piece.piece_type);
         sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
@@ -313,15 +360,20 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
     index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
     std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::RED)) | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& sp             = all_chess_pieces.at(index + index_offset);
-        sp->material               = std::shared_ptr<cpu_material_data>(red_chess_piece_materials.at(piece.piece_type));
-        sp->is_show                = true;
+        const auto& handle         = all_chess_pieces.at(index + index_offset);
+        auto*       sp             = manager.get(handle);
+        if (sp == nullptr)
+        {
+            return;
+        }
+        sp->material = red_chess_piece_materials.at(piece.piece_type);
+        sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
                            glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::RED, piece.x, piece.y), chess_piece_z));
     });
 
-    manager.need_update();
+    manager.need_model_update();
 }
 
 void ui_record::prev_step() noexcept

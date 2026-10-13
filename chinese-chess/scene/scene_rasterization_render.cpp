@@ -4,9 +4,10 @@
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
-#include "shared/gpu_shared_types.h"
-#include "shared/vulkan_shared_utils.h"
+#include "scene_texture_manager.h"
 #include "tools/shader_compiler.h"
+#include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_data_type.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
@@ -24,10 +25,24 @@
 #include <vector>
 
 namespace {
-constexpr std::string_view VERT_ENTRY_NAME     = "vertMain";
-constexpr std::string_view FRAG_ENTRY_NAME     = "fragMain";
-constexpr std::string_view SKY_VERT_ENTRY_NAME = "skyVertMain";
-constexpr std::string_view SKY_FRAG_ENTRY_NAME = "skyFragMain";
+constexpr std::string_view VERT_ENTRY_NAME             = "vertMain";
+constexpr std::string_view FRAG_ENTRY_NAME             = "fragMain";
+constexpr std::string_view ENVIRONMENT_VERT_ENTRY_NAME = "environmentVertMain";
+constexpr std::string_view ENVIRONMENT_FRAG_ENTRY_NAME = "environmentFragMain";
+
+[[nodiscard]] consteval vk::VertexInputBindingDescription vertex_binding_description() noexcept
+{
+    return vk::VertexInputBindingDescription{0, sizeof(vulkan_model_vertex), vk::VertexInputRate::eVertex};
+}
+
+[[nodiscard]] consteval auto vertex_attribute_descriptions() noexcept
+{
+    return std::array{
+        vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(vulkan_model_vertex, position)),
+        vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(vulkan_model_vertex, normal)),
+        vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(vulkan_model_vertex, uv)),
+    };
+}
 }  // namespace
 
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&     _allocator,
@@ -41,6 +56,7 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
                                                        const scene_model_manager&      _model_manager,
                                                        const scene_material_manager&   _material_manager,
                                                        const scene_light_manager&      _light_manager,
+                                                       const scene_texture_manager&    _texture_manager,
                                                        vulkan_image&                   _render_output,
                                                        vk::Format                      _color_format)
     : allocator(_allocator)
@@ -54,20 +70,21 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     , model_manager(_model_manager)
     , material_manager(_material_manager)
     , light_manager(_light_manager)
+    , texture_manager(_texture_manager)
     , render_output(_render_output)
     , color_format(_color_format)
 {
-    ubo_offset = vulkan_shared_utils::align_up(sizeof(raster_scene_data),
-                                               physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_common::align_up(sizeof(vulkan_raster_scene_data),
+                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
-               vk::BufferCreateInfo({}, ubo_offset * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
+               vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray tracing ubo");
 
-    sky_pipeline = create_sky_pipeline(color_format);
-    pipeline     = create_pipeline(color_format);
+    environment_pipeline = create_environment_pipeline(color_format);
+    pipeline             = create_pipeline(color_format);
 }
 
 void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
@@ -84,7 +101,7 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
     // msaa color
     recycle_bin.retire(std::move(color_image), "rasterization old color image.");
     const vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, render_output.get_format(),
-                                               vk::Extent3D(width, height, 1), 1, 1, vulkan_shared_utils::MSAA_SAMPLE_COUNT,
+                                               vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT,
                                                vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment,
                                                vk::SharingMode::eExclusive, queue_array);
     const vk::ImageViewCreateInfo color_view_info({}, {}, vk::ImageViewType::e2D, render_output.get_format(), {},
@@ -94,11 +111,11 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
 
     // depth
     recycle_bin.retire(std::move(depth_image), "rasterization old depth image.");
-    const vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_shared_utils::DEPTH_FORMAT,
-                                               vk::Extent3D(width, height, 1), 1, 1, vulkan_shared_utils::MSAA_SAMPLE_COUNT,
+    const vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT,
+                                               vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT,
                                                vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment,
                                                vk::SharingMode::eExclusive, queue_array);
-    const vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_shared_utils::DEPTH_FORMAT, {},
+    const vk::ImageViewCreateInfo depth_view_info({}, {}, vk::ImageViewType::e2D, vulkan_common::DEPTH_FORMAT, {},
                                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, {}, 1, 0, 1), nullptr);
     depth_image.create(allocator, device, depth_image_info, depth_view_info, vma::MemoryUsage::eAutoPreferDevice, {},
                        vk::ClearDepthStencilValue(1.f, 0), "rasterization_depth");
@@ -109,24 +126,27 @@ void scene_rasterization_render::update()
     update_descriptor();
 }
 
-void scene_rasterization_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
+void scene_rasterization_render::render(const scene_camera&            _camera,
+                                        const vk::raii::CommandBuffer& _commandbuffer,
+                                        const vulkan_environment_data& _environment)
 {
     // update ubo
-    const raster_scene_data ubo_data{
-        .proj_matrix     = _camera.get_projection_matrix(),
-        .proj_inv_matrix = _camera.get_inv_projection_matrix(),
-        .view_matrix     = _camera.get_view_matrix(),
-        .view_inv_matrix = _camera.get_inv_view_matrix(),
-        .lights          = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .materials       = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .models          = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .light_count     = static_cast<uint32_t>(light_manager.get_lights_size()),
-        .texture_count   = static_cast<uint32_t>(material_manager.get_textures_size()),
-        .material_count  = static_cast<uint32_t>(material_manager.get_materials_size()),
-        .model_count     = static_cast<uint32_t>(model_manager.get_models_size()),
-        .skybox_index    = _skybox_index,
-        .view_position   = _camera.get_position(),
-        .exposure        = _camera.get_exposure(),
+    const vulkan_raster_scene_data ubo_data{
+        .proj_matrix           = _camera.get_projection_matrix(),
+        .proj_inv_matrix       = _camera.get_inv_projection_matrix(),
+        .view_matrix           = _camera.get_view_matrix(),
+        .view_inv_matrix       = _camera.get_inv_view_matrix(),
+        .lights                = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .materials             = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .models                = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .light_count           = static_cast<uint32_t>(light_manager.get_lights_size()),
+        .texture_count         = static_cast<uint32_t>(texture_manager.get_textures_size()),
+        .material_count        = static_cast<uint32_t>(material_manager.get_materials_size()),
+        .model_count           = static_cast<uint32_t>(model_manager.get_models_size()),
+        .environment_index     = _environment.environment_index,
+        .view_position         = _camera.get_position(),
+        .exposure              = _camera.get_exposure(),
+        .environment_intensity = _environment.environment_intensity,
     };
 
     auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
@@ -170,8 +190,8 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
 
     _commandbuffer.beginRendering(rendering_info);
 
-    _commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, sky_pipeline.get_pipeline());
-    _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, sky_pipeline.get_pipeline_layout(), 0,
+    _commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, environment_pipeline.get_pipeline());
+    _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, environment_pipeline.get_pipeline_layout(), 0,
                                       *(descriptor_sets.at(current_frame)), nullptr);
     _commandbuffer.draw(3, 1, 0, 0);
 
@@ -190,42 +210,43 @@ void scene_rasterization_render::render(const scene_camera& _camera, const vk::r
 
     _commandbuffer.endRendering();
 
-    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 void scene_rasterization_render::recreate()
 {
-    vulkan_pipeline new_sky_pipeline = create_sky_pipeline(color_format);
-    vulkan_pipeline new_pipeline     = create_pipeline(color_format);
+    vulkan_pipeline new_environment_pipeline = create_environment_pipeline(color_format);
+    vulkan_pipeline new_pipeline             = create_pipeline(color_format);
 
-    recycle_bin.retire(std::move(sky_pipeline), "old rasterization sky pipeline on reload.");
+    recycle_bin.retire(std::move(environment_pipeline), "old rasterization environment pipeline on reload.");
     recycle_bin.retire(std::move(pipeline), "old rasterization pipeline on reload.");
 
-    sky_pipeline = std::move(new_sky_pipeline);
-    pipeline     = std::move(new_pipeline);
+    environment_pipeline = std::move(new_environment_pipeline);
+    pipeline             = std::move(new_pipeline);
 }
 
 void scene_rasterization_render::reset_accumulation() noexcept {}
 
-vulkan_pipeline scene_rasterization_render::create_sky_pipeline(vk::Format _color_format)
+vulkan_pipeline scene_rasterization_render::create_environment_pipeline(vk::Format _color_format)
 {
     vulkan_pipeline new_pipeline;
 
     constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1,
                                        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
-        vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eFragment, nullptr)};
+        vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, vulkan_common::MAX_BINDLESS_TEXTURES,
+                                       vk::ShaderStageFlagBits::eFragment, nullptr)};
 
     constexpr std::array shader_stages = {
-        shader_stage_info{SKY_VERT_ENTRY_NAME, vk::ShaderStageFlagBits::eVertex},
-        shader_stage_info{SKY_FRAG_ENTRY_NAME, vk::ShaderStageFlagBits::eFragment},
+        shader_stage_info{ENVIRONMENT_VERT_ENTRY_NAME, vk::ShaderStageFlagBits::eVertex},
+        shader_stage_info{ENVIRONMENT_FRAG_ENTRY_NAME, vk::ShaderStageFlagBits::eFragment},
     };
 
     new_pipeline.create_from_shader(device, pipeline_cache, bindings, {}, {}, {},
                                     std::filesystem::path(SHADERS_PATH) / "scene_rasterization_render.slang", shader_stages,
                                     vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone,
-                                    vk::FrontFace::eCounterClockwise, vulkan_shared_utils::MSAA_SAMPLE_COUNT, vk::False,
-                                    std::span(&_color_format, 1), vulkan_shared_utils::DEPTH_FORMAT);
+                                    vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::False,
+                                    std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
 
     return new_pipeline;
 }
@@ -237,10 +258,11 @@ vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_fo
     constexpr std::array bindings{
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1,
                                        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, nullptr),
-        vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eFragment, nullptr)};
+        vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, vulkan_common::MAX_BINDLESS_TEXTURES,
+                                       vk::ShaderStageFlagBits::eFragment, nullptr)};
 
-    constexpr auto binding   = gpu_model_vertex::get_binding_description();
-    constexpr auto attribute = gpu_model_vertex::get_attribute_descriptions();
+    constexpr auto binding   = vertex_binding_description();
+    constexpr auto attribute = vertex_attribute_descriptions();
 
     constexpr std::array shader_stages = {
         shader_stage_info{VERT_ENTRY_NAME, vk::ShaderStageFlagBits::eVertex},
@@ -250,8 +272,8 @@ vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_fo
     new_pipeline.create_from_shader(device, pipeline_cache, bindings, {}, std::span(&binding, 1), attribute,
                                     std::filesystem::path(SHADERS_PATH) / "scene_rasterization_render.slang", shader_stages,
                                     vk::PrimitiveTopology::eTriangleList, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
-                                    vk::FrontFace::eCounterClockwise, vulkan_shared_utils::MSAA_SAMPLE_COUNT, vk::True,
-                                    std::span(&_color_format, 1), vulkan_shared_utils::DEPTH_FORMAT);
+                                    vk::FrontFace::eCounterClockwise, vulkan_common::MSAA_SAMPLE_COUNT, vk::True,
+                                    std::span(&_color_format, 1), vulkan_common::DEPTH_FORMAT);
 
     return new_pipeline;
 }
@@ -263,25 +285,25 @@ void scene_rasterization_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_pool), "rasterization descriptor pool.");
 
     constexpr std::array pool_size = {
-        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT)};
+        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler,
+                               vulkan_common::MAX_BINDLESS_TEXTURES * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
 
     const vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                                        vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT, pool_size);
+                                                        vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(device, pool_create_info);
 
     // descriptor set
-    const std::vector<vk::DescriptorSetLayout> layouts(vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
-                                                       pipeline.get_descriptor_set_layout());
-    const auto                                 alloc_info = vk::DescriptorSetAllocateInfo(descriptor_pool, layouts);
-    descriptor_sets                                       = device.allocateDescriptorSets(alloc_info);
+    const std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
+    const auto alloc_info = vk::DescriptorSetAllocateInfo(descriptor_pool, layouts);
+    descriptor_sets       = device.allocateDescriptorSets(alloc_info);
 
-    const auto descriptor_infos = material_manager.get_descriptor_info();
+    const auto descriptor_infos = texture_manager.get_descriptor_info();
     std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, descriptor_set] = _pair;
         std::vector<vk::WriteDescriptorSet> write_sets;
 
-        const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), ubo_offset * index, sizeof(raster_scene_data));
+        const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), ubo_offset * index, sizeof(vulkan_raster_scene_data));
         write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, scene_uniform_info));
 
         write_sets.reserve(write_sets.size() + descriptor_infos.size());

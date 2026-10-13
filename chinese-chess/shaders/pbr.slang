@@ -1,5 +1,5 @@
 import shader_utils;
-import gpu_shared_types;
+import vulkan_data_type;
 
 // ============================================================================
 // pbr.slang — 物理着色模型：Fresnel / 微表面 / 材质 / BSDF 采样
@@ -151,8 +151,8 @@ struct microfacet
 
 // ---------------------------------------------------------------------------
 // pbr_material：解析后的材质参数（与渲染路径无关的着色侧形式）
-//   反照率由 gpu_material_data 的图案机制（背景色 / 前景色 / alpha 贴图权重）
-//   在入口处解析后填入。
+//   反照率由 vulkan_material_data 的基色与 albedo 贴图在入口处解析后填入
+//   （见 resolve_albedo）。
 // ---------------------------------------------------------------------------
 struct pbr_material
 {
@@ -196,22 +196,19 @@ struct pbr_material
 };
 
 // ---------------------------------------------------------------------------
-// GPU gpu_material_data → 着色侧 pbr_material
+// GPU vulkan_material_data → 着色侧 pbr_material
 //   三套渲染路径（RT / Ray Query / 光栅化）共用同一份转换，避免同一套 PBR 参数
 //   在不同路径里有不同解释。
 // ---------------------------------------------------------------------------
 
-// 图案机制反照率：has_pattern 为假（texture_index 越界 / 无贴图）时退化为背景色
-float3 resolve_pattern_albedo(gpu_material_data data, bool has_pattern, float pattern_weight)
+// 反照率：材质基色 × 贴图采样。贴图（含字体图集）在 CPU 侧就烘焙好了颜色，
+// 这里直接乘；无贴图（texture_index 越界）时退化为纯基色。
+float3 resolve_albedo(vulkan_material_data data, float3 texture_albedo, bool has_texture)
 {
-  if(!has_pattern)
-  {
-    return data.background_color;
-  }
-  return lerp(data.background_color, data.foreground_color, clamp(pattern_weight, 0.0, 1.0));
+  return has_texture ? data.albedo * texture_albedo : data.albedo;
 }
 
-pbr_material make_material(gpu_material_data data, float3 albedo)
+pbr_material make_material(vulkan_material_data data, float3 albedo)
 {
   pbr_material m;
   m.albedo            = albedo;

@@ -1,6 +1,8 @@
 #pragma once
 
+#ifdef _WIN32
 #include <Windows.h>
+#endif  // _WIN32
 #include <vulkan/vulkan.h>
 
 #define RENDERDOC_CAPTURE renderdoc_capture::get_renderdoc_capture()

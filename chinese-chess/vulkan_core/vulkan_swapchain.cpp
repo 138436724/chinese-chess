@@ -1,6 +1,6 @@
 #include "vulkan_swapchain.h"
 
-#include "shared/vulkan_shared_utils.h"
+#include "vulkan_common.h"
 
 #include <algorithm>
 #include <concepts>
@@ -60,7 +60,7 @@ void vulkan_swapchain::create(const vk::raii::Instance&       _instance,
 
     const auto available_formats = _physical_device.getSurfaceFormatsKHR(surface);
     const auto format_iter       = std::ranges::find_if(available_formats, [](const auto& format) static {
-        if constexpr (vulkan_shared_utils::USE_OCIO)
+        if constexpr (vulkan_common::USE_OCIO)
         {
             return format.format == vk::Format::eB8G8R8A8Unorm && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
         }
@@ -99,10 +99,10 @@ void vulkan_swapchain::recreate(const vk::raii::PhysicalDevice& _physical_device
                                                    surface_capabilities.maxImageExtent.height));
     }
 
-    const auto requested_count = std::max(vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
-    const auto image_count = surface_capabilities.maxImageCount == 0 ?
-                                 requested_count :
-                                 std::min(requested_count, surface_capabilities.maxImageCount);
+    const auto requested_count = std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT, surface_capabilities.minImageCount);
+    const auto image_count     = surface_capabilities.maxImageCount == 0 ?
+                                     requested_count :
+                                     std::min(requested_count, surface_capabilities.maxImageCount);
 
     const vk::SwapchainCreateInfoKHR swapchain_create_info(
         {}, surface, image_count, format, vk::ColorSpaceKHR::eSrgbNonlinear, extent, 1,

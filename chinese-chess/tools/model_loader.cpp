@@ -58,7 +58,7 @@ std::expected<model_loader::gltf_model_data, std::string> model_loader::load_mod
             result.vertices.resize(result.vertices.size() + position_accessor.count);
 
             fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, position_accessor, [&](glm::vec3 _position, size_t _index) {
-                const gpu_model_vertex vertex(_position, glm::vec3(1.f, 0.f, 0.f), glm::vec2(1.f, 1.f));
+                const vulkan_model_vertex vertex(_position, glm::vec3(1.f, 0.f, 0.f), glm::vec2(1.f, 1.f));
                 result.vertices.at(initial_vtx + _index) = vertex;
             });
 

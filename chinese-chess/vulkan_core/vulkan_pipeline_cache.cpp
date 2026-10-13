@@ -78,7 +78,7 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
 
 void vulkan_pipeline_cache::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device)
 {
-    const std::vector<uint8_t> data = read_file(pipeline_cache_path);
+    const auto data = read_file(pipeline_cache_path);
     if (data.empty() || !is_cache_valid(_physical_device, data))
     {
         pipeline_cache = vk::raii::PipelineCache(_device, vk::PipelineCacheCreateInfo());

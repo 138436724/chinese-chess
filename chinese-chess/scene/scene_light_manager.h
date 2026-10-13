@@ -1,12 +1,13 @@
 #pragma once
 
+#include "scene_data_type.h"
+#include "scene_handle.h"
+#include "scene_handle_map.h"
 #include "vulkan_core/vulkan_buffer.h"
 
 #include <cstddef>
-#include <memory>
 #include <vector>
 
-struct cpu_light_data;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
@@ -22,7 +23,9 @@ public:
                         const vulkan_queue&         _transfer_queue) noexcept;
     ~scene_light_manager() = default;
 
-    [[nodiscard]] std::shared_ptr<cpu_light_data> create();
+    [[nodiscard]] light_handle      create();
+    [[nodiscard]] scene_light_data* get(light_handle _handle) noexcept;
+    [[nodiscard]] bool              destroy(light_handle _handle) noexcept;
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear() noexcept;
@@ -45,7 +48,7 @@ private:
 
     bool is_dirty = true;
 
-    std::vector<std::weak_ptr<cpu_light_data>> lights;
+    scene_handle_map<scene_light_data, light_tag> lights;
 
     vulkan_buffer ssbo;
 };

@@ -1,5 +1,5 @@
 import shader_utils;
-import gpu_shared_types;
+import vulkan_data_type;
 import pbr;
 
 // ============================================================================
@@ -30,7 +30,7 @@ struct light_sample
 };
 
 // ---------------------------------------------------------------------------
-// light_source：光源（包装 GPU 侧 gpu_light_data，成员函数表达采样行为）
+// light_source：光源（包装 GPU 侧 vulkan_light_data，成员函数表达采样行为）
 //   衰减模型：
 //     方向光：radiance = color · intensity（无距离衰减）
 //     点光源：radiance = color · intensity · (1/d²) · range_window(d)
@@ -39,7 +39,7 @@ struct light_sample
 // ---------------------------------------------------------------------------
 struct light_source
 {
-  gpu_light_data data;
+  vulkan_light_data data;
 
   bool enabled() { return data.intensity > 0.0 && any(data.color > 0.0); }
 
@@ -135,9 +135,10 @@ struct light_source
 // ---------------------------------------------------------------------------
 struct environment
 {
-  uint skybox_index;   // bindless 槽（0xFFFFFFFF 表示无 HDR 天空）
-  uint texture_count;  // bindless 数组上界
-  bool has_hdr;        // skybox_index 是否有效
+  uint  environment_index;      // bindless 槽（0xFFFFFFFF 表示无 HDR 天空）
+  uint  texture_count;          // bindless 数组上界
+  bool  has_hdr;                // environment_index 是否有效
+  float environment_intensity;  // HDR 天空的辐亮度倍率（背景 / IBL / 环境 NEE 共用）
 
   // 程序化天空渐变：天顶深蓝 → 地平线蓝白 → 地面深棕
   float3 procedural_sky(float3 direction)
@@ -156,11 +157,11 @@ struct environment
     return lerp(horizon, ground, down * down);
   }
 
-  // HDR 等距矩形采样：方向 → 经纬 UV
+  // HDR 等距矩形采样：方向 → 经纬 UV，并乘上强度倍率
   float3 equirect_radiance(float3 direction, Sampler2D hdr_texture)
   {
     float2 uv = float2(0.5 + 0.5 * atan2(direction.z, direction.x) * INV_PI, 1.0 - acos(clamp(direction.y, -1.0, 1.0)) * INV_PI);
-    return hdr_texture.SampleLevel(uv, 0.0).rgb;
+    return hdr_texture.SampleLevel(uv, 0.0).rgb * environment_intensity;
   }
 
   // 均匀球面采样（pdf = 1/4π）

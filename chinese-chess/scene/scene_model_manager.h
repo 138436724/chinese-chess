@@ -1,16 +1,17 @@
 #pragma once
 
+#include "scene_data_type.h"
+#include "scene_handle.h"
+#include "scene_handle_map.h"
 #include "vulkan_core/vulkan_acceleration_structure.h"
 #include "vulkan_core/vulkan_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
-#include <memory>
 #include <unordered_map>
 #include <vector>
 
-struct cpu_model_data;
-struct cpu_model_info;
 class vulkan_recycle_bin;
 class vulkan_semaphore;
 class vulkan_queue;
@@ -29,7 +30,9 @@ public:
                         scene_material_manager&         _material_manager) noexcept;
     ~scene_model_manager() = default;
 
-    [[nodiscard]] std::shared_ptr<cpu_model_data> create(const std::filesystem::path& _model_path);
+    [[nodiscard]] model_handle      create(const std::filesystem::path& _model_path);
+    [[nodiscard]] scene_model_data* get(model_handle _handle) noexcept;
+    [[nodiscard]] bool              destroy(model_handle _handle) noexcept;
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void               clear();
@@ -44,6 +47,16 @@ public:
     [[nodiscard]] const vulkan_buffer&                 get_ssbo_buffer() const noexcept;
 
 private:
+    struct scene_mesh_data
+    {
+        std::vector<vulkan_model_vertex> vertices;
+        std::vector<uint32_t>            indices;
+        size_t                           vertex_offset   = 0;
+        size_t                           index_offset    = 0;
+        uint32_t                         reference_count = 0;
+        vulkan_acceleration_structure    blas;
+    };
+
     void update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
     void update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
@@ -61,9 +74,9 @@ private:
     bool is_dirty     = true;
     bool meshes_dirty = true;
 
-    std::vector<std::weak_ptr<cpu_model_data>>                               models;
-    std::vector<std::shared_ptr<cpu_model_info>>                             meshes;        // submit to gpu in order
-    std::unordered_map<std::filesystem::path, std::weak_ptr<cpu_model_info>> models_cache;  // no need order
+    scene_handle_map<scene_mesh_data, mesh_tag>            meshes;  // submit to gpu in slot order
+    scene_handle_map<scene_model_data, model_tag>          models;
+    std::unordered_map<std::filesystem::path, mesh_handle> mesh_cache;
 
     vulkan_buffer vertices_buffer;
     vulkan_buffer indices_buffer;

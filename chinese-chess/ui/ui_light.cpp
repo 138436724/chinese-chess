@@ -1,7 +1,7 @@
 #include "ui_light.h"
 
+#include "scene/scene_data_type.h"
 #include "scene/scene_manager.h"
-#include "shared/cpu_shared_types.h"
 
 #include <algorithm>
 #include <array>
@@ -42,12 +42,15 @@ constexpr float max_cone_angle = glm::radians(90.f);
 ui_light::ui_light(scene_manager& _manager)
     : manager(_manager)
 {
-    auto light = manager.create<cpu_light_data>();
-    *light     = cpu_light_data{.active_type = light_type::directional,
-                                .color       = glm::vec3(1.0f, 0.95f, 0.85f),
-                                .intensity   = 5.f,
-                                .direction   = glm::vec3(1.f, 1.f, 10.f)};
-    lights.push_back(std::move(light));
+    const auto handle = manager.create_light();
+    if (auto* light = manager.get(handle))
+    {
+        *light = scene_light_data{.active_type = light_type::directional,
+                                  .color       = glm::vec3(1.0f, 0.95f, 0.85f),
+                                  .intensity   = 5.f,
+                                  .direction   = glm::vec3(1.f, 1.f, 10.f)};
+    }
+    lights.push_back(handle);
 }
 
 void ui_light::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
@@ -61,18 +64,25 @@ void ui_light::update()
 
     if (ImGui::Button(ADD_LIGHT.data()))
     {
-        auto light         = manager.create<cpu_light_data>();
-        light->active_type = static_cast<light_type>(add_light_type);
-        lights.push_back(std::move(light));
+        const auto handle = manager.create_light();
+        if (auto* light = manager.get(handle))
+        {
+            light->active_type = static_cast<light_type>(add_light_type);
+        }
+        lights.push_back(handle);
     }
 
     std::optional<size_t> delete_index = std::nullopt;
     std::string           header_label;
     for (size_t i = 0; i < lights.size(); ++i)
     {
-        ImGui::PushID(static_cast<int>(i));
+        auto* light_ptr = manager.get(lights.at(i));
+        if (light_ptr == nullptr)
+        {
+            continue;
+        }
 
-        auto& light_ptr = lights.at(i);
+        ImGui::PushID(static_cast<int>(i));
 
         header_label.clear();
         switch (light_ptr->active_type)
@@ -146,8 +156,8 @@ void ui_light::update()
 
     if (delete_index.has_value())
     {
+        manager.destroy(lights.at(*delete_index));
         lights.erase(lights.begin() + static_cast<std::ptrdiff_t>(*delete_index));
-        manager.need_light_update();
     }
 
     if (lights.empty())

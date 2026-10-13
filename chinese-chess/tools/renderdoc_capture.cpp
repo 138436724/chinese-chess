@@ -1,5 +1,7 @@
 #include "renderdoc_capture.h"
 
+#ifdef HAS_RENDERDOC
+
 #include "renderdoc_app.h"
 
 #include <cstdint>
@@ -78,6 +80,18 @@ void renderdoc_capture::end_capture(VkInstance _vk_instance, HWND _hwnd)
         m_api->DiscardFrameCapture(device_ptr, reinterpret_cast<RENDERDOC_WindowHandle>(wnd));
     }
 }
+
+#else
+
+renderdoc_capture renderdoc_capture::capture;
+
+renderdoc_capture::renderdoc_capture() = default;
+
+void renderdoc_capture::begin_capture(VkInstance /*_vk_instance*/, HWND /*_hwnd*/) {}
+
+void renderdoc_capture::end_capture(VkInstance /*_vk_instance*/, HWND /*_hwnd*/) {}
+
+#endif  // HAS_RENDERDOC
 
 void renderdoc_capture::set_window_handle(HWND _hwnd) noexcept
 {

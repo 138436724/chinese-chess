@@ -1,15 +1,16 @@
 #include "scene_manager.h"
 
+#include "scene_data_type.h"
 #include "scene_rasterization_render.h"
 #include "scene_rayquery_render.h"
 #include "scene_raytracing_render.h"
-#include "shared/vulkan_shared_utils.h"
 #include "tools/image_helper.h"
 #include "tools/ocio_helper.h"
 #include "vulkan_core/vulkan_application.h"
+#include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_data_type.h"
 
 #include <GLFW/glfw3.h>
-#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -18,16 +19,12 @@
 #include <filesystem>
 #include <format>
 #include <iostream>
-#include <limits>
-#include <memory>
 #include <print>
-#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
-#include <type_traits>
 #include <utility>
 #include <vulkan/utility/vk_format_utils.h>
 
@@ -77,7 +74,8 @@ scene_manager::~scene_manager()
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
     , light_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
-    , material_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
+    , texture_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
+    , material_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue, texture_manager)
     , model_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue, material_manager)
 {
     semaphore.create(*app.get_device());
@@ -87,10 +85,6 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     compute_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eCompute));
     transfer_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eTransfer));
 
-    managers.emplace_back(pro::make_proxy_view<manager_base>(material_manager));
-    managers.emplace_back(pro::make_proxy_view<manager_base>(model_manager));
-    managers.emplace_back(pro::make_proxy_view<manager_base>(light_manager));
-
     active_camera.set_position(glm::vec3(0.f, 0.f, 0.f));
     active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));
     active_camera.set_world_up(glm::vec3(0.f, 1.f, 0.f));
@@ -99,29 +93,27 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     commandbuffers = vulkan_commandbuffer::create(*app.get_device(),
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
-                                                                                vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
+                                                                                vulkan_common::MAX_FRAMES_IN_FLIGHT),
                                                   &graphic_queue, &semaphore);
 
-    skybox_image = create(std::type_identity<cpu_image_data>{},
-                          std::filesystem::path(TEXTURES_PATH) / u8"cracked ground.hdr", true, sampler_type::sky_box);
 
     scene_renders.insert_or_assign(render_mode::rasterization,
                                    pro::make_proxy<manager_render, scene_rasterization_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                       model_manager, material_manager, light_manager, render_output, color_format));
+                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue, model_manager,
+                                       material_manager, light_manager, texture_manager, render_output, color_format));
 
     scene_renders.insert_or_assign(render_mode::ray_tracing,
                                    pro::make_proxy<manager_render, scene_raytracing_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
                                        *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                       model_manager, material_manager, light_manager, render_output));
+                                       model_manager, material_manager, light_manager, texture_manager, render_output));
 
     scene_renders.insert_or_assign(render_mode::ray_query,
                                    pro::make_proxy<manager_render, scene_rayquery_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
                                        *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
-                                       model_manager, material_manager, light_manager, render_output));
+                                       model_manager, material_manager, light_manager, texture_manager, render_output));
 
     // default use raytracing pipeline
     active_render = scene_renders.at(render_mode::ray_tracing);
@@ -149,8 +141,8 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
                          vma::MemoryUsage::eAutoPreferDevice, {}, vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "scene_render");
 
     active_render->resize(width, height);
-    is_dirty        = true;
-    is_render_dirty = true;
+    is_dirty               = true;
+    need_descriptor_update = true;
 }
 
 void scene_manager::update()
@@ -160,11 +152,31 @@ void scene_manager::update()
         return;
     }
 
-    const bool any_dirty = std::ranges::fold_left(managers, false, [this](bool b, auto& manager) {
-        return manager->update(waited_infos) || b;
-    });
+    const auto texture_result = texture_manager.update();
+    if (texture_result.layout_moved)
+    {
+        material_manager.need_update();
+    }
 
-    if (any_dirty || is_render_dirty)
+#ifndef NDEBUG
+    bool dangling = false;
+    for (const auto handle : material_manager.live_texture_references())
+    {
+        dangling = dangling || (handle.is_valid() && texture_manager.get(handle) == nullptr);
+    }
+    dangling = dangling || (environment.image.is_valid() && texture_manager.get(environment.image) == nullptr);
+
+    if (dangling)
+    {
+        throw std::runtime_error("Texture handle must use retain() and release(), but somewhere not!");
+    }
+#endif  // !NDEBUG
+
+    const bool material_changed = material_manager.update(waited_infos);
+    const bool model_changed    = model_manager.update(waited_infos);
+    const bool light_changed    = light_manager.update(waited_infos);
+
+    if (texture_result.needs_redraw || material_changed || model_changed || light_changed || need_descriptor_update)
     {
         active_render->update();
     }
@@ -173,10 +185,8 @@ void scene_manager::update()
         active_render->reset_accumulation();
     }
 
-    skybox_index = material_manager.get_texture_index(skybox_image).value_or(std::numeric_limits<uint32_t>::max());
-
-    is_dirty        = false;
-    is_render_dirty = false;
+    is_dirty               = false;
+    need_descriptor_update = false;
 }
 
 vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
@@ -188,7 +198,9 @@ vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
 
     commandbuffer.add_waited_info(std::move(waited_infos));  // waited_infos clear here
 
-    active_render->render(active_camera, *commandbuffer, skybox_index);
+    const vulkan_environment_data environment_data{.environment_index = texture_manager.get_texture_binding(environment.image),
+                                                   .environment_intensity = environment.intensity};
+    active_render->render(active_camera, *commandbuffer, environment_data);
 
     commandbuffer.end_record();
     commandbuffer.submit();
@@ -200,7 +212,7 @@ vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
         submit_info = capture_frame(submit_info);
     }
 
-    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 
     return submit_info;
 }
@@ -226,7 +238,7 @@ void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods
             }
             break;
         case GLFW_KEY_F6:
-            if (material_manager.reload_textures(waited_infos))
+            if (texture_manager.reload_all_textures(waited_infos))
             {
                 need_material_update();
                 need_model_update();
@@ -240,7 +252,9 @@ void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods
 void scene_manager::need_update() noexcept
 {
     is_dirty = true;
+
     light_manager.need_update();
+    texture_manager.need_update();
     material_manager.need_update();
     model_manager.need_update();
 }
@@ -268,14 +282,140 @@ void scene_manager::need_model_update() noexcept
     model_manager.need_update();
 }
 
+void scene_manager::need_environment_update() noexcept
+{
+    is_dirty = true;
+    texture_manager.need_update();
+}
+
+light_handle scene_manager::create_light()
+{
+    is_dirty = true;
+    return light_manager.create();
+}
+
+texture_handle scene_manager::create_texture(const std::filesystem::path& _image_path, texture_usage _usage)
+{
+    is_dirty = true;
+    return texture_manager.create(_image_path, _usage, waited_infos);
+}
+
+texture_handle scene_manager::create_texture(const std::filesystem::path& _font_path,
+                                             uint32_t                     _font_size,
+                                             std::wstring_view            _characters,
+                                             uint32_t                     _padding,
+                                             const glm::vec3&             _foreground_color,
+                                             const glm::vec3&             _background_color)
+{
+    is_dirty = true;
+    return texture_manager.create(_font_path, _font_size, _characters, _padding, _foreground_color, _background_color, waited_infos);
+}
+
+material_handle scene_manager::create_material()
+{
+    is_dirty = true;
+    model_manager.need_update();
+    return material_manager.create();
+}
+
+model_handle scene_manager::create_model(const std::filesystem::path& _model_path)
+{
+    is_dirty = true;
+    return model_manager.create(_model_path);
+}
+
+scene_light_data* scene_manager::get(light_handle _handle) noexcept
+{
+    return light_manager.get(_handle);
+}
+
+scene_texture_data* scene_manager::get(texture_handle _handle) noexcept
+{
+    return texture_manager.get(_handle);
+}
+
+scene_material_data* scene_manager::get(material_handle _handle) noexcept
+{
+    return material_manager.get(_handle);
+}
+
+scene_model_data* scene_manager::get(model_handle _handle) noexcept
+{
+    return model_manager.get(_handle);
+}
+
+void scene_manager::destroy(light_handle _handle) noexcept
+{
+    if (light_manager.destroy(_handle))
+    {
+        is_dirty = true;
+    }
+}
+
+void scene_manager::destroy(material_handle _handle) noexcept
+{
+    if (material_manager.destroy(_handle))
+    {
+        is_dirty = true;
+        model_manager.need_update();
+    }
+}
+
+void scene_manager::destroy(model_handle _handle) noexcept
+{
+    if (model_manager.destroy(_handle))
+    {
+        is_dirty = true;
+    }
+}
+
+void scene_manager::clear()
+{
+    light_manager.clear();
+    texture_manager.clear();
+    material_manager.clear();
+    model_manager.clear();
+
+    environment            = scene_environment_data{};
+    is_dirty               = true;
+    need_descriptor_update = true;
+}
+
+void scene_manager::set_material_texture(material_handle _handle, texture_channel _channel, texture_handle _texture) noexcept
+{
+    is_dirty = true;
+    material_manager.set_texture(_handle, _channel, _texture);
+}
+
+void scene_manager::set_environment_image(texture_handle _image) noexcept
+{
+    texture_manager.release(environment.image);
+
+    environment.image = _image;
+    texture_manager.retain(_image);
+
+    need_environment_update();
+}
+
 void scene_manager::set_render_mode(render_mode _mode)
 {
     active_render = scene_renders.at(_mode);
 
     // force resize and update
     active_render->resize(width, height);
-    is_dirty        = true;
-    is_render_dirty = true;
+    is_dirty               = true;
+    need_descriptor_update = true;
+}
+
+bool scene_manager::reload_texture(texture_handle _handle)
+{
+    if (!texture_manager.reload_texture(_handle, waited_infos))
+    {
+        return false;
+    }
+
+    need_model_update();
+    return true;
 }
 
 bool scene_manager::get_need_update() const noexcept
@@ -293,36 +433,9 @@ vulkan_image& scene_manager::get_render_image() noexcept
     return render_output;
 }
 
-std::shared_ptr<cpu_light_data> scene_manager::create(std::type_identity<cpu_light_data>)
+scene_environment_data& scene_manager::get_environment() noexcept
 {
-    return light_manager.create();
-}
-
-std::shared_ptr<cpu_model_data> scene_manager::create(std::type_identity<cpu_model_data>, const std::filesystem::path& _model_name)
-{
-    return model_manager.create(_model_name);
-}
-
-std::shared_ptr<cpu_material_data> scene_manager::create(std::type_identity<cpu_material_data>)
-{
-    return material_manager.create();
-}
-
-std::shared_ptr<cpu_image_data> scene_manager::create(std::type_identity<cpu_image_data>,
-                                                      const std::filesystem::path& _font_path,
-                                                      uint32_t                     _font_size,
-                                                      std::wstring_view            _characters,
-                                                      uint32_t                     _padding)
-{
-    return material_manager.create(_font_path, _font_size, _characters, waited_infos, _padding);
-}
-
-std::shared_ptr<cpu_image_data> scene_manager::create(std::type_identity<cpu_image_data>,
-                                                      const std::filesystem::path& _image_path,
-                                                      bool                         _is_hdr,
-                                                      sampler_type                 _type)
-{
-    return material_manager.create(_image_path, _is_hdr, _type, waited_infos);
+    return environment;
 }
 
 vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitInfo& _waited_info)
@@ -338,9 +451,8 @@ vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitIn
     }
 
     vulkan_buffer staging_buffer;
-    const auto    wait_value =
-        vulkan_shared_utils::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore,
-                                            graphic_queue, transfer_queue, _waited_info, render_output, staging_buffer);
+    const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
+                                                          transfer_queue, _waited_info, render_output, staging_buffer);
 
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));

@@ -1,5 +1,5 @@
 import shader_utils;
-import gpu_shared_types;
+import vulkan_data_type;
 import pbr;
 import lighting;
 
@@ -28,30 +28,28 @@ struct hit_geometry
 };
 
 // ---------------------------------------------------------------------------
-// material_lookup：材质查找结果（含索引守卫与图案权重）
+// material_lookup：材质查找结果（含索引守卫与反照率贴图）
 // ---------------------------------------------------------------------------
 struct material_lookup
 {
-  bool              valid;  // material_index < material_count
-  gpu_material_data data;
-  bool              has_pattern;     // 图案贴图可用（texture_index < texture_count）
-  float             pattern_weight;  // 图案权重（0 = 背景色，1 = 前景色）
+  bool                 valid;  // material_index < material_count
+  vulkan_material_data data;
+  bool                 has_albedo_map;  // 反照率贴图可用（texture_index < texture_count）
+  float3               albedo_map;      // 贴图采样（RGB）
 
-  // 图案机制：反照率 = lerp(background_color, foreground_color, weight)
-  // （解析实现与光栅化路径共用 pbr.slang 的 resolve_pattern_albedo）
-  float3 albedo() { return resolve_pattern_albedo(data, has_pattern, pattern_weight); }
+  // 反照率 = 材质基色 × 贴图（解析实现与光栅化路径共用 pbr.slang 的 resolve_albedo）
+  float3 albedo() { return resolve_albedo(data, albedo_map, has_albedo_map); }
 
   // 转换成着色侧的材质形式（三套渲染路径共用 pbr.slang 的 make_material）
   pbr_material to_material() { return make_material(data, albedo()); }
 };
 
 // 默认材质（无材质实例时兜底：黑色不透明电介质）
-gpu_material_data default_material_data()
+vulkan_material_data default_material_data()
 {
-  gpu_material_data md;
-  md.background_color  = float3(0.0);
+  vulkan_material_data md;
+  md.albedo            = float3(0.0);
   md.texture_index     = 0xFFFFFFFFu;
-  md.foreground_color  = float3(0.0);
   md.roughness         = 0.5;
   md.emission          = float3(0.0);
   md.emission_strength = 0.0;
@@ -66,12 +64,12 @@ gpu_material_data default_material_data()
 
 // 材质查找：单条比较同时覆盖 0xFFFFFFFF（无材质哨兵）与越界 / 悬空索引
 // （材质被删除后模型仍引用旧索引；不守卫则按越界地址解引用 → 设备丢失）
-material_lookup fetch_material(gpu_material_data* materials, uint material_count, uint material_index)
+material_lookup fetch_material(vulkan_material_data* materials, uint material_count, uint material_index)
 {
   material_lookup lookup;
   lookup.valid          = material_index < material_count;
-  lookup.has_pattern    = false;
-  lookup.pattern_weight = 0.0;
+  lookup.has_albedo_map = false;
+  lookup.albedo_map     = float3(0.0);
   lookup.data           = lookup.valid ? materials[material_index] : default_material_data();
   return lookup;
 }
@@ -81,15 +79,15 @@ material_lookup fetch_material(gpu_material_data* materials, uint material_count
 //   索引 / 顶点缓冲经模型结构体中的设备地址直接解引用（与 C++ 侧
 //   scene_model_manager 的缓冲布局一致：索引为 uint32，顶点步长 32B）。
 // ---------------------------------------------------------------------------
-hit_geometry interpolate_hit(gpu_model_data model, uint primitive_id, float2 bary, float3 ray_origin, float3 ray_direction)
+hit_geometry interpolate_hit(vulkan_model_data model, uint primitive_id, float2 bary, float3 ray_origin, float3 ray_direction)
 {
   uint i0 = model.index_address[primitive_id * 3u + 0u];
   uint i1 = model.index_address[primitive_id * 3u + 1u];
   uint i2 = model.index_address[primitive_id * 3u + 2u];
 
-  gpu_model_vertex v0 = model.vertex_address[i0];
-  gpu_model_vertex v1 = model.vertex_address[i1];
-  gpu_model_vertex v2 = model.vertex_address[i2];
+  vulkan_model_vertex v0 = model.vertex_address[i0];
+  vulkan_model_vertex v1 = model.vertex_address[i1];
+  vulkan_model_vertex v2 = model.vertex_address[i2];
 
   float3 local_position = interpolate(bary, v0.position, v1.position, v2.position);
   float3 local_normal   = interpolate(bary, v0.normal, v1.normal, v2.normal);

@@ -4,9 +4,10 @@
 #include "scene_light_manager.h"
 #include "scene_material_manager.h"
 #include "scene_model_manager.h"
-#include "shared/gpu_shared_types.h"
-#include "shared/vulkan_shared_utils.h"
+#include "scene_texture_manager.h"
 #include "tools/shader_compiler.h"
+#include "vulkan_core/vulkan_common.h"
+#include "vulkan_core/vulkan_data_type.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
 
@@ -40,6 +41,7 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
                                              const scene_model_manager&      _model_manager,
                                              const scene_material_manager&   _material_manager,
                                              const scene_light_manager&      _light_manager,
+                                             const scene_texture_manager&    _texture_manager,
                                              vulkan_image&                   _render_output)
     : allocator(_allocator)
     , physical_device(_physical_device)
@@ -52,14 +54,15 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
     , model_manager(_model_manager)
     , material_manager(_material_manager)
     , light_manager(_light_manager)
+    , texture_manager(_texture_manager)
     , render_output(_render_output)
 {
-    ubo_offset = vulkan_shared_utils::align_up(sizeof(rt_scene_data),
-                                               physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
+    ubo_offset = vulkan_common::align_up(sizeof(vulkan_rt_scene_data),
+                                         physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
 
     const std::array queue_array = {graphic_queue.get_index()};
     ubo.create(allocator, device,
-               vk::BufferCreateInfo({}, ubo_offset * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
+               vk::BufferCreateInfo({}, ubo_offset * vulkan_common::MAX_FRAMES_IN_FLIGHT,
                                     vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive, queue_array),
                vma::MemoryUsage::eAuto, vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, "ray query ubo");
 
@@ -95,22 +98,25 @@ void scene_rayquery_render::reset_accumulation() noexcept
     frame_index = 0;
 }
 
-void scene_rayquery_render::render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, uint32_t _skybox_index)
+void scene_rayquery_render::render(const scene_camera&            _camera,
+                                   const vk::raii::CommandBuffer& _commandbuffer,
+                                   const vulkan_environment_data& _environment)
 {
     // update ubo
-    const rt_scene_data ubo_data{
-        .proj_inv_matrix = _camera.get_inv_projection_matrix(),
-        .view_inv_matrix = _camera.get_inv_view_matrix(),
-        .lights          = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .materials       = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .models          = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
-        .light_count     = static_cast<uint32_t>(light_manager.get_lights_size()),
-        .texture_count   = static_cast<uint32_t>(material_manager.get_textures_size()),
-        .material_count  = static_cast<uint32_t>(material_manager.get_materials_size()),
-        .model_count     = static_cast<uint32_t>(model_manager.get_models_size()),
-        .skybox_index    = _skybox_index,
-        .frame_index     = frame_index,
-        .exposure        = _camera.get_exposure(),
+    const vulkan_rt_scene_data ubo_data{
+        .proj_inv_matrix       = _camera.get_inv_projection_matrix(),
+        .view_inv_matrix       = _camera.get_inv_view_matrix(),
+        .lights                = light_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .materials             = material_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .models                = model_manager.get_ssbo_buffer().get_buffer_address().deviceAddress,
+        .light_count           = static_cast<uint32_t>(light_manager.get_lights_size()),
+        .texture_count         = static_cast<uint32_t>(texture_manager.get_textures_size()),
+        .material_count        = static_cast<uint32_t>(material_manager.get_materials_size()),
+        .model_count           = static_cast<uint32_t>(model_manager.get_models_size()),
+        .environment_index     = _environment.environment_index,
+        .frame_index           = frame_index,
+        .exposure              = _camera.get_exposure(),
+        .environment_intensity = _environment.environment_intensity,
     };
 
     auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
@@ -143,7 +149,7 @@ void scene_rayquery_render::render(const scene_camera& _camera, const vk::raii::
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
     frame_index++;
-    current_frame = (current_frame + 1) % vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT;
+    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 vulkan_pipeline scene_rayquery_render::create_pipeline()
@@ -154,7 +160,8 @@ vulkan_pipeline scene_rayquery_render::create_pipeline()
         vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eAccelerationStructureKHR, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
         vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eCompute, nullptr),
-        vk::DescriptorSetLayoutBinding(3, vk::DescriptorType::eCombinedImageSampler, 1024, vk::ShaderStageFlagBits::eCompute, nullptr),
+        vk::DescriptorSetLayoutBinding(3, vk::DescriptorType::eCombinedImageSampler,
+                                       vulkan_common::MAX_BINDLESS_TEXTURES, vk::ShaderStageFlagBits::eCompute, nullptr),
     };
 
     constexpr std::array shader_stages = {shader_stage_info{RAY_QUERY_ENTRY_NAME, vk::ShaderStageFlagBits::eCompute}};
@@ -171,21 +178,21 @@ void scene_rayquery_render::update_descriptor()
     recycle_bin.retire(std::move(descriptor_pool), "ray query descriptor pool.");
 
     constexpr std::array pool_size = {
-        vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1024 * vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT)};
+        vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler,
+                               vulkan_common::MAX_BINDLESS_TEXTURES * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
 
     const vk::DescriptorPoolCreateInfo pool_create_info(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                                        vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT, pool_size);
+                                                        vulkan_common::MAX_FRAMES_IN_FLIGHT, pool_size);
     descriptor_pool = vk::raii::DescriptorPool(device, pool_create_info);
 
-    const std::vector<vk::DescriptorSetLayout> layouts(vulkan_shared_utils::MAX_FRAMES_IN_FLIGHT,
-                                                       pipeline.get_descriptor_set_layout());
-    const auto                                 alloc_info = vk::DescriptorSetAllocateInfo(*descriptor_pool, layouts);
-    descriptor_sets                                       = device.allocateDescriptorSets(alloc_info);
+    const std::vector<vk::DescriptorSetLayout> layouts(vulkan_common::MAX_FRAMES_IN_FLIGHT, pipeline.get_descriptor_set_layout());
+    const auto alloc_info = vk::DescriptorSetAllocateInfo(*descriptor_pool, layouts);
+    descriptor_sets       = device.allocateDescriptorSets(alloc_info);
 
-    const auto descriptor_infos = material_manager.get_descriptor_info();
+    const auto descriptor_infos = texture_manager.get_descriptor_info();
     std::ranges::for_each(descriptor_sets | std::views::enumerate, [&](const auto& _frame_pair) {
         const auto& [frame_index_set, descriptor_set] = _frame_pair;
 
@@ -202,7 +209,7 @@ void scene_rayquery_render::update_descriptor()
             vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageImage, storage_image_info, {}));
 
         const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), static_cast<vk::DeviceSize>(frame_index_set) * ubo_offset,
-                                                          sizeof(rt_scene_data));
+                                                          sizeof(vulkan_rt_scene_data));
         write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 2, 0, vk::DescriptorType::eUniformBuffer, {}, scene_uniform_info));
 
         write_sets.reserve(write_sets.size() + descriptor_infos.size());
