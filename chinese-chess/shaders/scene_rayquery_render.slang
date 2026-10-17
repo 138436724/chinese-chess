@@ -247,6 +247,12 @@ void rayQueryComputeMain(uint3 dispatch_thread_id: SV_DispatchThreadID)
     }
 
     // ---- 几何与材质解析（与 rayClosestHitMain 一致）----
+    // 实例索引守卫：阴影循环里已经有同样的两层守卫，最近命中这里补齐
+    if(model_index >= scene_params.model_count)
+    {
+      break;
+    }
+
     vulkan_model_data model = scene_params.models[model_index];
 
     hit_geometry geom = interpolate_hit(model, primitive_id, bary, ray.Origin, ray.Direction);

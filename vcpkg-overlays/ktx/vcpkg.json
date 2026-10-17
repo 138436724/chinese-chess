@@ -1,8 +1,8 @@
 {
   "name": "ktx",
-  "version-semver": "5.0.0-rc1",
+  "version-semver": "5.0.0-rc2",
   "description": [
-    "The Khronos KTX library and tools (vcpkg overlay: 5.0.0-rc1 with UASTC HDR support).",
+    "The Khronos KTX library and tools (vcpkg overlay: 5.0.0-rc2 with UASTC HDR support).",
     "Functions for writing and reading KTX files, and instantiating OpenGL®, OpenGL ES™️ and Vulkan® textures from them."
   ],
   "homepage": "https://github.com/KhronosGroup/KTX-Software",

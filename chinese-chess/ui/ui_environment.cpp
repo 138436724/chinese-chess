@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <imgui.h>
+#include <iterator>
 #include <string_view>
 
 #ifdef _WIN32
@@ -32,7 +33,7 @@ constexpr std::string_view ENVIRONMENT_INTENSITY = "环境强度";
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize  = sizeof(ofn);
     ofn.lpstrFile    = szFile;
-    ofn.nMaxFile     = sizeof(szFile);
+    ofn.nMaxFile     = static_cast<DWORD>(std::size(szFile));
     ofn.lpstrFilter  = L"HDR environment\0*.hdr\0All\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;

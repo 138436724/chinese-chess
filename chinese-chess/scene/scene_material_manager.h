@@ -32,7 +32,6 @@ public:
     [[nodiscard]] bool                 destroy(material_handle _handle) noexcept;
 
     [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void               clear();
 
     void need_update() noexcept;
 

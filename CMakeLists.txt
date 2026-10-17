@@ -35,6 +35,7 @@ add_executable(chinese-chess ${MY_SOURCES} ${MY_HEADERS} ${MY_SHADERS})
 
 if(MSVC)
     target_compile_options(chinese-chess PRIVATE /std:c++23preview /utf-8 /W4 /WX)
+    target_compile_options(chinese-chess PRIVATE /external:anglebrackets /external:W0)
 else()
     target_compile_features(chinese-chess PRIVATE cxx_std_23)
 endif()

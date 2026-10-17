@@ -6,7 +6,7 @@
 
 光栅化 / RT Pipeline / Ray Query 三种渲染模式 | 无偏蒙特卡洛路径追踪 | ACES 2.0 色彩管理
 
-![渲染效果图](chinese-chess/resources/captures/2026_08_31_22_32_39.png)
+![渲染效果图](chinese-chess/resources/captures/2026_10_17_23_35_23.png)
 
 </div>
 
@@ -61,7 +61,7 @@
 | **管理器架构** | model（顶点/索引、BLAS/TLAS、间接绘制）/ material（材质、bindless 纹理、KTX2）/ light 三个 manager 各自自查 `is_dirty`，`scene_manager` 折叠四个 `update()` 的返回值 + `need_descriptor_update` 决定重建描述符或仅重置累积；`meshes_dirty` 区分几何与实例更新 |
 | **异步截图** | 三段式 QFOT 回读后把 wait 值 + staging buffer 交给 `std::jthread`：等 GPU 信号 → `invalidate()` → CPU OCIO → OIIO 写 EXR/PNG |
 | **KTX2 纹理管线** | 纹理与字体图集统一 **UASTC 中间格式**（内存压缩 → 同步写 sidecar → 加载时按设备转码），F6 同槽位换图，旧 imageview 走回收站 |
-| **Pipeline / 着色器缓存** | pipeline cache 单实例 RAII（启动读盘、退出写盘、F5 不写盘，校验 vendor/device/UUID）；着色器缓存为依赖感知的单一序列化文件 `resources/cache/shader_cache.cache`（Debug 版 `shader_cache_debug.cache`），键 = 路径 + 入口集合 |
+| **Pipeline / 着色器缓存** | pipeline cache 单实例 RAII（启动读盘、退出写盘、F5 不写盘，校验 vendor/device/UUID）；着色器缓存为依赖感知的单一序列化文件 `resources/cache/shader_cache.cache`（Debug 版 `shader_cache_debug.cache`），键 = 路径 + 入口集合，文件头 = 魔数 + 编译选项指纹 + Slang 构建串（长度前缀读入、不一致即重编译） |
 | **析构顺序加固** | 默认析构为成员声明逆序（app 在 scene/ui 之后、GLFW window 在 ui 之后、AS backing buffer 在 AS 之前）；`~vulkan_application` / `~scene_manager` / `~ui_manager` 开头自行 `wait_idle()` |
 
 ---
@@ -99,7 +99,7 @@ git submodule update --init --recursive
 .\vcpkg\bootstrap-vcpkg.bat   # 首次使用 vcpkg 时引导
 ```
 
-vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`；`vcpkg-configuration.json` 经 `overlay-ports`（`vcpkg-overlays/ktx`）提供自定义 ktx 端口（KTX-Software 5.0.0-rc1 + UASTC HDR）。默认注册表为 GitHub `microsoft/vcpkg`（国内可换镜像），VMA/VMA-HPP 随 baseline 解析（当前 3.4.0）。
+vcpkg 使用 manifest 模式（`vcpkg.json`），工具链由 `CMakeLists.txt` 指向本地 `vcpkg/scripts/buildsystems/vcpkg.cmake`；`vcpkg-configuration.json` 经 `overlay-ports`（`vcpkg-overlays/ktx`）提供自定义 ktx 端口（KTX-Software 5.0.0-rc2 + UASTC HDR）。默认注册表为 GitHub `microsoft/vcpkg`（国内可换镜像），VMA/VMA-HPP 随 baseline 解析（当前 3.4.0）。
 
 ### 2. 配置、构建与运行
 
@@ -123,7 +123,7 @@ NOMINMAX / UNICODE / _UNICODE       VK_USE_PLATFORM_WIN32_KHR / GLFW_INCLUDE_VUL
 GLM_FORCE_RADIANS / GLM_ENABLE_EXPERIMENTAL / GLM_FORCE_DEPTH_ZERO_TO_ONE
 ```
 
-include 路径 = `chinese-chess/`（项目根，所有 include 相对它）；`.gitattributes` 规定 `*.h` / `*.cpp` / `*.slang` 一律 LF。着色器缓存不感知编译器选项，改动 profile / 能力 / `ForceCLayout` 后须手动删除 `resources/cache/shader_cache.cache`。
+include 路径 = `chinese-chess/`（项目根，所有 include 相对它）；`.gitattributes` 规定 `*.h` / `*.cpp` / `*.slang` 一律 LF。着色器缓存的文件头自带「魔数 + 编译选项指纹 + Slang 构建串」并按长度前缀读入比对，改 profile / 能力 / `ForceCLayout` 或换 Slang 版本都会自动失效并重新编译，不必手工删缓存。
 
 ---
 
@@ -259,7 +259,7 @@ UI「渲染模式」下拉框（`光栅化` / `光线追踪 (RT Pipeline)` / `�
 - **每帧一次 CPU 等待**：`begin_record` 不再各自等待，改为循环顶部统一 `wait_frame()`。
 - **离线环境 configure 需联网**：vcpkg 在 configure 阶段解析依赖，离线只能走既有 `.vcxproj` + MSBuild（记得 `/p:TrackFileAccess=false`）；x86 / Linux / macOS 预设未维护。
 - **VMA-HPP 头路径**：vcpkg 安装的 VMA-HPP 找不到 VMA 头，需手动把 `vk_mem_alloc.hpp` 中的 `vk_mem_alloc.h` 改为 `vma/vk_mem_alloc.h`（缺头会报 C1083）；重装 vcpkg 依赖后需复核该修改。
-- **着色器缓存不感知编译器选项**：改动 profile / `ForceCLayout` 等后必须手动删除 `resources/cache/shader_cache.cache`。
+- **着色器缓存自动跟着编译选项失效**：文件头（魔数 + 选项指纹 + Slang 构建串）带长度前缀写盘，读入时与当前构建的头整体比对，不一致就整份丢弃、重新编译；每段长度只按「文件剩余字节」校验，损坏 / 截断 / 旧格式都退化为重新编译。
 
 ---
 

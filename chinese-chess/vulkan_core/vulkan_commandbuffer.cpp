@@ -6,6 +6,7 @@
 #include <array>
 #include <concepts>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -91,19 +92,14 @@ void vulkan_commandbuffer::add_waited_info(const vk::SemaphoreSubmitInfo& _submi
     waited_info.push_back(_submit_info);
 }
 
-void vulkan_commandbuffer::add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)
+void vulkan_commandbuffer::add_waited_info(std::span<const vk::SemaphoreSubmitInfo> _submit_infos)
 {
-    waited_info.append_range(_submit_infos | std::views::as_rvalue);
+    waited_info.append_range(_submit_infos);
 }
 
 void vulkan_commandbuffer::add_signal_info(const vk::SemaphoreSubmitInfo& _submit_info)
 {
     signal_info.push_back(_submit_info);
-}
-
-void vulkan_commandbuffer::add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos)
-{
-    signal_info.append_range(_submit_infos | std::views::as_rvalue);
 }
 
 vk::SemaphoreSubmitInfo vulkan_commandbuffer::get_submit_info() const noexcept

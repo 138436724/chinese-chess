@@ -161,6 +161,20 @@ raster_varying vertMain(raster_vertex input, uint draw_id: SV_DrawIndex)
 {
   // 间接绘制：SV_DrawIndex 即 draw command 索引 == 模型索引
   // （与 TLAS 实例数组 / 光追路径同序；经场景 UBO 中的设备地址解引用）
+  raster_varying output;
+
+  // 实例索引守卫：draw command / 模型 SSBO / TLAS 实例是分别枚举生成的（三处规则不同），
+  // 越界解引用是未定义行为 ⇒ 兜底成"无材质 + 整个图元裁掉"
+  if(draw_id >= scene_params.model_count)
+  {
+    output.position       = float4(0.0, 0.0, 2.0, 1.0);  // z > w ⇒ 视锥外
+    output.world_position = float3(0.0);
+    output.world_normal   = float3(0.0, 1.0, 0.0);
+    output.uv             = float2(0.0);
+    output.material_index = 0xFFFFFFFFu;
+    return output;
+  }
+
   float4x4 model_matrix   = scene_params.models[draw_id].model_matrix;
   uint     material_index = scene_params.models[draw_id].material_index;
 
@@ -168,7 +182,6 @@ raster_varying vertMain(raster_vertex input, uint draw_id: SV_DrawIndex)
   // 非等比缩放下法线严格来说需要逆转置，属已知限制）
   float4 world = mul(model_matrix, float4(input.position, 1.0));
 
-  raster_varying output;
   output.position       = mul(scene_params.proj_matrix, mul(scene_params.view_matrix, world));
   output.world_position = world.xyz;
   output.world_normal   = mul(model_matrix, float4(input.normal, 0.0)).xyz;

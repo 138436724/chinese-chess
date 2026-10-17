@@ -202,6 +202,12 @@ void rayGenMain()
 void rayClosestHitMain(inout path_vertex path, in BuiltInTriangleIntersectionAttributes attr)
 {
   // ---- 几何与材质解析 ----
+  // 实例索引守卫：越界解引用是未定义行为（TLAS 实例数组与模型数组等长只是"靠巧合成立"的不变量）
+  if(InstanceIndex() >= scene_params.model_count)
+  {
+    return;
+  }
+
   vulkan_model_data model = scene_params.models[InstanceIndex()];
 
   hit_geometry geom = interpolate_hit(model, PrimitiveIndex(), attr.barycentrics, WorldRayOrigin(), WorldRayDirection());
@@ -317,12 +323,17 @@ void rayShadowAnyHitMain(inout shadow_payload payload, in BuiltInTriangleInterse
   // 只按需取材质的不透明度，避免整拷 vulkan_model_data / vulkan_material_data
   // （any-hit 是调用最频繁的入口之一）
   float opacity        = 1.0;
-  uint  material_index = scene_params.models[InstanceIndex()].material_index;
+  uint  instance_index = InstanceIndex();
 
-  // 计数上界守卫：0xFFFFFFFF（无材质）与越界 / 悬空索引都按不透明处理
-  if(material_index < scene_params.material_count)
+  // 两层守卫：先实例索引（越界 / 空场景 ⇒ 按不透明处理），再材质索引
+  // （0xFFFFFFFF = 无材质与越界 / 悬空索引都由这一条比较覆盖）
+  if(instance_index < scene_params.model_count)
   {
-    opacity = clamp(scene_params.materials[material_index].opacity, 0.0, 1.0);
+    uint material_index = scene_params.models[instance_index].material_index;
+    if(material_index < scene_params.material_count)
+    {
+      opacity = clamp(scene_params.materials[material_index].opacity, 0.0, 1.0);
+    }
   }
 
   if(opacity >= 1.0)

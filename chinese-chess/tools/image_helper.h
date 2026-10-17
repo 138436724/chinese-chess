@@ -1,12 +1,5 @@
 #pragma once
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4996)  // disable error in Imath
-#pragma warning(disable : 4267)  // disable warning in OpenImageIO
-#pragma warning(disable : 4244)  // disable warning in OpenImageIO
-#endif                           // _MSC_VER
-
 #include <Imath/half.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
@@ -26,10 +19,6 @@
 #include <thread>
 #include <vector>
 #include <vulkan/vulkan.hpp>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER
 
 constexpr std::string_view CAPTURES_PATH = "resources\\captures\\";
 constexpr std::string_view TEXTURES_PATH = "resources\\textures\\";
@@ -90,6 +79,11 @@ template <typename T>
         return std::unexpected(std::format("Failed to open image {}.", _image_path.generic_string()));
     }
 
+    if (_width == 0 || _height == 0)
+    {
+        return std::unexpected(std::format("Failed to open image with {}x{}.", _width, _height));
+    }
+
     const uint32_t channels = _channels.value_or(static_cast<uint32_t>(_data.size() / (static_cast<size_t>(_width) * _height)));
     if (!image->open(_image_path, OIIO::ImageSpec(_width, _height, channels, OIIO::TypeDescFromC<T>().value())))
     {
@@ -145,43 +139,17 @@ template <typename T>
 
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
-[[nodiscard]] inline std::expected<image_info<T>, std::string> convert_channels(const image_info<T>& _src, uint32_t _channels)
+[[nodiscard]] inline std::expected<ktx2_texture_ptr, std::string> compress_to_ktx2(const image_info<T>& _image, bool _is_hdr)
 {
-    if (_channels == _src.channels)
+    if ((_image.width % 4) != 0 || (_image.height % 4) != 0 || (_image.channels != 4))
     {
-        return _src;
-    }
-    if (_src.channels != 1 && _channels != 1)
-    {
-        return std::unexpected("convert_channels: only 1 to N or N to 1 conversions supported.");
+        return std::unexpected(std::format("Image size {} or {} or channel {} is not a multiple of 4.", _image.width,
+                                           _image.height, _image.channels));
     }
 
-    std::vector<int> channelorder(static_cast<size_t>(_channels), 0);  // 全取源通道 0
-
-    image_info<T> result{.width    = _src.width,
-                         .height   = _src.height,
-                         .channels = _channels,
-                         .buffer   = std::vector<T>(_src.buffer.size() / _src.channels * _channels)};
-
-    OIIO::ImageBuf dst(OIIO::ImageSpec(_src.width, _src.height, _channels, OIIO::TypeDescFromC<T>().value()),
-                       OIIO::make_span(result.buffer));
-    OIIO::ImageBuf src(OIIO::ImageSpec(_src.width, _src.height, _src.channels, OIIO::TypeDescFromC<T>().value()),
-                       OIIO::make_cspan(_src.buffer));
-
-    if (!OIIO::ImageBufAlgo::channels(dst, src, static_cast<int>(_channels), OIIO::make_cspan(channelorder)))
+    if (_image.buffer.size() != static_cast<size_t>(_image.width) * _image.height * _image.channels)
     {
-        return std::unexpected("convert_channels: OIIO ImageBufAlgo::channels failed.");
-    }
-    return result;
-}
-
-template <typename T>
-    requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
-[[nodiscard]] inline std::expected<ktx2_texture_ptr, std::string> compress_to_ktx2(const image_info<T>& _image, bool _is_hdr) noexcept
-{
-    if ((_image.width % 4) != 0 || (_image.height % 4) != 0)
-    {
-        return std::unexpected(std::format("Image size {} or {} is not a multiple of 4.", _image.width, _image.height));
+        return std::unexpected("Image need pixel not equal to provdes.");
     }
 
     const auto* pixels      = reinterpret_cast<const uint8_t*>(_image.buffer.data());
@@ -229,8 +197,8 @@ template <typename T>
     return tex;
 }
 
-[[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_ktx2(const std::filesystem::path& _ktx2_path) noexcept;
+[[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_ktx2(const std::filesystem::path& _ktx2_path);
 
-[[nodiscard]] std::expected<void, std::string> write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr& _tex) noexcept;
+[[nodiscard]] std::expected<void, std::string> write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr& _tex);
 
 }  // namespace image_helper

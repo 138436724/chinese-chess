@@ -60,7 +60,6 @@ public:
     };
 
     [[nodiscard]] update_result update();
-    void                        clear();
 
     void need_update() noexcept;
 

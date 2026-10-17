@@ -31,12 +31,17 @@ private:
     shader_compiler(shader_compiler&&)                 = delete;
     shader_compiler& operator=(shader_compiler&&)      = delete;
 
+    void load_cache();
+    void save_cache() const;
+
     static shader_compiler               compiler;
     Slang::ComPtr<slang::IGlobalSession> global_session;
 
-    std::array<slang::CompilerOptionEntry, 6> options;
-    slang::TargetDesc                         target_desc;
-    slang::SessionDesc                        session_desc;
+    std::vector<slang::CompilerOptionEntry> options;
+    slang::TargetDesc                       target_desc;
+    slang::SessionDesc                      session_desc;
+
+    std::string shader_cache_header;
 
     struct shader_cache_info
     {

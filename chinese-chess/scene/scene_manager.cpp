@@ -196,7 +196,8 @@ vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
     vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
     commandbuffer.begin_record({});
 
-    commandbuffer.add_waited_info(std::move(waited_infos));  // waited_infos clear here
+    commandbuffer.add_waited_info(waited_infos);
+    waited_infos.clear();
 
     const vulkan_environment_data environment_data{.environment_index = texture_manager.get_texture_binding(environment.image),
                                                    .environment_intensity = environment.intensity};
@@ -367,18 +368,6 @@ void scene_manager::destroy(model_handle _handle) noexcept
     {
         is_dirty = true;
     }
-}
-
-void scene_manager::clear()
-{
-    light_manager.clear();
-    texture_manager.clear();
-    material_manager.clear();
-    model_manager.clear();
-
-    environment            = scene_environment_data{};
-    is_dirty               = true;
-    need_descriptor_update = true;
 }
 
 void scene_manager::set_material_texture(material_handle _handle, texture_channel _channel, texture_handle _texture) noexcept

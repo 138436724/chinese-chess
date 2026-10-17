@@ -5,7 +5,7 @@
 #include <format>
 #include <string>
 
-std::expected<ktx2_texture_ptr, std::string> image_helper::read_ktx2(const std::filesystem::path& _ktx2_path) noexcept
+std::expected<ktx2_texture_ptr, std::string> image_helper::read_ktx2(const std::filesystem::path& _ktx2_path)
 {
     ktxTexture2* raw_tex = nullptr;
     if (const auto error = ktxTexture2_CreateFromNamedFile(_ktx2_path.generic_string().c_str(),
@@ -18,7 +18,7 @@ std::expected<ktx2_texture_ptr, std::string> image_helper::read_ktx2(const std::
     ktx2_texture_ptr tex(raw_tex, ktxTexture2_Destroy);
 
     // after transcode to BC7/BC6H, tex->vkFormat also to BC7/BC6H
-    const auto format = ktxTexture2_IsHDR(tex.get()) ? KTX_TTF_BC6HU : KTX_TTF_BC7_RGBA;
+    const auto format = ktxTexture2_IsHDR(tex.get()) ? KTX_TTF_BC6HU_RGB : KTX_TTF_BC7_RGBA;
     if (const auto error = ktxTexture2_TranscodeBasis(tex.get(), format, 0); error != KTX_SUCCESS)
     {
         return std::unexpected(std::format("ktxTexture2_TranscodeBasis {} failed: {}.", _ktx2_path.generic_string(),
@@ -28,7 +28,7 @@ std::expected<ktx2_texture_ptr, std::string> image_helper::read_ktx2(const std::
     return tex;
 }
 
-std::expected<void, std::string> image_helper::write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr& _tex) noexcept
+std::expected<void, std::string> image_helper::write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr& _tex)
 {
     if (const auto error = ktxTexture2_WriteToNamedFile(_tex.get(), _ktx2_path.generic_string().c_str()); error != KTX_SUCCESS)
     {

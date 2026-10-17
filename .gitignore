@@ -450,7 +450,7 @@ out/
 imgui.ini
 
 # generate cache
-resources/cache/
+chinese-chess/resources/cache/
 
 # font files
 *.ttf
