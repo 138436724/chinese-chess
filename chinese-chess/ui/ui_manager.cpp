@@ -170,11 +170,7 @@ void ui_manager::update()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    bool show_demo_window = true;
-
-    //ImGui::ShowDemoWindow(&show_demo_window);
-
-    ImGui::Begin(SCENE_SETTING.data(), &show_demo_window);
+    ImGui::Begin(SCENE_SETTING.data());
 
     render_mode_ui();
     std::ranges::for_each(ui_managers, [](auto& m) static { m->update(); });

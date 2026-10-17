@@ -23,11 +23,20 @@ glfw_window::glfw_window()
     constexpr uint32_t HEIGHT = 600;
 
     // init window
-    glfwInit();
+    if (glfwInit() != GLFW_TRUE)
+    {
+        throw std::runtime_error("failed to initialize GLFW!");
+    }
+
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     window = glfwCreateWindow(WIDTH, HEIGHT, "Chinese Chess", nullptr, nullptr);
+    if (window == nullptr)
+    {
+        glfwTerminate();
+        throw std::runtime_error("failed to create GLFW window!");
+    }
 
 #ifndef NDEBUG
     RENDERDOC_CAPTURE.set_window_handle(glfwGetWin32Window(window));

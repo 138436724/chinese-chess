@@ -61,7 +61,7 @@ struct texture_channel_name_map
 };
 constexpr std::array CHANNEL_NAME_MAP = {texture_channel_name_map{texture_channel::albedo, ADD_IMAGE}};
 
-[[nodiscard]] std::filesystem::path pick_image_file()
+[[nodiscard]] std::filesystem::path select_file(std::wstring_view _filters)
 {
     std::filesystem::path file_path;
 
@@ -72,8 +72,8 @@ constexpr std::array CHANNEL_NAME_MAP = {texture_channel_name_map{texture_channe
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize  = sizeof(ofn);
     ofn.lpstrFile    = szFile;
-    ofn.nMaxFile     = sizeof(szFile);
-    ofn.lpstrFilter  = L"image\0*.png\0All\0*.*\0";
+    ofn.nMaxFile     = static_cast<DWORD>(std::size(szFile));
+    ofn.lpstrFilter  = _filters.data();
     ofn.nFilterIndex = 1;
     ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
@@ -164,7 +164,7 @@ void ui_node::update_material()
 
                 if (ImGui::Button(row.label.data()))
                 {
-                    const std::filesystem::path file_path = pick_image_file();
+                    const std::filesystem::path file_path = select_file(L"image\0*.png\0All\0*.*\0");
                     if (!file_path.empty())
                     {
                         const auto handle = manager.create_texture(file_path, texture_usage::color);
@@ -254,26 +254,7 @@ void ui_node::update_model()
 
     if (ImGui::Button(ADD_MODEL.data()))
     {
-        std::filesystem::path file_path;
-
-#ifdef _WIN32
-        TCHAR szFile[MAX_PATH] = {0};
-
-        OPENFILENAME ofn;
-        ZeroMemory(&ofn, sizeof(ofn));
-        ofn.lStructSize  = sizeof(ofn);
-        ofn.lpstrFile    = szFile;
-        ofn.nMaxFile     = sizeof(szFile);
-        ofn.lpstrFilter  = L"gltf model\0*.glb\0All\0*.*\0";
-        ofn.nFilterIndex = 1;
-        ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-
-        if (GetOpenFileName(&ofn))
-        {
-            file_path = szFile;
-        }
-#endif  // _WIN32
-
+        const std::filesystem::path file_path = select_file(L"gltf model\0*.glb\0All\0*.*\0");
         if (!file_path.empty())
         {
             const auto handle = manager.create_model(file_path);

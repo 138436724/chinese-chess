@@ -66,7 +66,9 @@
 #*.RTF   diff=astextplain
 
 # model files
+*.gltf  text=auto eol=lf
 *.glb   binary
+*.bin   binary
 
 # font files
 *.ttf   binary

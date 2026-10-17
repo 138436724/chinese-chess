@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -26,13 +28,72 @@ shader_compiler shader_compiler::compiler;
 
 namespace {
 
+constexpr std::string_view shader_cache_path  = "resources\\cache\\shader_cache.cache";
+constexpr std::string_view shader_cache_magic = "shader_cache_magic";
+constexpr char             split_char         = '\n';
+
+[[nodiscard]] inline std::streamoff get_file_size(std::ifstream& _file)
+{
+    _file.seekg(0, std::ios::end);
+    const std::streamoff file_size = static_cast<std::streamoff>(_file.tellg());
+    _file.seekg(0, std::ios::beg);
+    return file_size;
+}
+
+template <typename cache_blob>
+    requires(std::same_as<cache_blob, std::string> || std::same_as<cache_blob, std::vector<char>>)
+[[nodiscard]] bool read_cache_blob(std::ifstream& _file, cache_blob& _blob)
+{
+    size_t length = 0;
+    if (!_file.read(reinterpret_cast<char*>(&length), sizeof(length)))
+    {
+        return false;
+    }
+
+    if (length == 0)
+    {
+        return true;
+    }
+
+    _blob.resize(length);
+    return static_cast<bool>(_file.read(_blob.data(), static_cast<std::streamsize>(length)));
+}
+
+inline void write_cache_blob(std::ofstream& _file, const std::span<const char> _blob)
+{
+    if (!_blob.empty())
+    {
+        const size_t length = _blob.size();
+        _file.write(reinterpret_cast<const char*>(&length), sizeof(length));
+        _file.write(_blob.data(), static_cast<std::streamsize>(_blob.size()));
+    }
+}
+
+[[nodiscard]] std::string generate_cache_header(const std::vector<slang::CompilerOptionEntry>& _options,
+                                                const std::string_view                         _build_tag,
+                                                const slang::TargetDesc&                       _target_desc)
+{
 #ifndef NDEBUG
-constexpr std::string_view shader_cache_path = "resources\\cache\\shader_cache_debug.cache";
+    const auto result =
+        std::format("{}{}{}{}{}{}{}{}{}", shader_cache_magic, split_char, _build_tag, split_char, "DEBUG", split_char,
+                    std::to_underlying(_target_desc.format), split_char, std::to_underlying(_target_desc.profile));
 #else
-constexpr std::string_view shader_cache_path = "resources\\cache\\shader_cache.cache";
+    const auto result =
+        std::format("{}{}{}{}{}{}{}{}{}", shader_cache_magic, split_char, _build_tag, split_char, "RELEASE", split_char,
+                    std::to_underlying(_target_desc.format), split_char, std::to_underlying(_target_desc.profile));
 #endif  // !NDEBUG
-constexpr std::string_view shader_cache_header = "shader_cache_header";
-constexpr char             split_char          = '\n';
+
+    const auto option_string =
+        _options | std::views::transform([](const auto& option) {
+            return std::format("{}{}{}{}{}{}{}", split_char, std::to_underlying(option.name),
+                               std::to_underlying(option.value.kind), option.value.intValue0, option.value.intValue1,
+                               option.value.stringValue0 == nullptr ? "" : option.value.stringValue0,
+                               option.value.stringValue1 == nullptr ? "" : option.value.stringValue1);
+        })
+        | std::views::join | std::ranges::to<std::string>();
+
+    return result + option_string;
+}
 
 constinit int global_counter = 0;
 
@@ -67,7 +128,8 @@ void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Sla
                 | std::views::transform([](const auto& num) static { return std::format("{:02X}", num); })
                 | std::views::join | std::ranges::to<std::string>();
 
-            std::println("callIdx: {:2}, entrypoint: {:2}, target: {:2}, hash: {}", global_counter, entrypoint_index, target_index, hash_str);
+            std::println("callIdx: {:2}, entrypoint: {:2}, target: {:2}, hash: {}", global_counter, entrypoint_index,
+                         target_index, hash_str);
             global_counter++;
         });
     });
@@ -140,7 +202,7 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
 
         if (std::error_code ec; !std::filesystem::exists(dependency_path, ec) || ec)
         {
-            continue;
+            return {};
         }
 
         auto dependency_hash = FILE_WATCHER.generate_file_hash(dependency_path);
@@ -220,10 +282,18 @@ shader_compiler::shader_compiler()
             slang::CompilerOptionName::Optimization,
             {slang::CompilerOptionValueKind::Int, SlangOptimizationLevel::SLANG_OPTIMIZATION_LEVEL_NONE, 0, nullptr, nullptr},
         },
+        slang::CompilerOptionEntry{
+            slang::CompilerOptionName::DebugInformation,
+            {slang::CompilerOptionValueKind::Int, SlangDebugInfoLevel::SLANG_DEBUG_INFO_LEVEL_MAXIMAL, 0, nullptr, nullptr},
+        },
 #else
         slang::CompilerOptionEntry{
             slang::CompilerOptionName::Optimization,
             {slang::CompilerOptionValueKind::Int, SlangOptimizationLevel::SLANG_OPTIMIZATION_LEVEL_MAXIMAL, 0, nullptr, nullptr},
+        },
+        slang::CompilerOptionEntry{
+            slang::CompilerOptionName::DebugInformation,
+            {slang::CompilerOptionValueKind::Int, SlangDebugInfoLevel::SLANG_DEBUG_INFO_LEVEL_NONE, 0, nullptr, nullptr},
         },
 #endif  // !NDEBUG
         slang::CompilerOptionEntry{
@@ -248,85 +318,14 @@ shader_compiler::shader_compiler()
     session_desc.compilerOptionEntries    = options.data();
     session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
 
+    shader_cache_header = generate_cache_header(options, global_session->getBuildTagString(), target_desc);
 
-    // load cache
-    std::ifstream cache_file(shader_cache_path.data(), std::ios::binary);
-    if (!cache_file.is_open())
-    {
-        return;
-    }
-
-    std::string header;
-    header.resize(shader_cache_header.size());
-    cache_file.read(header.data(), shader_cache_header.size());
-    if (header != shader_cache_header)
-    {
-        return;
-    }
-
-    size_t cache_count = 0;
-    cache_file.read(reinterpret_cast<char*>(&cache_count), sizeof(cache_count));
-    for (uint32_t i = 0; i < cache_count; ++i)
-    {
-        size_t name_len = 0;
-        cache_file.read(reinterpret_cast<char*>(&name_len), sizeof(name_len));
-        std::string name(name_len, '\0');
-        cache_file.read(name.data(), name_len);
-
-        size_t dependence_len = 0;
-        cache_file.read(reinterpret_cast<char*>(&dependence_len), sizeof(dependence_len));
-        std::string dependence(dependence_len, '\0');
-        cache_file.read(dependence.data(), dependence_len);
-
-        size_t fingerprint_len = 0;
-        cache_file.read(reinterpret_cast<char*>(&fingerprint_len), sizeof(fingerprint_len));
-        std::string fingerprint(fingerprint_len, '\0');
-        cache_file.read(fingerprint.data(), fingerprint_len);
-
-        size_t spirv_size = 0;
-        cache_file.read(reinterpret_cast<char*>(&spirv_size), sizeof(spirv_size));
-        std::vector<char> spirv(spirv_size, '\0');
-        cache_file.read(spirv.data(), spirv_size);
-
-        shader_cache.emplace(std::move(name), shader_cache_info{std::move(dependence), std::move(fingerprint), std::move(spirv)});
-    }
+    load_cache();
 }
 
 shader_compiler::~shader_compiler()
 {
-    std::erase_if(shader_cache,
-                  [](const auto& item) static { return !std::filesystem::exists(get_path_from_cache_key(item.first)); });
-
-    std::filesystem::create_directories(std::filesystem::path(shader_cache_path).parent_path());
-    std::ofstream cache_file(std::filesystem::path(shader_cache_path), std::ios::binary | std::ios::trunc);
-    if (!cache_file.is_open())
-    {
-        return;
-    }
-
-    cache_file.write(shader_cache_header.data(), shader_cache_header.length());
-
-    const size_t shader_count = shader_cache.size();
-    cache_file.write(reinterpret_cast<const char*>(&shader_count), sizeof(shader_count));
-
-    for (const auto& [name, info] : shader_cache)
-    {
-        const size_t name_len = name.size();
-        cache_file.write(reinterpret_cast<const char*>(&name_len), sizeof(name_len));
-        cache_file.write(name.data(), name_len);
-
-        const size_t dependence_len = info.dependence.size();
-        cache_file.write(reinterpret_cast<const char*>(&dependence_len), sizeof(dependence_len));
-        cache_file.write(info.dependence.data(), dependence_len);
-
-        const size_t fingerprint_len = info.fingerprint.size();
-        cache_file.write(reinterpret_cast<const char*>(&fingerprint_len), sizeof(fingerprint_len));
-        cache_file.write(info.fingerprint.data(), fingerprint_len);
-
-        const size_t spirv_size = info.spirv.size();
-        cache_file.write(reinterpret_cast<const char*>(&spirv_size), sizeof(spirv_size));
-        cache_file.write(info.spirv.data(), info.spirv.size());
-    }
+    save_cache();
 }
 
 std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path,
@@ -419,4 +418,79 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
 shader_compiler& shader_compiler::get_shader_compiler() noexcept
 {
     return compiler;
+}
+
+void shader_compiler::load_cache()
+{
+    std::ifstream cache_file(shader_cache_path.data(), std::ios::binary);
+    if (!cache_file.is_open())
+    {
+        return;
+    }
+
+    const std::streamoff file_size = get_file_size(cache_file);
+    if (file_size <= 0)
+    {
+        return;
+    }
+
+    try
+    {
+        if (std::string header; !read_cache_blob(cache_file, header) || header != shader_cache_header)
+        {
+            return;
+        }
+
+        size_t cache_count = 0;
+        if (!cache_file.read(reinterpret_cast<char*>(&cache_count), sizeof(cache_count)))
+        {
+            return;
+        }
+
+        for (size_t i = 0; i < cache_count; ++i)
+        {
+            std::string       name;
+            std::string       dependence;
+            std::string       fingerprint;
+            std::vector<char> spirv;
+
+            if (!read_cache_blob(cache_file, name) || !read_cache_blob(cache_file, dependence)
+                || !read_cache_blob(cache_file, fingerprint) || !read_cache_blob(cache_file, spirv))
+            {
+                return;
+            }
+
+            shader_cache.emplace(std::move(name),
+                                 shader_cache_info{std::move(dependence), std::move(fingerprint), std::move(spirv)});
+        }
+    }
+    catch (const std::exception&)
+    {
+    }
+}
+
+void shader_compiler::save_cache() const
+{
+    std::erase_if(shader_cache,
+                  [](const auto& item) static { return !std::filesystem::exists(get_path_from_cache_key(item.first)); });
+
+    std::filesystem::create_directories(std::filesystem::path(shader_cache_path).parent_path());
+    std::ofstream cache_file(std::filesystem::path(shader_cache_path), std::ios::binary | std::ios::trunc);
+    if (!cache_file.is_open())
+    {
+        return;
+    }
+
+    write_cache_blob(cache_file, shader_cache_header);
+
+    const size_t shader_count = shader_cache.size();
+    cache_file.write(reinterpret_cast<const char*>(&shader_count), sizeof(shader_count));
+
+    for (const auto& [name, info] : shader_cache)
+    {
+        write_cache_blob(cache_file, name);
+        write_cache_blob(cache_file, info.dependence);
+        write_cache_blob(cache_file, info.fingerprint);
+        write_cache_blob(cache_file, info.spirv);
+    }
 }

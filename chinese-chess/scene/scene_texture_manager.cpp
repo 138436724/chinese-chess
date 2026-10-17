@@ -406,21 +406,6 @@ scene_texture_manager::update_result scene_texture_manager::update()
     return {.needs_redraw = true, .layout_moved = layout_moved};
 }
 
-void scene_texture_manager::clear()
-{
-    for (auto&& texture : textures.live())
-    {
-        recycle_bin.retire(std::move(texture.value.image), "scene texture manager clear texture.");
-    }
-
-    textures.clear();
-    texture_cache.clear();
-
-    texture_binding_count = 0;
-    is_dirty              = true;
-    layout_dirty          = true;
-}
-
 void scene_texture_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -568,7 +553,7 @@ std::expected<void, std::string> scene_texture_manager::upload_ktx2(const ktx2_t
         ktx_transcode_fmt_e transcode_format;
         if (_target_format == vk::Format::eBc6HUfloatBlock)
         {
-            transcode_format = KTX_TTF_BC6HU;
+            transcode_format = KTX_TTF_BC6HU_RGB;
         }
         else if (_target_format == vk::Format::eBc7UnormBlock)
         {

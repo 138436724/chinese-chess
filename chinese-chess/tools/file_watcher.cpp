@@ -31,8 +31,8 @@ file_watcher::file_watcher()
 
     std::string header;
     header.resize(hash_cache_header.size());
-    cache_file.read(header.data(), hash_cache_header.size());
-    if (header != hash_cache_header)
+    cache_file.read(header.data(), static_cast<std::streamsize>(hash_cache_header.size()));
+    if (!cache_file || header != hash_cache_header)
     {
         return;
     }
@@ -44,12 +44,12 @@ file_watcher::file_watcher()
         size_t path_len = 0;
         cache_file.read(reinterpret_cast<char*>(&path_len), sizeof(path_len));
         std::string path(path_len, '\0');
-        cache_file.read(path.data(), path_len);
+        cache_file.read(path.data(), static_cast<std::streamsize>(path_len));
 
         size_t hash_len = 0;
         cache_file.read(reinterpret_cast<char*>(&hash_len), sizeof(hash_len));
         std::string hash(hash_len, '\0');
-        cache_file.read(hash.data(), hash_len);
+        cache_file.read(hash.data(), static_cast<std::streamsize>(hash_len));
 
         file_watch_cache.emplace(std::move(path), std::move(hash));
     }
@@ -123,19 +123,20 @@ std::expected<std::string, std::string> file_watcher::generate_file_hash(const s
 
 bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) const
 {
-    const auto        file_hash = generate_file_hash(_file_path);
-    const std::string file_path = _file_path.generic_string();
+    const auto file_hash = generate_file_hash(_file_path);
+    const auto file_path = _file_path.generic_string();
 
-    if (file_hash)
+    if (!file_hash)
     {
-        if (auto iter = file_watch_cache.find(file_path); iter != file_watch_cache.end() && iter->second == *file_hash) [[likely]]
-        {
-            return false;
-        }
-
-        file_watch_cache.insert_or_assign(file_path, *file_hash);
+        return false;
     }
 
+    if (auto iter = file_watch_cache.find(file_path); iter != file_watch_cache.end() && iter->second == *file_hash) [[likely]]
+    {
+        return false;
+    }
+
+    file_watch_cache.insert_or_assign(file_path, *file_hash);
     return true;
 }
 

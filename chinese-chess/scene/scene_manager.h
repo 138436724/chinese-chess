@@ -69,8 +69,6 @@ public:
     void destroy(material_handle _handle) noexcept;
     void destroy(model_handle _handle) noexcept;
 
-    void clear();
-
     void set_material_texture(material_handle _handle, texture_channel _channel, texture_handle _texture) noexcept;
     void set_environment_image(texture_handle _image) noexcept;
     void set_render_mode(render_mode _mode);

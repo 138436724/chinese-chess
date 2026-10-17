@@ -71,27 +71,12 @@ bool scene_material_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waite
     return true;
 }
 
-void scene_material_manager::clear()
-{
-    for (auto&& entry : materials.live())
-    {
-        for (const auto texture : entry.value.data.textures)
-        {
-            texture_manager.release(texture);
-        }
-    }
-
-    materials.clear();
-    recycle_bin.retire(std::move(ssbo), "scene material manager clear ssbo.");
-    is_dirty = true;
-}
-
 void scene_material_manager::need_update() noexcept
 {
     is_dirty = true;
 }
 
-void scene_material_manager::set_texture(material_handle _handle, texture_channel _channel, texture_handle _texture) 
+void scene_material_manager::set_texture(material_handle _handle, texture_channel _channel, texture_handle _texture)
 {
     auto* entry = materials.get(_handle);
     if (entry == nullptr)

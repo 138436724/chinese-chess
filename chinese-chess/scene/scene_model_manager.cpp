@@ -133,31 +133,6 @@ bool scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
     return true;
 }
 
-void scene_model_manager::clear()
-{
-    models.clear();
-
-    for (auto&& mesh : meshes.live())
-    {
-        recycle_bin.retire(std::move(mesh.value.blas), "scene model manager clear mesh blas.");
-    }
-    meshes.clear();
-    mesh_cache.clear();
-
-    is_dirty     = true;
-    meshes_dirty = true;
-
-    recycle_bin.retire(std::move(vertices_buffer), "scene model manager clear vertices buffer.");
-    recycle_bin.retire(std::move(indices_buffer), "scene model manager clear indices buffer.");
-
-    tlas_instance_count = 0;
-
-    recycle_bin.retire(std::move(tlas_scratch_buffer), "scene model manager clear tlas scratch buffer.");
-    recycle_bin.retire(std::move(tlas), "scene model manager clear tlas.");
-    recycle_bin.retire(std::move(draw_commands), "scene model manager clear draw commands.");
-    recycle_bin.retire(std::move(ssbo), "scene model manager clear ssbo.");
-}
-
 size_t scene_model_manager::get_models_size() const noexcept
 {
     return models.live_size();

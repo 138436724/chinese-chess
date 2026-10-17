@@ -1,10 +1,5 @@
 #pragma once
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4996)  // disable error in Imath
-#endif                           // _MSC_VER
-
 #include <Imath/half.h>
 #include <OpenColorIO/OpenColorIO.h>
 #include <OpenColorIO/OpenColorTypes.h>
@@ -17,10 +12,6 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER
 
 constexpr std::string_view OCIOS_PATH         = "resources\\ocios\\";
 constexpr std::string_view OCIO_FUNCTION_NAME = "ocio_conversion";

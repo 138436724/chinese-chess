@@ -1,11 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <expected>
 #include <format>
+#include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ranges>
 #include <span>
@@ -52,6 +54,12 @@ inline constexpr uint32_t                MAX_BINDLESS_TEXTURES = 1024;
 [[nodiscard]] inline constexpr auto align_up(const auto value, const size_t alignment) noexcept
 {
     return ((value + alignment - 1) & ~(alignment - 1));
+}
+
+[[nodiscard]] inline glm::vec3 safe_normalize(const glm::vec3& _value, const glm::vec3& _default) noexcept
+{
+    const float length_squared = glm::dot(_value, _value);
+    return std::isfinite(length_squared) && length_squared > 1e-12f ? _value / std::sqrt(length_squared) : _default;
 }
 
 // VkTransformMatrixKHR is row-major 3x4, glm::mat4 is column-major; transpose before std::memcpy.

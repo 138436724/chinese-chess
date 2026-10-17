@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -28,9 +29,8 @@ public:
     void wait() const;
 
     void add_waited_info(const vk::SemaphoreSubmitInfo& _submit_info);
-    void add_waited_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos);
+    void add_waited_info(std::span<const vk::SemaphoreSubmitInfo> _submit_infos);
     void add_signal_info(const vk::SemaphoreSubmitInfo& _submit_info);
-    void add_signal_info(std::vector<vk::SemaphoreSubmitInfo>&& _submit_infos);
 
     [[nodiscard]] vk::SemaphoreSubmitInfo        get_submit_info() const noexcept;
     [[nodiscard]] const vk::raii::CommandBuffer& operator*() const noexcept;

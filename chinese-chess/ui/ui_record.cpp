@@ -223,7 +223,7 @@ void ui_record::update()
         ZeroMemory(&ofn, sizeof(ofn));
         ofn.lStructSize  = sizeof(ofn);
         ofn.lpstrFile    = szFile;
-        ofn.nMaxFile     = sizeof(szFile);
+        ofn.nMaxFile     = static_cast<DWORD>(std::size(szFile));
         ofn.lpstrFilter  = L"Text\0*.txt\0All\0*.*\0";
         ofn.nFilterIndex = 1;
         ofn.Flags        = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
@@ -260,8 +260,13 @@ void ui_record::update()
     }
 }
 
-void ui_record::handle(int _key, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept
+void ui_record::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/) noexcept
 {
+    if (_action != GLFW_PRESS)
+    {
+        return;
+    }
+
     switch (_key)
     {
         case GLFW_KEY_W:

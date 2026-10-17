@@ -62,13 +62,6 @@ bool scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
     return true;
 }
 
-void scene_light_manager::clear() noexcept
-{
-    lights.clear();
-    recycle_bin.retire(std::move(ssbo), "scene light manager clear ssbo.");
-    is_dirty = true;
-}
-
 void scene_light_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -88,18 +81,19 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
 {
     if (!lights.empty())
     {
-        const auto lights_ssbo = lights.live() | std::views::transform([](const auto& _entry) {
-                                     const scene_light_data& _light = _entry.value;
-                                     return vulkan_light_data{.color       = _light.color,
-                                                              .active_type = std::to_underlying(_light.active_type),
-                                                              .direction   = glm::normalize(_light.direction),
-                                                              .intensity   = _light.intensity,
-                                                              .position    = _light.position,
-                                                              .range       = _light.range,
-                                                              .inner_cone_angle = _light.inner_cone_angle,
-                                                              .outer_cone_angle = _light.outer_cone_angle};
-                                 })
-                                 | std::ranges::to<std::vector>();
+        const auto lights_ssbo =
+            lights.live() | std::views::transform([](const auto& _entry) {
+                const scene_light_data& _light = _entry.value;
+                return vulkan_light_data{.color       = _light.color,
+                                         .active_type = std::to_underlying(_light.active_type),
+                                         .direction = vulkan_common::safe_normalize(_light.direction, glm::vec3(0.f, -1.f, 0.f)),
+                                         .intensity        = _light.intensity,
+                                         .position         = _light.position,
+                                         .range            = _light.range,
+                                         .inner_cone_angle = _light.inner_cone_angle,
+                                         .outer_cone_angle = _light.outer_cone_angle};
+            })
+            | std::ranges::to<std::vector>();
 
         _waited_infos.push_back(vulkan_common::upload_buffer(
             allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,

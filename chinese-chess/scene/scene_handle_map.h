@@ -30,10 +30,11 @@ public:
         if (!free_slots.empty())
         {
             const uint32_t index = free_slots.back();
-            free_slots.pop_back();
 
             auto& slot = slots.at(index);
             slot.value.emplace(std::move(_value));
+
+            free_slots.pop_back();
             ++live_count;
 
             return handle_type{.index = index, .generation = slot.generation};
@@ -78,13 +79,6 @@ public:
     [[nodiscard]] size_t live_size() const noexcept { return live_count; }
 
     [[nodiscard]] bool empty() const noexcept { return live_count == 0; }
-
-    void clear() noexcept
-    {
-        slots.clear();
-        free_slots.clear();
-        live_count = 0;
-    }
 
     [[nodiscard]] auto live() const noexcept
     {
