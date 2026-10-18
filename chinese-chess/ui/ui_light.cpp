@@ -1,3 +1,10 @@
+/**
+ * @file ui_light.cpp
+ * @brief ui_light 的实现：默认灯创建、按类型展开的参数编辑与延迟删除。
+ * @details 新建灯先经 scene_manager::create_light() 拿到句柄，再用 get() 写初始 active_type；
+ *          update 用 PushID(下标) 隔离每盏灯的控件，删除动作留到遍历结束再执行。
+ *          锥角用 SliderAngle 以度编辑，钳制常量在匿名命名空间里换算成弧度。
+ */
 #include "ui_light.h"
 
 #include "scene/scene_data_type.h"
@@ -39,6 +46,10 @@ constexpr float max_cone_angle = glm::radians(90.f);
 }  // namespace
 
 
+/**
+ * @brief 创建默认平行光并记入面板列表。
+ * @note 颜色 (1, 0.95, 0.85)、强度 5、方向 (1, 1, 10)；get() 返回空时句柄仍保留。
+ */
 ui_light::ui_light(scene_manager& _manager)
     : manager(_manager)
 {
@@ -55,6 +66,10 @@ ui_light::ui_light(scene_manager& _manager)
 
 void ui_light::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
 
+/**
+ * @brief 构建类型下拉、添加按钮与每盏灯的折叠参数区。
+ * @note 头部标签按 active_type 生成；删除只记下标，循环结束后统一 destroy 并 erase。
+ */
 void ui_light::update()
 {
     ImGui::SeparatorText(LIGHT_MANAGER.data());

@@ -1,3 +1,11 @@
+/**
+ * @file scene_base.h
+ * @brief 场景渲染器的类型擦除接口 manager_render，用同一组约定驱动三个渲染后端。
+ * @details 用 pro::facade_builder 声明 resize / update / render / recreate / reset_accumulation 五个约定：
+ *          三个渲染器各自实现同名成员函数，scene_manager 只持有 pro::proxy<manager_render>。
+ *          约定成员刻意不加 [[nodiscard]] 或 noexcept，以免改变签名后破坏 proxy 的 invocable 检查。
+ * @note facade 显式要求 nothrow 的 relocation 与 destruction：proxy 在 unordered_map 中移动或销毁时不得抛异常。
+ */
 #pragma once
 
 #include "scene_camera.h"
@@ -14,6 +22,13 @@ PRO_DEF_MEM_DISPATCH(mem_render_render, render);
 PRO_DEF_MEM_DISPATCH(mem_render_recreate, recreate);
 PRO_DEF_MEM_DISPATCH(mem_render_reset_accumulation, reset_accumulation);
 // clang-format off
+/**
+ * @brief 场景渲染器的 proxy facade，规定三个后端必须提供的五个成员函数。
+ * @details resize 接收新的输出尺寸；update 重建描述符与管线相关资源；render 接收相机、命令缓冲、
+ *          环境数据与帧槽下标；recreate 对应 F5 热重载；reset_accumulation 只清累积、不碰资源。
+ *          add_skill<pro::skills::as_view> 让 scene_manager 用 proxy_view 指向 map 中的实例而不转移所有权。
+ *          support_relocation / support_destruction 都是 nothrow：proxy 被移动或销毁时不得抛异常。
+ */
 struct manager_render : pro::facade_builder
     ::add_convention<mem_render_resize, void(uint32_t, uint32_t)>
     ::add_convention<mem_render_update, void()>

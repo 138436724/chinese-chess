@@ -1,3 +1,11 @@
+/**
+ * @file scene_rayquery_render.cpp
+ * @brief Ray Query 计算渲染器的实现：UBO 打包、eGeneral 布局转换、dispatch 与描述符重建。
+ * @details 计算入口 rayQueryComputeMain 是 [numthreads(8,8,1)]，组数按 ceil(width/8) x ceil(height/8)
+ *          计算；输出图以 storage image 绑定，因此 dispatch 前后各录一条转到 eGeneral 的 barrier。
+ *          累积状态只由 UBO 里的 frame_index 表达，update() 与 reset_accumulation() 都把它清零。
+ */
+
 #include "scene_rayquery_render.h"
 
 #include "scene_camera.h"
@@ -30,6 +38,7 @@ constexpr uint32_t         WORKGROUP_SIZE       = 8;
 
 }  // namespace
 
+/** @brief 计算 UBO 槽跨度并建 UBO 与计算管线；不建附件图。 */
 scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _allocator,
                                              const vk::raii::PhysicalDevice& _physical_device,
                                              const vk::raii::Device&         _device,
@@ -67,6 +76,7 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
     pipeline = create_pipeline();
 }
 
+/** @brief 只记录尺寸，宽高不变时直接返回；输出图与附件由 scene_manager 统一管理。 */
 void scene_rayquery_render::resize(uint32_t _width, uint32_t _height)
 {
     if (width == _width && height == _height)
@@ -78,12 +88,14 @@ void scene_rayquery_render::resize(uint32_t _width, uint32_t _height)
     height = _height;
 }
 
+/** @brief 清零 frame_index 并重建描述符集，使新的 TLAS / 输出图绑定从第 0 个样本开始累积。 */
 void scene_rayquery_render::update()
 {
     frame_index = 0;
     update_descriptor();
 }
 
+/** @brief 先建新管线，成功后才把旧管线搬进回收站，失败时旧管线保持可用。 */
 void scene_rayquery_render::recreate()
 {
     vulkan_pipeline new_pipeline = create_pipeline();
@@ -91,11 +103,17 @@ void scene_rayquery_render::recreate()
     pipeline = std::move(new_pipeline);
 }
 
+/** @brief 只把累积帧号清零；描述符与管线保持不变。 */
 void scene_rayquery_render::reset_accumulation() noexcept
 {
     frame_index = 0;
 }
 
+/**
+ * @brief 写 UBO 槽、把输出图转到 eGeneral、bind 管线与描述符、dispatch，末尾再补一条同样的 barrier。
+ * @note 组数向上取整，最后一组会超出图像边界；着色器按 GetDimensions 的结果提前 return。
+ * @note descriptor_sets 必须已由 update() 建好，且 _frame_slot 在范围内。
+ */
 void scene_rayquery_render::render(const scene_camera&            _camera,
                                    const vk::raii::CommandBuffer& _commandbuffer,
                                    const vulkan_environment_data& _environment, uint32_t _frame_slot)
@@ -149,6 +167,9 @@ void scene_rayquery_render::render(const scene_camera&            _camera,
     frame_index++;
 }
 
+/**
+ * @brief 建计算管线：0 号 TLAS、1 号 storage image、2 号 UBO、3 号 MAX_BINDLESS_TEXTURES 个采样贴图。
+ */
 vulkan_pipeline scene_rayquery_render::create_pipeline()
 {
     vulkan_pipeline new_pipeline;
@@ -169,6 +190,10 @@ vulkan_pipeline scene_rayquery_render::create_pipeline()
     return new_pipeline;
 }
 
+/**
+ * @brief 重建描述符池与每帧描述符集：TLAS 用 StructureChain 写，输出图固定 eGeneral 布局。
+ * @note 贴图数组按紧凑绑定序从 binding 3 起写，数量来自 texture_manager.get_descriptor_info()。
+ */
 void scene_rayquery_render::update_descriptor()
 {
     recycle_bin.retire_after_submitted(std::move(descriptor_sets), "ray query descriptor sets.");

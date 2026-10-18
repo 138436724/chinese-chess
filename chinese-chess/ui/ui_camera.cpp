@@ -1,3 +1,10 @@
+/**
+ * @file ui_camera.cpp
+ * @brief ui_camera 的实现：摄像机控件、参数回写与 resize 时的投影重置。
+ * @details 每个控件的返回值就是“是否被编辑”，被编辑时立刻写回 scene_manager 的活动相机并调用
+ *          need_camera_update()；resize 先按新宽高重算正交范围与 aspect，再统一回写两套投影。
+ *          面板只持有可编辑副本，不缓存任何 GPU 状态。
+ */
 #include "ui_camera.h"
 
 #include "scene/scene_manager.h"
@@ -30,6 +37,10 @@ ui_camera::ui_camera(scene_manager& _manager) noexcept
 {
 }
 
+/**
+ * @brief 按新宽高重算投影默认值并回写场景相机，同时置相机脏。
+ * @note 1.3f 的相机高度只用于正交范围，宽高比同时决定透视投影的 aspect。
+ */
 void ui_camera::resize(uint32_t _width, uint32_t _height) noexcept
 {
     // reset to default
@@ -52,6 +63,10 @@ void ui_camera::resize(uint32_t _width, uint32_t _height) noexcept
     manager.need_camera_update();
 }
 
+/**
+ * @brief 逐帧构建摄像机控件：投影类型 → 对应投影参数 → 位姿 → 曝光。
+ * @note 只在控件返回 true 时回写，避免每帧都置脏。
+ */
 void ui_camera::update() noexcept
 {
     ImGui::SeparatorText(CAMERA_SETTING.data());

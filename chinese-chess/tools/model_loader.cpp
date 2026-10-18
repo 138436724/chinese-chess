@@ -1,3 +1,11 @@
+/**
+ * @file model_loader.cpp
+ * @brief model_loader 的实现：fastgltf 解析 + accessor 逐项展开成顶点与索引。
+ * @details 两个匿名命名空间辅助函数负责「按下标取 accessor 不抛异常」和「缺法线时的径向兜底」。
+ *          遍历顺序是 mesh -> primitive -> 属性：每个 primitive 先按 POSITION 的 count 扩容顶点数组，
+ *          再用带下标的 iterateAccessor 回填 normal / uv，索引统一加上该 primitive 的起始顶点偏移。
+ */
+
 #include "model_loader.h"
 
 #include <cmath>
@@ -17,6 +25,10 @@
 namespace
 {
 // accessor 一律按下标自查（不用 .at()：malformed / 截断的文件必须走 expected，而不是 std::terminate）
+/**
+ * @brief 按下标取 accessor，越界返回 nullptr 而不是抛异常。
+ * @note 坏 / 截断的 glTF 只能让加载返回 expected 错误，不能让 .at() 变成 std::terminate。
+ */
 [[nodiscard]] const fastgltf::Accessor* find_accessor(const fastgltf::Asset& _gltf, size_t _index) noexcept
 {
     return _index < _gltf.accessors.size() ? &_gltf.accessors[_index] : nullptr;
@@ -24,6 +36,10 @@ namespace
 
 // 缺法线时的兜底：径向朝外；顶点落在原点时退回 +Y
 // （原实现写死的 (1,0,0) 既不是朝外也不是 normalize(position)，只是一个无意义的单位 X 轴）
+/**
+ * @brief 缺法线时的兜底：取位置方向的单位向量，位置落在原点则退回 +Y。
+ * @note 写死的 (1,0,0) 既不是朝外也不是 normalize(position)，对球面类模型会整体走样。
+ */
 [[nodiscard]] glm::vec3 fallback_normal(const glm::vec3& _position) noexcept
 {
     const float length_squared = glm::dot(_position, _position);
@@ -31,6 +47,12 @@ namespace
 }
 }  // namespace
 
+/**
+ * @brief 读入 glTF、逐 primitive 合并顶点与索引，所有错误都走 expected 的 error 串。
+ * @note 先用 GltfDataBuffer::FromPath 读整份文件，再以文件所在目录为 base path 加载外部 .bin。
+ * @note 顶点先按 POSITION 的 count 一次性扩容，属性回填用迭代下标写入；索引越界会让整个加载失败，
+ *       不把半成品交给上层。
+ */
 std::expected<model_loader::gltf_model_data, std::string> model_loader::load_model(const std::filesystem::path& _file_path)
 {
     auto read_data = fastgltf::GltfDataBuffer::FromPath(_file_path);

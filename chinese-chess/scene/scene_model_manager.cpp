@@ -1,3 +1,12 @@
+/**
+ * @file scene_model_manager.cpp
+ * @brief 模型管理器的实现：网格去重与共享缓冲上传、BLAS/TLAS 构建或 refit、间接命令与 SSBO 上传。
+ * @details 所有 GPU 更新都在 update() 的脏门控下完成：先按引用数回收零引用网格，再依次执行
+ *          update_meshes → update_tlas → update_draw_commands → update_ssbo。每次上传 / 构建都
+ *          提交一次性命令缓冲，并把返回的令牌追加到 waited_infos；旧资源一律先进回收站，
+ *          由 scene_manager 在渲染前统一等待后释放。
+ */
+
 #include "scene_model_manager.h"
 #include "vulkan_core/vulkan_submission_scope.h"
 
@@ -19,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+/** @brief 只保存引用，不分配 GPU 资源，因此构造不会与设备或队列交互。 */
 scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _allocator,
                                          const vk::raii::PhysicalDevice& _physical_device,
                                          const vk::raii::Device&         _device,
@@ -36,6 +46,10 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
 {
 }
 
+/**
+ * @brief 加载模型并新建模型实例；网格按路径去重，加载失败返回无效句柄。
+ * @note 网格插入即置 meshes_dirty，真正上传推迟到 update()；模型插入只置 is_dirty。
+ */
 model_handle scene_model_manager::create(const std::filesystem::path& _model_path)
 {
     mesh_handle mesh;
@@ -79,6 +93,11 @@ bool scene_model_manager::destroy(model_handle _handle) noexcept
     return true;
 }
 
+/**
+ * @brief 更新入口：先按引用数回收网格，再按脏标志重建 GPU 数据。
+ * @note 网格引用数每轮都重算；只有网格集合变化才重建顶点 / 索引与 BLAS，其余按 is_dirty 决定。
+ * @note 只有全部步骤成功才清脏标志，中途异常时保持脏状态，下一帧重试。
+ */
 bool scene_model_manager::update(std::vector<vulkan_submission_token>& _waited_infos)
 {
     for (auto&& mesh : meshes.live())
@@ -157,6 +176,7 @@ const vulkan_buffer& scene_model_manager::get_draw_commands() const noexcept
     return draw_commands;
 }
 
+/** @brief 只置 SSBO 脏标志，不触发网格 / BLAS 重建。 */
 void scene_model_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -167,6 +187,11 @@ const vulkan_buffer& scene_model_manager::get_ssbo_buffer() const noexcept
     return ssbo;
 }
 
+/**
+ * @brief 重建共享顶点 / 索引缓冲并重建全部网格的 BLAS。
+ * @note 两种缓冲都按网格槽序紧凑排布，字节偏移写回各槽；旧缓冲先退休再被新缓冲替换。
+ * @note 先在 CPU 侧拼好整块 staging 再分两次 upload_buffer，最后用一次性命令缓冲录 BLAS 并提交。
+ */
 void scene_model_manager::update_meshes(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (meshes.empty())
@@ -273,6 +298,11 @@ void scene_model_manager::update_meshes(std::vector<vulkan_submission_token>& _w
     recycle_bin.retire(std::move(commandbuffer), build_token, "scene model manager update mesh commandbuffer.");
 }
 
+/**
+ * @brief 重建或 refit TLAS。
+ * @note 上次实例数非零且本次不变时只上传新实例并 refit（复用 scratch），否则重建结构并重新分配 scratch。
+ * @note 没有模型时建 0 实例 TLAS；实例的 mask 由 is_show 决定（0xFF / 0）。
+ */
 void scene_model_manager::update_tlas(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())
@@ -371,6 +401,10 @@ void scene_model_manager::update_tlas(std::vector<vulkan_submission_token>& _wai
     recycle_bin.retire(std::move(commandbuffer), build_token, "ray tracing commandbuffer to create tlas.");
 }
 
+/**
+ * @brief 生成间接绘制命令：索引数 / 实例数 / 首索引 / 顶点偏移全部来自网格槽的字节偏移。
+ * @note 实例数只取 0 或 1；空场景直接返回，避免上传一条空缓冲。
+ */
 void scene_model_manager::update_draw_commands(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())
@@ -401,6 +435,11 @@ void scene_model_manager::update_draw_commands(std::vector<vulkan_submission_tok
         "draw_commands"));
 }
 
+/**
+ * @brief 生成 vulkan_model_data 数组：模型矩阵 + 材质紧凑绑定 + 顶点 / 索引设备地址。
+ * @note 地址取共享缓冲的 deviceAddress，所以缓冲重建后这些地址自动更新。
+ * @note 材质绑定变化由 scene_manager 的 need_material_update + model_manager.need_update 驱动。
+ */
 void scene_model_manager::update_ssbo(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())

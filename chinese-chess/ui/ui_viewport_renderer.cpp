@@ -1,3 +1,10 @@
+/**
+ * @file ui_viewport_renderer.cpp
+ * @brief ui_viewport_renderer 的实现：替换 ImGui 平台回调并接管副窗口的 WSI 与提交。
+ * @details 构造保存上游五个 Renderer_* 回调，换成经 thread_local active 分发的 lambda；
+ *          create 为每个 ImGuiID 建 surface、swapchain、管线与命令缓冲，render 录制并提交，
+ *          present 呈现。回调不允许抛异常，invoke 把第一个异常存进 error 供 check_errors 重抛。
+ */
 #include "ui_viewport_renderer.h"
 #include "imgui_viewport_bridge.h"
 
@@ -14,32 +21,58 @@
 #include <stdexcept>
 #include <unordered_map>
 
+/**
+ * @brief 渲染器的全部实现状态：应用引用、每窗口 WSI、原回调与被捕获的异常。
+ * @note active 是 thread_local，保证同一线程只有一个实例接管平台回调。
+ */
 struct ui_viewport_renderer::implementation
 {
+    /**
+     * @brief 一个副窗口的 WSI 状态：独立交换链、每帧槽命令缓冲与上游管线。
+     * @note pipeline 由上游 backend 持有，这里只借句柄；析构先 shutdown 交换链等待 fence。
+     */
     struct window_state
     {
+        /** @brief 该副窗口独立的交换链；析构时 shutdown 会等待 present fence。 */
         vulkan_swapchain swapchain;
+        /** @brief 每帧槽一条命令缓冲，下标来自 acquire 返回的 frame.slot。 */
         std::vector<vulkan_commandbuffer> commands;
+        /** @brief 上游 backend 持有的副窗口管线，本类只借句柄。 */
         VkPipeline pipeline = VK_NULL_HANDLE; // owned by the upstream backend
+        /** @brief 尺寸变化置位，下一次 render 先 recreate 交换链。 */
         bool resize = false;
         ~window_state() { swapchain.shutdown(); }
     };
+    /** @brief 当前线程的活动实例，C 回调经它找到对象；同一线程只允许一个。 */
     inline static thread_local implementation* active = nullptr;
+    /** @brief 提供实例、设备、队列与主交换链格式的应用对象。 */
     vulkan_application& app;
+    /** @brief ImGuiID 到副窗口 WSI 状态的映射；窗口销毁时对应项被 erase。 */
     std::unordered_map<ImGuiID, std::unique_ptr<window_state>> windows;
+    /** @brief 平台回调里捕获的第一个异常，由 check_errors 重抛。 */
     std::exception_ptr error;
+    /** @brief 上游 Renderer_CreateWindow 的原实现，析构时还回。 */
     void (*original_create)(ImGuiViewport*);
+    /** @brief 上游 Renderer_DestroyWindow 的原实现，析构时还回。 */
     void (*original_destroy)(ImGuiViewport*);
+    /** @brief 上游 Renderer_SetWindowSize 的原实现，析构时还回。 */
     void (*original_resize)(ImGuiViewport*, ImVec2);
+    /** @brief 上游 Renderer_RenderWindow 的原实现，析构时还回。 */
     void (*original_render)(ImGuiViewport*, void*);
+    /** @brief 上游 Renderer_SwapBuffers 的原实现，析构时还回。 */
     void (*original_present)(ImGuiViewport*, void*);
 
+    /** @brief 执行回调体并捕获第一个异常；C 回调不能向外抛，错误留给 check_errors。 */
     template<class F> void invoke(F&& operation) noexcept
     {
         try { operation(); }
         catch (...) { if (!error) error = std::current_exception(); }
     }
 
+    /**
+     * @brief 保存上游回调并安装五个经 active 分发的 lambda。
+     * @throws std::logic_error 当前线程已有活动实例时抛出，避免互相覆盖回调。
+     */
     explicit implementation(vulkan_application& application) : app(application)
     {
         if (active) throw std::logic_error("Only one ImGui renderer context may be active on this thread.");
@@ -59,6 +92,7 @@ struct ui_viewport_renderer::implementation
         io.Renderer_SwapBuffers = [](ImGuiViewport* vp, void*) { active->invoke([&] { if (!active->error) active->present(vp); }); };
     }
 
+    /** @brief 恢复上游回调并清空 active；不负责销毁仍存在的平台窗口。 */
     ~implementation()
     {
         auto& io = ImGui::GetPlatformIO();
@@ -70,6 +104,11 @@ struct ui_viewport_renderer::implementation
         active = nullptr;
     }
 
+    /**
+     * @brief 为一个副窗口建 surface、交换链、上游管线与每帧槽命令缓冲。
+     * @throws std::runtime_error surface 创建失败、颜色格式与主 UI 不一致或管线创建失败时抛出。
+     * @note 颜色格式必须与主交换链一致；失败时局部对象由 raii 与 unique_ptr 自动回收。
+     */
     void create(ImGuiViewport* vp)
     {
         VkSurfaceKHR native_surface = VK_NULL_HANDLE;
@@ -96,6 +135,10 @@ struct ui_viewport_renderer::implementation
         windows.emplace(vp->ID, std::move(state));
     }
 
+    /**
+     * @brief 先 shutdown 本窗口交换链（等待 fence），再交给上游回调释放 VBO/IBO 与窗口数据。
+     * @note 先 erase 再 original_destroy，保证上游释放缓冲前 GPU 已不再使用。
+     */
     void destroy(ImGuiViewport* vp)
     {
         if (auto found = windows.find(vp->ID); found != windows.end())
@@ -106,6 +149,11 @@ struct ui_viewport_renderer::implementation
         original_destroy(vp);
     }
 
+    /**
+     * @brief 重录并提交一个副窗口：按需 recreate、acquire、画 ImGui draw data、转 PRESENT_SRC。
+     * @throws std::runtime_error acquire 返回 fatal 或命令录制/提交失败时抛出。
+     * @note 最小化或零尺寸直接跳过；异常路径先 abandon_frame 再重抛，避免留下已 acquire 的帧。
+     */
     void render(ImGuiViewport* vp)
     {
         auto found = windows.find(vp->ID);
@@ -159,6 +207,10 @@ struct ui_viewport_renderer::implementation
         }
     }
 
+    /**
+     * @brief 呈现当前副窗口 image；recreate 时只置 resize 标志，留到下次 render 处理。
+     * @throws std::runtime_error present 返回 fatal 时抛出。
+     */
     void present(ImGuiViewport* vp)
     {
         auto found = windows.find(vp->ID);
@@ -169,6 +221,9 @@ struct ui_viewport_renderer::implementation
     }
 };
 
+/** @brief 构造 pimpl；线程重入等逻辑错误由 implementation 的构造函数抛出。 */
 ui_viewport_renderer::ui_viewport_renderer(vulkan_application& app) : impl(std::make_unique<implementation>(app)) {}
+/** @brief 默认析构 pimpl，implementation 析构时把 ImGui 平台回调恢复成上游实现。 */
 ui_viewport_renderer::~ui_viewport_renderer() = default;
+/** @brief 有缓存异常就重抛；ui_manager 在 UpdatePlatformWindows 与平台窗口渲染之后各调一次。 */
 void ui_viewport_renderer::check_errors() { if (impl->error) std::rethrow_exception(impl->error); }

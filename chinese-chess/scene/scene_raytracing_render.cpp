@@ -1,3 +1,11 @@
+/**
+ * @file scene_raytracing_render.cpp
+ * @brief 光追参考实现的实现：五入口五组的管线创建、SBT 构建、UBO 打包与 traceRaysKHR 录制。
+ * @details 着色器组下标由匿名命名空间的 stage_indices 固定：0 raygen、1 主 miss、2 阴影 miss、
+ *          3 closest-hit、4 any-hit；SBT 的 group_count 正好等于入口数。create_pipeline_and_sbt()
+ *          自己录并提交一条一次性命令缓冲，把 staging 拷进 SBT 缓冲后按令牌退休。
+ */
+
 #include "scene_raytracing_render.h"
 
 #include "scene_camera.h"
@@ -27,6 +35,7 @@
 #include <vector>
 
 namespace {
+/** @brief 着色器入口在 shader_stages / shader_groups 数组里的固定下标。 */
 enum class stage_indices : uint32_t
 {
     ray_gen,
@@ -44,6 +53,7 @@ constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain"
 
 }  // namespace
 
+/** @brief 建 UBO、RT 管线与 SBT；SBT 拷贝在 create_pipeline_and_sbt 内提交。 */
 scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&     _allocator,
                                                  const vk::raii::PhysicalDevice& _physical_device,
                                                  const vk::raii::Device&         _device,
@@ -83,6 +93,7 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     sbt                          = std::move(new_sbt);
 }
 
+/** @brief 只记录 traceRaysKHR 使用的宽高，宽高不变时直接返回；输出图与附件由 scene_manager 管理。 */
 void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
 {
     if (width == _width && height == _height)
@@ -94,12 +105,14 @@ void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
     height = _height;
 }
 
+/** @brief 清零 frame_index 并重建描述符集，使新的 TLAS / 输出图绑定从第 0 个样本开始累积。 */
 void scene_raytracing_render::update()
 {
     frame_index = 0;
     update_descriptor();
 }
 
+/** @brief 先成对建好新管线与新 SBT，成功后才把旧的一对搬进回收站。 */
 void scene_raytracing_render::recreate()
 {
     auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
@@ -109,11 +122,17 @@ void scene_raytracing_render::recreate()
     sbt      = std::move(new_sbt);
 }
 
+/** @brief 只把累积帧号清零；描述符、管线与 SBT 保持不变。 */
 void scene_raytracing_render::reset_accumulation() noexcept
 {
     frame_index = 0;
 }
 
+/**
+ * @brief 写 UBO 槽、转输出图到 eGeneral、绑定管线与 SBT 后 traceRaysKHR，末尾补一条同样的 barrier。
+ * @note descriptor_sets 必须已由 update() 建好，且 _frame_slot 在范围内。
+ * @note sbt 必须与当前 pipeline 成对；尺寸取 resize 记录的宽高，不走间接 traceRays。
+ */
 void scene_raytracing_render::render(const scene_camera&            _camera,
                                      const vk::raii::CommandBuffer& _commandbuffer,
                                      const vulkan_environment_data& _environment, uint32_t _frame_slot)
@@ -166,6 +185,11 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
     frame_index++;
 }
 
+/**
+ * @brief 建 RT 管线与配套 SBT：先填五入口 / 五组并建管线，再录一次性命令缓冲把 staging 拷进 SBT。
+ * @note 组号必须与 shader_stages 顺序一致：0 raygen、1/2 miss、3 closest-hit、4 any-hit。
+ * @note staging 与命令缓冲按拷贝提交的令牌退休；返回的 pipeline / sbt 由调用方接管。
+ */
 std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render::create_pipeline_and_sbt()
 {
     vulkan_pipeline             new_pipeline;
@@ -233,6 +257,10 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
     return std::make_pair(std::move(new_pipeline), std::move(new_sbt));
 }
 
+/**
+ * @brief 重建描述符池与每帧描述符集：TLAS 用 StructureChain 写，输出图固定 eGeneral 布局。
+ * @note 贴图数组按紧凑绑定序从 binding 3 起写，数量来自 texture_manager.get_descriptor_info()。
+ */
 void scene_raytracing_render::update_descriptor()
 {
     // update descriptor pool

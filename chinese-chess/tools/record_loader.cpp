@@ -1,3 +1,10 @@
+/**
+ * @file record_loader.cpp
+ * @brief record_loader 的实现：一步着法的坐标换算与整份棋谱的逐帧推演。
+ * @details move_piece 在匿名命名空间里，只做纯坐标计算；load_records 负责读文件、跑正则并维护
+ *          「轮到谁走」与棋盘快照。所有失败都走 std::expected 的 error 串，串里带文件名与步号。
+ */
+
 #include "record_loader.h"
 
 #include <algorithm>
@@ -18,6 +25,16 @@
 #include <vector>
 
 namespace {
+/**
+ * @brief 按棋子种类与「进 / 退 / 平」把一个着法换算成新坐标。
+ * @param _piece_type 走的棋子种类。
+ * @param _now_x 当前列，1..9。
+ * @param _now_y 当前行，0..9（己方底线为 0，向前为正）。
+ * @param _move_direction 方向字：进、退或平。
+ * @param _number 直行类当成步数，斜行类（士 / 象 / 马）当成目标列。
+ * @return {新列, 新行}；方向或种类不在分派表里时原样返回当前坐标。
+ * @note 马按 |当前列 - 目标列| 修正行号，走的是「日」字；这里只做几何换算，不检查绊马腿、九宫与河界。
+ */
 [[nodiscard]] constexpr std::pair<uint8_t, uint8_t> move_piece(PIECE_TYPE _piece_type,
                                                                uint8_t    _now_x,
                                                                uint8_t    _now_y,
@@ -94,6 +111,14 @@ namespace {
 }
 }  // namespace
 
+/**
+ * @brief 读入棋谱、逐步推演，并返回每一步之后的棋盘快照。
+ * @note 正则与 read_record 相同，但这里取 group(0) 的原文去掉空白后，要求有效字符恰好 4 个。
+ * @note 红方着法用中文数字、黑方用阿拉伯数字；第 4 个字符的写法与「轮到谁走」不一致就报歧义。
+ * @note 走子后按 (10 - x, 9 - y) 的镜像坐标删掉对方对应位置的棋子，即吃子；新坐标越界（x 不在 1..9、
+ *       y 大于 9）算记谱错误。
+ * @note 「前 / 中 / 后」这类前缀按同种棋子按行号降序排列后的位置取，取不到就报「棋子不在棋盘上」。
+ */
 std::expected<std::vector<all_board_state>, std::string> record_loader::load_records(const std::filesystem::path& _record_path)
 {
     // get file encoding and read file

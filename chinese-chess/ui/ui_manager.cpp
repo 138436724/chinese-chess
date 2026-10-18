@@ -1,3 +1,10 @@
+/**
+ * @file ui_manager.cpp
+ * @brief ui_manager 的实现：ImGui 初始化、主 UI 逐帧录制与副窗口 WSI 编排。
+ * @details 构造按 context → 字体 → GLFW backend → 描述符池 → Vulkan backend → 命令缓冲 →
+ *          离屏图 → 副窗口渲染器的顺序初始化；update 在“场景设置”窗口里构建全部面板；
+ *          render 用 MSAA 附件画 draw data、解析到 render_output 后提交，再驱动平台窗口路径。
+ */
 #include "ui_manager.h"
 
 #include "scene/scene_manager.h"
@@ -36,6 +43,7 @@ constexpr std::string_view RENDER_MODE_RAY_TRACING   = "光线追踪 (RT Pipelin
 constexpr std::string_view RENDER_MODE_RAY_QUERY     = "光线追踪 (Ray Query)";
 
 #ifndef NDEBUG
+/** @brief Debug 构建的 ImGui VkResult 回调：非 VK_SUCCESS 时把结果打到 stderr。 */
 void imgui_callback(VkResult _result) noexcept
 {
     if (_result != VK_SUCCESS) [[unlikely]]
@@ -48,6 +56,10 @@ void imgui_callback(VkResult _result) noexcept
 }  // namespace
 
 
+/**
+ * @brief 初始化 ImGui 双 backend、描述符池、命令缓冲、离屏图与副窗口渲染器。
+ * @note 构造期间先按固定顺序注册五个面板，再建 context 与 backend；末尾 resize 会创建离屏图。
+ */
 ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_manager& _manager, uint32_t _width, uint32_t _height)
     : app(_app)
     , graphic_queue(app.get_graphic_queue())
@@ -128,6 +140,10 @@ ui_manager::ui_manager(GLFWwindow* _window, vulkan_application& _app, scene_mana
     viewport_renderer = std::make_unique<ui_viewport_renderer>(app);
 }
 
+/**
+ * @brief 等 GPU 空闲后按平台窗口 → 副窗口渲染器 → 两个 backend → context 的顺序清理。
+ * @note DestroyPlatformWindows 会回调副窗口的 destroy，先于 backend Shutdown 才能安全释放上游缓冲。
+ */
 ui_manager::~ui_manager()
 {
     app.wait_idle_for_cleanup();
@@ -139,6 +155,10 @@ ui_manager::~ui_manager()
     ImGui::DestroyContext();
 }
 
+/**
+ * @brief 重建 render_output 与 MSAA color_image，并把新尺寸转发给所有面板。
+ * @note 旧图先 retire_after_submitted 再创建新图，两张图都用图形队列的单一族做 exclusive sharing。
+ */
 void ui_manager::resize(uint32_t _width, uint32_t _height)
 {
     //ImGui_ImplVulkanH_CreateOrResizeWindow(g_Instance, g_PhysicalDevice, g_Device, wd, g_QueueFamily, g_Allocator, fb_width, fb_height, g_MinImageCount, 0);
@@ -166,6 +186,10 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
     std::ranges::for_each(ui_managers, [&](auto& m) { m->resize(_width, _height); });
 }
 
+/**
+ * @brief 起一帧 ImGui、构建“场景设置”窗口与全部面板，最后缓存 draw data。
+ * @note 面板顺序固定为摄像机、灯光、物体、棋局、环境；draw_data 在 render 前一直有效。
+ */
 void ui_manager::update()
 {
     ImGui_ImplVulkan_NewFrame();
@@ -183,6 +207,12 @@ void ui_manager::update()
     draw_data = ImGui::GetDrawData();
 }
 
+/**
+ * @brief 录制主 UI 命令：两条 layout barrier → MSAA 渲染 → 解析到 render_output → 提交。
+ * @param frame_slot 命令缓冲下标，必须与 begin_frame 返回的帧槽一致。
+ * @return 图形队列最新提交 token，application 合成时以它作为 UI 依赖。
+ * @note ImGui_ImplVulkan_RenderDrawData 在提交锁内录制，避免与上游同队列的纹理上传交错。
+ */
 vulkan_submission_token ui_manager::render(uint32_t frame_slot)
 {
     recycle_bin.release();
@@ -248,6 +278,7 @@ vulkan_image& ui_manager::get_render_image() noexcept
     return render_output;
 }
 
+/** @brief 构建渲染模式下拉；选择变化时直接切换场景管理器当前使用的渲染器。 */
 void ui_manager::render_mode_ui()
 {
     ImGui::SeparatorText(SCENE_MANAGER.data());

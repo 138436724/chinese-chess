@@ -1,3 +1,12 @@
+/**
+ * @file scene_texture_manager.cpp
+ * @brief 贴图管理器的实现：KTX2 侧车压缩 / 读取、压缩格式转码上传、字形图集合成、引用回收与绑定重排。
+ * @details 构造函数探测 BC6H 与 BC7 支持；create 先查 (usage, source) 缓存，未命中才上传。
+ *          上传优先走 .ktx2 侧车：源未修改时直接读，否则重新压缩并写侧车，再转码到设备支持的格式。
+ *          字形图集在 CPU 侧按覆盖度合成彩色 RGBA（BC7 可用时压缩），源路径是拼出来的虚拟路径。
+ *          所有上传令牌都追加到调用方的 waited_infos，本文件不等待 GPU。
+ */
+
 #include "scene_texture_manager.h"
 
 #include "scene_data_type.h"
@@ -89,6 +98,7 @@ void write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr&
 
 }  // namespace
 
+/** @brief 探测 BC6H / BC7 的采样与传输目标支持，不支持时分别记为 eUndefined。 */
 scene_texture_manager::scene_texture_manager(const vma::raii::Allocator&     _allocator,
                                              const vk::raii::PhysicalDevice& _physical_device,
                                              const vk::raii::Device&         _device,
@@ -113,6 +123,10 @@ scene_texture_manager::scene_texture_manager(const vma::raii::Allocator&     _al
             .value_or(vk::Format::eUndefined);
 }
 
+/**
+ * @brief 先查 (usage, source) 缓存，未命中再上传；成功后插入槽表并置两个脏标志。
+ * @note 上传失败返回无效句柄；异常展开时由 vulkan_submission_scope 先停提交再排空已发布令牌。
+ */
 texture_handle scene_texture_manager::create(const std::filesystem::path&          _image_path,
                                              texture_usage                         _usage,
                                              std::vector<vulkan_submission_token>& _waited_infos)
@@ -150,6 +164,11 @@ texture_handle scene_texture_manager::create(const std::filesystem::path&       
     return handle;
 }
 
+/**
+ * @brief 合成彩色字形图集：按覆盖度把前景 / 背景色混合成 RGBA，再按可用格式压缩上传。
+ * @note 压缩路径的图集宽高按 4 对齐，四周额外留 4 texel 背景色；去重键包含前后景色。
+ * @note BC7 压缩或压缩上传失败时回退未压缩 RGBA8；字体加载失败直接返回无效句柄。
+ */
 texture_handle scene_texture_manager::create(const std::filesystem::path&          _font_path,
                                              uint32_t                              _font_size,
                                              std::wstring_view                     _characters,
@@ -293,6 +312,10 @@ scene_texture_data* scene_texture_manager::get(texture_handle _handle) noexcept
     return slot != nullptr ? &slot->data : nullptr;
 }
 
+/**
+ * @brief 重新上传源文件并在原槽换图；glyph 图集与无效句柄直接拒绝。
+ * @note 旧图按已提交前沿退休；只置 is_dirty，不置 layout_dirty，槽序与绑定保持不变。
+ */
 bool scene_texture_manager::reload_texture(texture_handle _handle, std::vector<vulkan_submission_token>& _waited_infos)
 {
     auto* slot = textures.get(_handle);
@@ -315,6 +338,9 @@ bool scene_texture_manager::reload_texture(texture_handle _handle, std::vector<v
     return true;
 }
 
+/**
+ * @brief 遍历存活贴图，跳过 glyph、源文件不存在或哈希未变的项，逐张重载。
+ */
 bool scene_texture_manager::reload_all_textures(std::vector<vulkan_submission_token>& _waited_infos)
 {
     bool reloaded = false;
@@ -340,6 +366,7 @@ bool scene_texture_manager::reload_all_textures(std::vector<vulkan_submission_to
     return reloaded;
 }
 
+/** @brief 引用计数加一；句柄无效时静默忽略。 */
 void scene_texture_manager::retain(texture_handle _handle) noexcept
 {
     if (auto* slot = textures.get(_handle); slot != nullptr)
@@ -348,6 +375,10 @@ void scene_texture_manager::retain(texture_handle _handle) noexcept
     }
 }
 
+/**
+ * @brief 引用计数减一；Debug 下计数已为 0 时抛异常，Release 下静默忽略。
+ * @note 归零并不立即回收，交给下一次 update()。
+ */
 void scene_texture_manager::release(texture_handle _handle)
 {
     auto* slot = textures.get(_handle);
@@ -368,6 +399,11 @@ void scene_texture_manager::release(texture_handle _handle)
 #endif  // !NDEBUG
 }
 
+/**
+ * @brief 先回收零引用槽，再按槽序重排 bindless 绑定并返回两个标志。
+ * @note 绑定数超过 MAX_BINDLESS_TEXTURES 时，超出部分记为 npos，Debug 下还会抛异常。
+ * @note layout_dirty 在每次调用都被清掉，即使本次没有回收任何槽。
+ */
 scene_texture_manager::update_result scene_texture_manager::update()
 {
     const auto dead =
@@ -408,6 +444,7 @@ scene_texture_manager::update_result scene_texture_manager::update()
     return {.needs_redraw = true, .layout_moved = layout_moved};
 }
 
+/** @brief 只置 is_dirty；layout_dirty 保持原值，材质 SSBO 不会因此重传。 */
 void scene_texture_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -424,6 +461,10 @@ uint32_t scene_texture_manager::get_texture_binding(texture_handle _handle) cons
     return slot ? slot->binding : scene_handle<texture_tag>::npos;
 }
 
+/**
+ * @brief 遍历已绑定槽位，按槽序把 sampler / view / 布局包成 DescriptorImageInfo。
+ * @note 返回向量下标即紧凑绑定；binding 为 npos 的槽被过滤掉。
+ */
 std::vector<vk::DescriptorImageInfo> scene_texture_manager::get_descriptor_info() const
 {
     return textures.live() | std::views::filter([](const auto& _entry) {
@@ -436,6 +477,10 @@ std::vector<vk::DescriptorImageInfo> scene_texture_manager::get_descriptor_info(
            | std::ranges::to<std::vector>();
 }
 
+/**
+ * @brief 图像进回收站、擦除槽并清理缓存，随后置 is_dirty 与 layout_dirty。
+ * @note erase 的失败结果被忽略，因此无论句柄是否有效都返回 true。
+ */
 bool scene_texture_manager::destroy(texture_handle _handle)
 {
     if (auto* slot = textures.get(_handle); slot != nullptr)
@@ -452,6 +497,10 @@ bool scene_texture_manager::destroy(texture_handle _handle)
     return true;
 }
 
+/**
+ * @brief 优先读 / 生成 .ktx2 侧车并转码上传，压缩路径不可用时回退未压缩 RGBA16F / RGBA8。
+ * @note 侧车存在但读取失败时打印错误并继续走未压缩回退；两条路径都只把令牌推进 _waited_infos。
+ */
 std::expected<void, std::string> scene_texture_manager::upload_texture_data(const std::filesystem::path& _source,
                                                                             texture_usage                _usage,
                                                                             vulkan_image&                _image,
@@ -544,6 +593,10 @@ std::expected<void, std::string> scene_texture_manager::upload_texture_data(cons
     return {};
 }
 
+/**
+ * @brief 按目标格式把 KTX2 转码（BC6H / BC7 / BC4 / EAC_R11）并只上传 mip0。
+ * @note 目标格式不受支持、转码失败、取不到 mip0 偏移或没有 mip0 数据时返回错误串。
+ */
 std::expected<void, std::string> scene_texture_manager::upload_ktx2(const ktx2_texture_ptr& _ktx2,
                                                                     vk::Format              _target_format,
                                                                     vulkan_image&           _image,
@@ -604,6 +657,7 @@ std::expected<void, std::string> scene_texture_manager::upload_ktx2(const ktx2_t
     return {};
 }
 
+/** @brief 每种用途只建一个采样器；已存在时直接返回。 */
 void scene_texture_manager::ensure_sampler(texture_usage _usage)
 {
     if (samplers.contains(_usage))
@@ -617,6 +671,7 @@ void scene_texture_manager::ensure_sampler(texture_usage _usage)
     samplers.emplace(_usage, std::move(sampler));
 }
 
+/** @brief 从用途表取采样器；缺失时抛 std::runtime_error（正常路径不会发生）。 */
 vk::Sampler scene_texture_manager::get_sampler(texture_usage _usage) const
 {
     if (const auto iter = samplers.find(_usage); iter != samplers.end())

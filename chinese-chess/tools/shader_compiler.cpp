@@ -1,3 +1,13 @@
+/**
+ * @file shader_compiler.cpp
+ * @brief shader_compiler 的实现：Slang session 配置、模块到 SPIR-V 的编译链，以及着色器缓存的读写。
+ * @details 缓存是单一二进制文件：文件头（魔数 + Slang 构建串 + Debug/Release + target format/profile +
+ *          逐个编译选项的 name/kind/int 与字符串）与每条记录都用「size_t 长度前缀 + 字节」序列化。
+ *          读入先比头，不一致就整份丢弃；每段长度直接按 size_t 读入并 resize，截断或异常长度都靠
+ *          load_cache 外层的 catch 兜底。依赖指纹是「依赖路径列表 + 排序后的 SHA-256 列表」，
+ *          任一依赖缺失或读不了就不写缓存。
+ */
+
 #include "shader_compiler.h"
 
 #include "file_watcher.h"
@@ -28,10 +38,18 @@ shader_compiler shader_compiler::compiler;
 
 namespace {
 
+/** @brief 着色器缓存文件路径，相对运行目录 chinese-chess/。 */
 constexpr std::string_view shader_cache_path  = "resources\\cache\\shader_cache.cache";
+/** @brief 缓存文件头的魔数，后面跟 '\n' 与构建串等字段。 */
 constexpr std::string_view shader_cache_magic = "shader_cache_magic";
+/** @brief 缓存键与依赖列表的行分隔符。 */
 constexpr char             split_char         = '\n';
 
+/**
+ * @brief 取文件字节数，并把读位置复位到开头。
+ * @param _file 已打开的输入流。
+ * @return 文件大小（streamoff）；流状态异常时 tellg 返回 -1，原样传出。
+ */
 [[nodiscard]] inline std::streamoff get_file_size(std::ifstream& _file)
 {
     _file.seekg(0, std::ios::end);
@@ -40,6 +58,14 @@ constexpr char             split_char         = '\n';
     return file_size;
 }
 
+/**
+ * @brief 读一段「size_t 长度前缀 + 字节」到 blob。
+ * @tparam cache_blob 只接受 std::string 或 std::vector<char>。
+ * @param _file 输入流。
+ * @param _blob 读到的内容；先 resize 再整段读。
+ * @return 长度字段读失败返回 false；长度为 0 时返回 true 且不改 _blob；内容读不满也返回 false。
+ * @note 长度字段不做上限或剩余字节校验，异常大的值由 load_cache 的 catch 兜底。
+ */
 template <typename cache_blob>
     requires(std::same_as<cache_blob, std::string> || std::same_as<cache_blob, std::vector<char>>)
 [[nodiscard]] bool read_cache_blob(std::ifstream& _file, cache_blob& _blob)
@@ -59,6 +85,12 @@ template <typename cache_blob>
     return static_cast<bool>(_file.read(_blob.data(), static_cast<std::streamsize>(length)));
 }
 
+/**
+ * @brief 写一段「size_t 长度前缀 + 字节」，空 span 直接跳过。
+ * @param _file 输出流。
+ * @param _blob 要写的字节。
+ * @note 空 blob 不写长度字段；当前只用来写一定非空的段（头、键、依赖、指纹、SPIR-V），读写两端因此对齐。
+ */
 inline void write_cache_blob(std::ofstream& _file, const std::span<const char> _blob)
 {
     if (!_blob.empty())
@@ -69,6 +101,14 @@ inline void write_cache_blob(std::ofstream& _file, const std::span<const char> _
     }
 }
 
+/**
+ * @brief 生成缓存文件头：魔数、Slang 构建串、构建类型、target format/profile 与全部编译选项。
+ * @param _options 编译选项表，逐项取 name / kind / intValue 与两个字符串值。
+ * @param _build_tag Slang 的 getBuildTagString() 结果。
+ * @param _target_desc 目标描述，取 format 与 profile 的底层值。
+ * @return 以 '\n' 分隔的头字符串，读入侧与当前构建的头逐字节比对。
+ * @note Debug 与 Release 的构建类型串不同，所以两种配置不共用缓存。
+ */
 [[nodiscard]] std::string generate_cache_header(const std::vector<slang::CompilerOptionEntry>& _options,
                                                 const std::string_view                         _build_tag,
                                                 const slang::TargetDesc&                       _target_desc)
@@ -95,8 +135,14 @@ inline void write_cache_blob(std::ofstream& _file, const std::span<const char> _
     return result + option_string;
 }
 
+/** @brief Debug 下打印入口哈希时用的递增调用序号。 */
 constinit int global_counter = 0;
 
+/**
+ * @brief 把 Slang 的诊断 blob 转成字符串。
+ * @param _diagnostic_blob 诊断 blob，可能为空。
+ * @return 诊断文本；blob 为空时返回空串。
+ */
 [[nodiscard]] std::string get_diagnostics(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
 {
     if (_diagnostic_blob == nullptr)
@@ -107,6 +153,10 @@ constinit int global_counter = 0;
 }
 
 #ifndef NDEBUG
+/**
+ * @brief Debug 下把非空诊断打印到 stdout。
+ * @param _diagnostic_blob Slang 写出的诊断，空则什么都不打印。
+ */
 void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noexcept
 {
     if (_diagnostic_blob != nullptr)
@@ -115,6 +165,13 @@ void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>& _diagnostic_blob) noe
     }
 }
 
+/**
+ * @brief Debug 下逐个打印入口点在每个 target 上的 Slang 哈希。
+ * @param _entrypoint_count 入口点数量。
+ * @param _target_count target 数量（当前恒为 1）。
+ * @param _composed_program 已合成的程序，哈希由它现算。
+ * @note 这些哈希只用于核对缓存是否真的复用了同一次编译，不参与缓存键。
+ */
 void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Slang::ComPtr<slang::IComponentType>& _composed_program)
 {
     std::ranges::for_each(std::views::iota(0, _target_count), [&](int target_index) {
@@ -135,10 +192,21 @@ void print_entrypoint_hashes(int _entrypoint_count, int _target_count, const Sla
     });
 }
 #else
+/** @brief Release 下的空实现：既没有诊断可打，也不需要入口哈希。 */
 void diagnose_if_needed(const Slang::ComPtr<slang::IBlob>&) noexcept {}
+/** @brief Release 下的空实现：不打印入口哈希。 */
 void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType>&) {}
 #endif  // !NDEBUG
 
+/**
+ * @brief 把模块按入口点列表合成、链接，再取 target 0 的 SPIR-V。
+ * @param _session 当前会话，用于合成组件类型。
+ * @param _diagnostics_blob 复用的诊断 blob，每次失败都把它转成错误串。
+ * @param _slang_module 已加载的模块。
+ * @param _entry_name 入口点名字列表。
+ * @return SPIR-V blob；入口缺失、合成、链接或取码失败都返回错误串。
+ * @note Debug 下每步都会打印诊断并统计入口哈希，Release 下这两件事都是空操作。
+ */
 [[nodiscard]] std::expected<Slang::ComPtr<slang::IBlob>, std::string> slang_module_to_spv(Slang::ComPtr<slang::ISession>& _session,
                                                                                           Slang::ComPtr<slang::IBlob>& _diagnostics_blob,
                                                                                           Slang::ComPtr<slang::IModule>& _slang_module,
@@ -186,6 +254,12 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
     return spirv_code;
 }
 
+/**
+ * @brief 收集模块的依赖文件路径，并算出排序后的哈希指纹。
+ * @param _module 已加载的 Slang 模块。
+ * @return {依赖路径串, 指纹串}；任一依赖不存在或读不了时返回两个空串，表示「这条缓存无法指纹化」。
+ * @note 依赖路径由 Slang 给出（含 .slang 自己），原样写进缓存，下次按同一路径重算。
+ */
 [[nodiscard]] std::pair<std::string, std::string> get_dependencies_and_fingerprint(const Slang::ComPtr<slang::IModule>& _module)
 {
     std::string              dependence;
@@ -219,6 +293,12 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
     return {std::move(dependence), hashes | std::views::join_with(split_char) | std::ranges::to<std::string>()};
 }
 
+/**
+ * @brief 按缓存的依赖路径重算哈希，判断是否与指纹一致。
+ * @param _dependence 每行一个依赖路径。
+ * @param _fingerprint 排序后以 '\n' 拼起来的哈希串。
+ * @return 一致返回 true；任一文件读不了或哈希集合为空返回 false。
+ */
 [[nodiscard]] bool verify_dependencies(std::string_view _dependence, std::string_view _fingerprint)
 {
     std::vector<std::string> hashes;
@@ -247,12 +327,23 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
     return (hashes | std::views::join_with(split_char) | std::ranges::to<std::string>()) == _fingerprint;
 }
 
+/**
+ * @brief 拼缓存键：着色器路径 + '\n' + 各入口名（同样以 '\n' 分隔）。
+ * @param _shader_path 着色器路径。
+ * @param _entry_names 入口点列表。
+ * @return 缓存键；入口集合不同的两条管线不会互相串味。
+ */
 [[nodiscard]] std::string generate_cache_key(std::string_view _shader_path, const std::vector<std::string_view>& _entry_names)
 {
     return std::string(_shader_path) + split_char
            + (_entry_names | std::views::join_with(split_char) | std::ranges::to<std::string>());
 }
 
+/**
+ * @brief 从缓存键里取回着色器路径部分。
+ * @param _cache_key generate_cache_key 生成的键。
+ * @return 第一个 '\n' 之前的子串，即路径。
+ */
 [[nodiscard]] std::string_view get_path_from_cache_key(std::string_view _cache_key) noexcept
 {
     return _cache_key.substr(0, _cache_key.find(split_char));
@@ -260,6 +351,11 @@ void print_entrypoint_hashes(int, int, const Slang::ComPtr<slang::IComponentType
 
 }  // namespace
 
+/**
+ * @brief 建全局 session、装配编译选项与 target / session 描述，算缓存头后读缓存。
+ * @note ForceCLayout 与 VulkanUseEntryPointName 直接决定 GPU 侧布局与入口名，不能随意删。
+ * @note 优化与调试等级按构建类型二选一，Debug 是 NONE + MAXIMAL，Release 是 MAXIMAL + NONE。
+ */
 shader_compiler::shader_compiler()
 {
     const auto result = slang::createGlobalSession(global_session.writeRef());
@@ -323,11 +419,19 @@ shader_compiler::shader_compiler()
     load_cache();
 }
 
+/**
+ * @brief 析构时写回缓存；save_cache 内部自己处理目录创建与打开失败。
+ */
 shader_compiler::~shader_compiler()
 {
     save_cache();
 }
 
+/**
+ * @brief 先查缓存，未命中再现建 session、加载模块并编译，成功后连同依赖指纹写回缓存。
+ * @note search path 只放着色器所在目录，同目录的 import 走裸文件名。
+ * @note 依赖串为空（无法指纹化）时只编译不缓存，下次启动仍会重新编译。
+ */
 std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to_spv(const std::filesystem::path& _shader_path,
                                                                                      const std::vector<std::string_view>& _entry_name) const
 {
@@ -384,6 +488,10 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
     return spirv;
 }
 
+/**
+ * @brief 用内存源码建模块并编译，完全不碰缓存与文件系统。
+ * @note 会话直接用成员的 session_desc，所以没有额外 search path。
+ */
 std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to_spv(const std::string& _shader_string,
                                                                                      const std::vector<std::string_view>& _entry_name) const
 {
@@ -420,6 +528,11 @@ shader_compiler& shader_compiler::get_shader_compiler() noexcept
     return compiler;
 }
 
+/**
+ * @brief 打开缓存文件、比对文件头，再逐条读回缓存记录。
+ * @note 头不一致、条目数读不满或任一段读失败都直接返回，已读到的条目留在表里。
+ * @note 整个读入包在 try/catch 里：异常长度导致的 bad_alloc / length_error 不会让静态构造崩启动。
+ */
 void shader_compiler::load_cache()
 {
     std::ifstream cache_file(shader_cache_path.data(), std::ios::binary);
@@ -469,6 +582,11 @@ void shader_compiler::load_cache()
     }
 }
 
+/**
+ * @brief 先剔除源文件已不存在的条目，再创建目录并整份重写缓存。
+ * @note 输出流打不开就放弃，退出路径不抛异常。
+ * @note 文件头也带长度前缀，读侧先读长度再读头的字节。
+ */
 void shader_compiler::save_cache() const
 {
     std::erase_if(shader_cache,

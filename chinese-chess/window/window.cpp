@@ -1,3 +1,11 @@
+/**
+ * @file window.cpp
+ * @brief glfw_window 的实现：GLFW 初始化、对象图建立、帧循环与输入回调。
+ * @details 构造建立 GLFW 无 API 窗口，用 glfwGetRequiredInstanceExtensions 拿 WSI 扩展后依次创建
+ *          application、scene_manager 与 ui_manager；render 在每帧开头合并 resize，再按固定顺序
+ *          推进 UI、场景与合成，并在 Debug 下用 RenderDoc 捕获有变化的帧。
+ *          四个 GLFW 回调都经 window user pointer 回到本对象，错误存进 callback_error。
+ */
 #include "window.h"
 
 #include "scene/scene_manager.h"
@@ -20,6 +28,10 @@
 #include <stdexcept>
 #include <vector>
 
+/**
+ * @brief 建窗口、实例与设备，再建场景与 UI，并把两张离屏图交给 application 合成。
+ * @note 固定 800x600、GLFW_NO_API；窗口 user pointer 在注册回调前指向本对象。
+ */
 glfw_window::glfw_window()
 {
     constexpr uint32_t WIDTH  = 800;
@@ -80,6 +92,10 @@ glfw_window::glfw_window()
     app->bind_image(scene->get_render_image(), ui->get_render_image());
 }
 
+/**
+ * @brief 等 GPU 空闲、保存管线缓存，再显式按 ui → scene → app 释放并终止 GLFW。
+ * @note 显式 reset 保证 ui、scene 都在 app 之前释放，最后才销毁窗口并终止 GLFW。
+ */
 glfw_window::~glfw_window()
 {
     app->wait_idle_for_cleanup();
@@ -95,6 +111,11 @@ glfw_window::~glfw_window()
     glfwTerminate();
 }
 
+/**
+ * @brief 主循环：轮询事件、跳过最小化、合并 resize，再推进一帧并统计 fps。
+ * @note acquire/present 的 fatal 转成 runtime_error 上抛；异常路径先 cancel_frame 再重抛。
+ * @note Debug 下在 scene->update 前判断是否需要 RenderDoc 捕获，帧末 end_capture。
+ */
 void glfw_window::render()
 {
     // render loop
@@ -193,6 +214,9 @@ void glfw_window::render()
 }
 
 
+/**
+ * @brief 先查 callback_error 再进 try，把 resize 错误转存到 callback_error，绝不从 C 回调抛出。
+ */
 void glfw_window::glfw_resize_callback(GLFWwindow* _window, int _width, int _height) noexcept
 {
     auto* self = static_cast<glfw_window*>(glfwGetWindowUserPointer(_window));
@@ -201,16 +225,21 @@ void glfw_window::glfw_resize_callback(GLFWwindow* _window, int _width, int _hei
     catch (...) { self->callback_error = std::current_exception(); }
 }
 
+/** @brief 光标回调转发；成员函数为 noexcept，因此这里不捕获异常。 */
 void glfw_window::glfw_cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) noexcept
 {
     static_cast<glfw_window*>(glfwGetWindowUserPointer(_window))->cursor_position_callback(_window, _xpos, _ypos);
 }
 
+/** @brief 鼠标按键回调转发；成员函数为 noexcept，因此这里不捕获异常。 */
 void glfw_window::glfw_mouse_button_callback(GLFWwindow* _window, int _button, int _action, int _mods) noexcept
 {
     static_cast<glfw_window*>(glfwGetWindowUserPointer(_window))->mouse_button_callback(_window, _button, _action, _mods);
 }
 
+/**
+ * @brief 先查 callback_error 再进 try；键盘处理错误同样转存到 callback_error。
+ */
 void glfw_window::glfw_key_callback(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods) noexcept
 {
     auto* self = static_cast<glfw_window*>(glfwGetWindowUserPointer(_window));
@@ -219,6 +248,7 @@ void glfw_window::glfw_key_callback(GLFWwindow* _window, int _key, int _scancode
     catch (...) { self->callback_error = std::current_exception(); }
 }
 
+/** @brief 只置 resize_requested，真正的重建在 render 开头合并执行。 */
 void glfw_window::resize_callback(GLFWwindow* /*_window*/, int /*_width*/, int /*_height*/)
 {
     resize_requested = true;
@@ -232,6 +262,10 @@ void glfw_window::mouse_button_callback(GLFWwindow* /*_window*/, int /*_button*/
 {
 }
 
+/**
+ * @brief 先转发给 UI，再在 ImGui 未捕获键盘时转发给场景，并把 C 键记为截图请求。
+ * @note ImGui 捕获键盘时直接返回，避免输入框打字同时推进回放或触发截图。
+ */
 void glfw_window::key_callback(GLFWwindow* /*_window*/, int _key, int _scancode, int _action, int _mods)
 {
     ui->handle(_key, _scancode, _action, _mods);

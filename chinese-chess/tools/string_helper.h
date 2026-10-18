@@ -1,3 +1,13 @@
+/**
+ * @file string_helper.h
+ * @brief 字符串裁剪、ICU 编码转换与源文件编码探测，全部以模板 / inline 形式在头文件内实现。
+ * @details trim 按 std::iswspace 原地擦除两端空白；convert_to 以 icu::UnicodeString 为中转，
+ *          在 std::string / std::u8string / std::wstring 之间按 constexpr 分支选择 ICU 入口，
+ *          只接受源与目标互不相同的类型组合。get_file_encoding 用 ICU 的 UCharsetDetector
+ *          嗅探整份文件的编码名，是 record_loader 解析棋谱前的第一步。三个接口都不做缓存，
+ *          同一文件重复探测就会重复读盘。
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -19,6 +29,12 @@
 
 namespace string_helper {
 
+/**
+ * @brief 原地去掉字符串两端的空白字符。
+ * @param s 待裁剪的字符串，只接受 std::string 或 std::wstring。
+ * @note 空白判定统一走 std::iswspace；全空白串会被清空，原本为空的串保持为空。
+ * @note 只做 erase，不重新分配，也不改动中间的任何字符。
+ */
 template <typename string_class>
     requires(std::same_as<string_class, std::string> || std::same_as<string_class, std::wstring>)
 constexpr void trim(string_class& s) noexcept
@@ -29,6 +45,15 @@ constexpr void trim(string_class& s) noexcept
     s.erase(end, s.end());
 }
 
+/**
+ * @brief 在 std::string / std::u8string / std::wstring 之间做编码转换。
+ * @param _string 源字符串；std::string 按 _encoding 解释，std::u8string 固定按 UTF-8，std::wstring 走 u_strFromWCS。
+ * @param _encoding 多字节一侧的编码名，默认 utf8；转换到 u8string / wstring 时不起作用。
+ * @return 目标类型 new_string_class 的字符串，内容取自 icu::UnicodeString 的转出结果。
+ * @note 源与目标类型必须不同，同类型转换会被 requires 拒绝（同类型直接用拷贝即可）。
+ * @note 标了 noexcept：ICU 的转换错误只写进局部 ErrorCode 而从不检查，非法输入按 ICU 的替换规则处理，
+ *       所以失败既不抛异常也不报告，只可能得到被替换或被截断的文本。
+ */
 template <typename new_string_class, typename old_string_class>
     requires(std::same_as<old_string_class, std::string> || std::same_as<old_string_class, std::u8string>
              || std::same_as<old_string_class, std::wstring>)
@@ -87,6 +112,14 @@ template <typename new_string_class, typename old_string_class>
     }
 }
 
+/**
+ * @brief 用 ICU 的 UCharsetDetector 探测文本文件的字符集。
+ * @param _file_path 待探测的文件，整份读入内存后再交给探测器。
+ * @return 编码名（例如 GB18030、UTF-8）；string_class 为 std::wstring / std::u8string 时再经 convert_to 转一次。
+ * @throws std::runtime_error 文件打不开（Cannot open file!），或探测器给不出匹配结果 / 探测过程报错。
+ * @note 返回的是探测器给出的名字，不保证与写文件时的编码名逐字一致，只保证能用来解码同一份内容。
+ * @note std::ifstream 以 ate 模式打开并读完即关闭，文件大小完全由 tellg 决定。
+ */
 template <typename string_class>
     requires(std::same_as<string_class, std::string> || std::same_as<string_class, std::u8string>
              || std::same_as<string_class, std::wstring>)

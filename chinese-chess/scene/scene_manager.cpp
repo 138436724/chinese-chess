@@ -1,3 +1,11 @@
+/**
+ * @file scene_manager.cpp
+ * @brief 场景编排器的实现：初始化顺序、脏门控更新、命令录制与异步截图。
+ * @details 构造函数按 texture -> material -> model 的依赖顺序建 manager，再建三套渲染器；
+ *          update() 先重抛后台截图异常，再依次 update 四个 manager，据其结果决定重建渲染器资源还是只清累积；
+ *          render() 录制本帧命令、合并 waited_infos 依赖并提交，_need_capture 时接上回读链。
+ *          截图回读与写盘分离：主线程只发起 download_image 并保存 token，写盘在 jthread 里完成。
+ */
 #include "scene_manager.h"
 
 #include "scene_data_type.h"
@@ -34,6 +42,10 @@
 
 namespace {
 
+/**
+ * @brief 一次截图回读的上下文：staging 缓冲、完成 token 与写盘参数。
+ * @details 由主线程构造并交给后台线程；析构时 wait_for_cleanup 排空 token，确保缓冲不被提前释放。
+ */
 struct image_save_info
 {
     vulkan_buffer         staging_buffer;
@@ -47,6 +59,11 @@ struct image_save_info
     ~image_save_info() { token.wait_for_cleanup(); }
 };
 
+/**
+ * @brief 后台线程主体：等 token、invalidate 映射内存、做 OCIO 变换并写盘。
+ * @tparam T 像素类型，16 位浮点写 EXR，8 位无符号整数写 PNG。
+ * @note 除等待 token 与 invalidate 外的异常都在本函数内打印，不再向上抛。
+ */
 template <typename T>
 void save_frame(image_save_info& _info)
 {
@@ -71,11 +88,20 @@ void save_frame(image_save_info& _info)
 
 }  // namespace
 
+/**
+ * @brief 析构前先做设备级等待，确保在飞命令与后台截图都结束。
+ * @note save_thread 的 join 发生在成员析构阶段，晚于这里的 wait_idle_for_cleanup。
+ */
 scene_manager::~scene_manager()
 {
     app.wait_idle_for_cleanup();
 }
 
+/**
+ * @brief 按依赖顺序初始化四个 manager 与三套渲染器，注册回收站队列并建输出图像。
+ * @note 成员初始化列表决定 manager 的构造顺序：texture 先于 material、material 先于 model。
+ * @note failure_scope 覆盖构造体内的工作（三套渲染器、命令缓冲、输出图像）；失败时先停提交再排空已发布 token。
+ */
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
     , graphic_queue(app.get_graphic_queue())
@@ -127,6 +153,11 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
     resize(_width, _height);
 }
 
+/**
+ * @brief 退休旧输出图像，按新尺寸重建 render_output，再调整活跃渲染器。
+ * @note 只 resize 当前活跃渲染器；另外两个在切过去时靠 need_descriptor_update 重写描述符。
+ * @note 新图像固定 eColorAttachment / eSampled / eTransferSrc / eStorage，供渲染、合成与截图共用。
+ */
 void scene_manager::resize(uint32_t _width, uint32_t _height)
 {
     width  = _width;
@@ -151,6 +182,11 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     need_descriptor_update = true;
 }
 
+/**
+ * @brief 脏门控更新：先重抛后台截图异常，再按序更新四个 manager 并决定渲染器动作。
+ * @note 贴图 layout_moved 会连带置材质脏；相机-only 变化走 reset_accumulation，不重写描述符。
+ * @note 任何 manager 报告变化或 need_descriptor_update 置位时调 active_render->update()。
+ */
 void scene_manager::update()
 {
     {
@@ -199,6 +235,11 @@ void scene_manager::update()
     need_descriptor_update = false;
 }
 
+/**
+ * @brief 录制本帧场景命令并提交，必要时接上截图回读链。
+ * @note 开头的 update() 覆盖本帧稍后切换的渲染模式；waited_infos 在本帧转成依赖后清空。
+ * @note 回读会把返回 token 换成回读末条命令的 token，合成因此要等整条回读完成。
+ */
 vulkan_submission_token scene_manager::render(uint32_t frame_slot, bool _need_capture)
 {
     // Also prepares a mode selected after an earlier update in this frame.
@@ -226,6 +267,10 @@ vulkan_submission_token scene_manager::render(uint32_t frame_slot, bool _need_ca
     return token;
 }
 
+/**
+ * @brief 处理窗口按键：F5 重建活跃管线、F6 重载全部贴图。
+ * @note 非 GLFW_PRESS 一律忽略；F5 的异常只打印，旧管线继续可用。
+ */
 void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/)
 {
     if (_action != GLFW_PRESS)
@@ -258,6 +303,10 @@ void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods
     }
 }
 
+/**
+ * @brief 置全脏：场景标志与四个 manager 的脏标志一起置位。
+ * @note 下一帧会重传全部 SSBO 并重建描述符。
+ */
 void scene_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -268,47 +317,75 @@ void scene_manager::need_update() noexcept
     model_manager.need_update();
 }
 
+/**
+ * @brief 只置场景脏，不碰任何 manager。
+ * @note 相机矩阵每帧直接写 UBO，所以相机变化不需要重传场景数据或重写描述符。
+ */
 void scene_manager::need_camera_update() noexcept
 {
     is_dirty = true;
 }
 
+/**
+ * @brief 置场景脏与灯光脏，下一帧重传灯光 SSBO。
+ */
 void scene_manager::need_light_update() noexcept
 {
     is_dirty = true;
     light_manager.need_update();
 }
 
+/**
+ * @brief 置场景脏与材质脏，下一帧重排 binding 并重传材质 SSBO。
+ */
 void scene_manager::need_material_update() noexcept
 {
     is_dirty = true;
     material_manager.need_update();
 }
 
+/**
+ * @brief 置场景脏与模型脏，下一帧重建实例缓冲与 TLAS。
+ */
 void scene_manager::need_model_update() noexcept
 {
     is_dirty = true;
     model_manager.need_update();
 }
 
+/**
+ * @brief 置场景脏与贴图脏。
+ * @note 环境强度每帧在 render 里直接进入 GPU 数据，这里只让贴图管理器重算紧凑 binding。
+ */
 void scene_manager::need_environment_update() noexcept
 {
     is_dirty = true;
     texture_manager.need_update();
 }
 
+/**
+ * @brief 新建默认灯，置场景脏并返回句柄。
+ */
 light_handle scene_manager::create_light()
 {
     is_dirty = true;
     return light_manager.create();
 }
 
+/**
+ * @brief 从图片文件建贴图，失败时返回无效句柄。
+ * @note 上传 token 追加进 waited_infos，下一次 render 时转成命令依赖。
+ */
 texture_handle scene_manager::create_texture(const std::filesystem::path& _image_path, texture_usage _usage)
 {
     is_dirty = true;
     return texture_manager.create(_image_path, _usage, waited_infos);
 }
 
+/**
+ * @brief 用字体与前景/背景色合成字形图集贴图，失败时返回无效句柄。
+ * @note 图集按覆盖度合成后展开成 RGBA，属于普通 LDR 贴图；上传 token 同样进 waited_infos。
+ */
 texture_handle scene_manager::create_texture(const std::filesystem::path& _font_path,
                                              uint32_t                     _font_size,
                                              std::wstring_view            _characters,
@@ -320,6 +397,9 @@ texture_handle scene_manager::create_texture(const std::filesystem::path& _font_
     return texture_manager.create(_font_path, _font_size, _characters, _padding, _foreground_color, _background_color, waited_infos);
 }
 
+/**
+ * @brief 新建默认材质，同时置模型脏以覆盖紧凑 binding 的变化。
+ */
 material_handle scene_manager::create_material()
 {
     is_dirty = true;
@@ -327,6 +407,10 @@ material_handle scene_manager::create_material()
     return material_manager.create();
 }
 
+/**
+ * @brief 从模型文件建实例，网格按路径在 model_manager 内复用。
+ * @note 加载失败时 model_manager 返回无效句柄并打印错误，这里原样透传。
+ */
 model_handle scene_manager::create_model(const std::filesystem::path& _model_path)
 {
     is_dirty = true;
@@ -353,6 +437,9 @@ scene_model_data* scene_manager::get(model_handle _handle) noexcept
     return model_manager.get(_handle);
 }
 
+/**
+ * @brief 销毁灯，成功时置场景脏。
+ */
 void scene_manager::destroy(light_handle _handle) noexcept
 {
     if (light_manager.destroy(_handle))
@@ -361,6 +448,9 @@ void scene_manager::destroy(light_handle _handle) noexcept
     }
 }
 
+/**
+ * @brief 销毁材质，成功时置场景与模型脏（后续材质的紧凑 binding 会前移）。
+ */
 void scene_manager::destroy(material_handle _handle) noexcept
 {
     if (material_manager.destroy(_handle))
@@ -370,6 +460,9 @@ void scene_manager::destroy(material_handle _handle) noexcept
     }
 }
 
+/**
+ * @brief 销毁模型实例，成功时置场景脏；网格由引用计数决定是否回收。
+ */
 void scene_manager::destroy(model_handle _handle) noexcept
 {
     if (model_manager.destroy(_handle))
@@ -378,12 +471,20 @@ void scene_manager::destroy(model_handle _handle) noexcept
     }
 }
 
+/**
+ * @brief 转发贴图通道设置，并置场景脏。
+ * @note 引用计数的增减全部发生在 material_manager::set_texture 内。
+ */
 void scene_manager::set_material_texture(material_handle _handle, texture_channel _channel, texture_handle _texture) noexcept
 {
     is_dirty = true;
     material_manager.set_texture(_handle, _channel, _texture);
 }
 
+/**
+ * @brief 更换环境贴图：先 release 旧句柄，再写入并 retain 新句柄，最后置环境脏。
+ * @note 必须经本函数写入，否则引用计数与 environment.image 会不一致。
+ */
 void scene_manager::set_environment_image(texture_handle _image) noexcept
 {
     texture_manager.release(environment.image);
@@ -394,6 +495,10 @@ void scene_manager::set_environment_image(texture_handle _image) noexcept
     need_environment_update();
 }
 
+/**
+ * @brief 切换活跃渲染器，强制按当前尺寸 resize 并置脏。
+ * @note need_descriptor_update 保证新后端不会继续引用旧输出图像的 imageview。
+ */
 void scene_manager::set_render_mode(render_mode _mode)
 {
     active_render = scene_renders.at(_mode);
@@ -404,6 +509,10 @@ void scene_manager::set_render_mode(render_mode _mode)
     need_descriptor_update = true;
 }
 
+/**
+ * @brief 重载单张贴图，失败时保留旧图并返回 false。
+ * @note 成功时置模型脏，因为模型 SSBO 里的贴图绑定可能需要更新。
+ */
 bool scene_manager::reload_texture(texture_handle _handle)
 {
     if (!texture_manager.reload_texture(_handle, waited_infos))
@@ -435,6 +544,11 @@ scene_environment_data& scene_manager::get_environment() noexcept
     return environment;
 }
 
+/**
+ * @brief 三段式回读 render_output，并起后台线程做 OCIO 变换与写盘。
+ * @note 先按输出格式决定 EXR 还是 PNG；路径由 CAPTURES_PATH 与本地时间拼出。
+ * @note 重新赋值 save_thread 会先 join 上一次作业，因此连续截图会短暂阻塞主线程。
+ */
 vulkan_submission_token scene_manager::capture_frame(vulkan_submission_token _waited_info)
 {
     const auto [image_width, image_height] = render_output.get_extent();

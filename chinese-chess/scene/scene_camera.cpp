@@ -1,9 +1,20 @@
+/**
+ * @file scene_camera.cpp
+ * @brief 相机参数 setter、相机基重建与投影/视图矩阵计算的实现。
+ * @details 两个 set_*_projection 与 set_projection_type 只触发矩阵重算；位置/方向/上方向的 setter
+ *          先重建 right_axis/up_axis，再重算全部矩阵。所有函数都是 noexcept，退化输入由
+ *          vulkan_common::safe_normalize 与参考 up 兜底。getter 直接返回成员或成员引用，不复制矩阵。
+ */
 #include "scene_camera.h"
 
 #include "vulkan_core/vulkan_common.h"
 
 #include <cmath>
 
+/**
+ * @brief 写入正交六面参数、切到正交投影并重算矩阵。
+ * @note 只改投影相关状态；位置、朝向与曝光不受影响。
+ */
 void scene_camera::set_orthographic_projection(float _left, float _right, float _bottom, float _top, float _near, float _far) noexcept
 {
     active_type       = projection_type::orthographic;
@@ -16,6 +27,10 @@ void scene_camera::set_orthographic_projection(float _left, float _right, float 
     update_camera_matrix();
 }
 
+/**
+ * @brief 写入透视四参数、切到透视投影并重算矩阵。
+ * @note fov_y 以弧度保存，调用方负责从角度换算；近远平面的合法性不做校验。
+ */
 void scene_camera::set_perspective_projection(float _fov_y, float _aspect, float _near, float _far) noexcept
 {
     active_type      = projection_type::perspective;
@@ -26,6 +41,10 @@ void scene_camera::set_perspective_projection(float _fov_y, float _aspect, float
     update_camera_matrix();
 }
 
+/**
+ * @brief 切换投影类型并按新类型重算投影矩阵。
+ * @note 两套参数各自保留，切换不会覆盖对方；位置与朝向不变。
+ */
 void scene_camera::set_projection_type(projection_type _type) noexcept
 {
     active_type = _type;
@@ -37,18 +56,30 @@ void scene_camera::set_exposure(float _exposure) noexcept
     exposure = _exposure;
 }
 
+/**
+ * @brief 更新位置后重建相机基与视图矩阵。
+ * @note 位置本身不做校验，投影矩阵不受影响。
+ */
 void scene_camera::set_position(const glm::vec3& _position) noexcept
 {
     position = _position;
     update_camera_axis();
 }
 
+/**
+ * @brief 写入归一化后的方向，并重建基向量与视图矩阵。
+ * @note 零向量或非有限输入时保留上一条有效方向，不把 NaN 写进矩阵。
+ */
 void scene_camera::set_direction(const glm::vec3& _direction) noexcept
 {
     direction = vulkan_common::safe_normalize(_direction, direction);  // 零向量：保留上一条有效方向，不写 NaN
     update_camera_axis();
 }
 
+/**
+ * @brief 写入归一化后的参考上方向，并重建基向量与视图矩阵。
+ * @note 退化输入保留旧值；与 direction 平行时由 update_camera_axis 换用参考轴。
+ */
 void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 {
     world_up = vulkan_common::safe_normalize(_world_up, world_up);  // 同上，退化输入保留旧值
@@ -95,6 +126,10 @@ const glm::mat4& scene_camera::get_inv_view_matrix() const noexcept
     return inv_view_matrix;
 }
 
+/**
+ * @brief 归一化输入、挑选有效参考 up 并重建 right_axis/up_axis，最后重算矩阵。
+ * @note direction 与 world_up 平行时叉乘趋零，实现改用另一个参考轴重建，非退化路径保持原值。
+ */
 void scene_camera::update_camera_axis() noexcept
 {
     direction = vulkan_common::safe_normalize(direction, glm::vec3(0.f, 0.f, -1.f));
@@ -111,6 +146,10 @@ void scene_camera::update_camera_axis() noexcept
     update_camera_matrix();
 }
 
+/**
+ * @brief 按 active_type 生成投影矩阵，并同步重算 view 与两个逆矩阵。
+ * @note 逆矩阵用 glm::inverse 直接求；near/far 非法时结果由 glm 定义，不做额外保护。
+ */
 void scene_camera::update_camera_matrix() noexcept
 {
     if (active_type == projection_type::orthographic)

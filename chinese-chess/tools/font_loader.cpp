@@ -1,3 +1,10 @@
+/**
+ * @file font_loader.cpp
+ * @brief font_loader 的实现：每次调用独立初始化 FreeType 库与 face，并用 unique_ptr 守卫释放。
+ * @details 错误信息统一用 std::format 拼成英文；字形加载失败那条带宽字符，先经 string_helper::convert_to
+ *          转成 UTF-8 再放进 expected 的 error。位图按行直接拷进 character_info::buffer，不做对齐或补白。
+ */
+
 #include "font_loader.h"
 
 #include "string_helper.h"
@@ -14,6 +21,12 @@
 #include <type_traits>
 #include <vector>
 
+/**
+ * @brief 初始化 FreeType、打开字体，并逐个字符渲染成灰度位图与排版度量。
+ * @note 库与 face 都用 unique_ptr 加自定义删除器守护，任何提前返回都不会泄漏。
+ * @note 字号只设像素高度（FT_Set_Pixel_Sizes 的第二个参数），宽度由字体自身决定。
+ * @note 字形错误码原样拼进错误串，调用方看到的失败原因来自 FreeType 而不是推断。
+ */
 std::expected<std::vector<character_info>, std::string> font_loader::load_font(const std::filesystem::path& _font_path,
                                                                                uint32_t                     _font_size,
                                                                                std::wstring_view            _characters)

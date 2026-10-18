@@ -1,3 +1,12 @@
+/**
+ * @file scene_rasterization_render.cpp
+ * @brief 光栅化前向 PBR 的实现：动态渲染录制、MSAA resolve、天空盒与间接绘制、管线与描述符创建。
+ * @details 两条管线都经 vulkan_pipeline::create_from_shader 从 scene_rasterization_render.slang 编译；
+ *          顶点输入由匿名命名空间的 vertex_binding_description / vertex_attribute_descriptions 定义，
+ *          与 vulkan_model_vertex 的字段顺序一致。render() 把场景数据 memcpy 进 UBO 的 _frame_slot
+ *          槽并 flush，随后录 barrier、beginRendering、天空盒、几何与 endRendering。
+ */
+
 #include "scene_rasterization_render.h"
 
 #include "scene_camera.h"
@@ -45,6 +54,10 @@ constexpr std::string_view ENVIRONMENT_FRAG_ENTRY_NAME = "environmentFragMain";
 }
 }  // namespace
 
+/**
+ * @brief 计算 UBO 槽跨度并建 UBO 与两条图形管线。
+ * @note UBO 用 eHostAccessSequentialWrite 分配，render 里按 _frame_slot 偏移写入；构造不建附件图。
+ */
 scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocator&     _allocator,
                                                        const vk::raii::PhysicalDevice& _physical_device,
                                                        const vk::raii::Device&         _device,
@@ -85,6 +98,10 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     pipeline             = create_pipeline(color_format);
 }
 
+/**
+ * @brief 重建 MSAA 颜色图与深度图：格式分别取 render_output 与 DEPTH_FORMAT，采样数 MSAA_SAMPLE_COUNT。
+ * @note 旧图先进回收站；宽高不变时直接返回，附件内容每次都 clear / dontcare，无需保留。
+ */
 void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
 {
     if (width == _width && height == _height)
@@ -119,11 +136,17 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                        vk::ClearDepthStencilValue(1.f, 0), "rasterization_depth");
 }
 
+/** @brief 只重建描述符集；光栅化的每帧数据都在 render() 里写 UBO，无需其它更新。 */
 void scene_rasterization_render::update()
 {
     update_descriptor();
 }
 
+/**
+ * @brief 写 UBO 槽并录制整帧：三条 barrier、动态渲染、天空盒、几何、endRendering。
+ * @note 天空盒先画且关闭深度测试 / 写入，几何随后覆盖；不透明几何按 eBack 剔除。
+ * @note descriptor_sets 必须已由 update() 建好，且 _frame_slot 在范围内。
+ */
 void scene_rasterization_render::render(const scene_camera&            _camera,
                                         const vk::raii::CommandBuffer& _commandbuffer,
                                         const vulkan_environment_data& _environment, uint32_t _frame_slot)
@@ -209,6 +232,9 @@ void scene_rasterization_render::render(const scene_camera&            _camera,
     _commandbuffer.endRendering();
 }
 
+/**
+ * @brief 先建新管线，成功后才把旧管线搬进回收站，失败时旧管线保持可用。
+ */
 void scene_rasterization_render::recreate()
 {
     vulkan_pipeline new_environment_pipeline = create_environment_pipeline(color_format);
@@ -221,8 +247,13 @@ void scene_rasterization_render::recreate()
     pipeline             = std::move(new_pipeline);
 }
 
+/** @brief 光栅化没有累积缓冲，本函数不做任何事。 */
 void scene_rasterization_render::reset_accumulation() noexcept {}
 
+/**
+ * @brief 建天空盒管线：同一套描述符布局（UBO + bindless 贴图），但无顶点输入、深度测试关闭。
+ * @note 与几何管线的描述符布局相同，因此同一批描述符集可以先后绑定两条管线。
+ */
 vulkan_pipeline scene_rasterization_render::create_environment_pipeline(vk::Format _color_format)
 {
     vulkan_pipeline new_pipeline;
@@ -247,6 +278,10 @@ vulkan_pipeline scene_rasterization_render::create_environment_pipeline(vk::Form
     return new_pipeline;
 }
 
+/**
+ * @brief 建几何管线：绑定 vertex_binding_description / vertex_attribute_descriptions，开启深度测试与写入。
+ * @note 正面绕序 eCounterClockwise，eBack 剔除；MSAA 采样数与附件图一致。
+ */
 vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_format)
 {
     vulkan_pipeline new_pipeline;
@@ -274,6 +309,10 @@ vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_fo
     return new_pipeline;
 }
 
+/**
+ * @brief 重建描述符池与 MAX_FRAMES_IN_FLIGHT 个描述符集：0 号 UBO 窗口 + 1 号 bindless 贴图数组。
+ * @note 贴图数组按紧凑绑定序写，数量来自 texture_manager.get_descriptor_info()。
+ */
 void scene_rasterization_render::update_descriptor()
 {
     // update descriptor pool
