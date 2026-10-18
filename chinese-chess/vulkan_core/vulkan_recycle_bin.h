@@ -34,7 +34,7 @@
  * @brief 以提交 token 为凭据的延迟销毁队列，禁止拷贝与移动。
  * @details 每个条目记录一组 last_use token，只有它们全部完成才销毁资源；release() 按插入顺序清理。
  *          retire_after_submitted 用已注册队列的已提交前沿作为 last use，适用于“替换发生在下一次引用之前”的资源。
- *          析构会等待所有条目完成，保证 descriptor set 先于 pool 这类依赖顺序在异常展开时也不乱。
+ *          析构逐条等待并按登记顺序释放；调用方需按 descriptor set 在 pool 之前的依赖顺序登记。
  */
 class vulkan_recycle_bin
 {
@@ -58,7 +58,7 @@ public:
     /**
      * @brief 登记一个队列，供 retire_after_submitted 读取已提交前沿。
      * @param _queue 被登记的队列；回收站只保存指针，不拥有它。
-     * @note 队列必须比回收站活得久；重复登记同一条队列没有意义，只会让 last_use 里多一个 token。
+     * @note 队列必须比回收站活得久；注册不去重，重复登记同一队列或其别名会产生冗余 token。
      */
     void add_queue(const vulkan_queue& _queue);
 
@@ -104,7 +104,8 @@ public:
     /**
      * @brief 销毁所有 last-use 已完成的条目，未完成的留到下次调用。
      * @throws vk::SystemError 查询时间线计数失败（如设备丢失）时抛出；已完成的条目仍保持原顺序。
-     * @note 按插入顺序销毁，满足 descriptor set 先于 pool 这类配对顺序；不同队列独立判定，不阻塞队首。
+     * @note 按扫描顺序销毁已完成条目，但会跳过未完成条目；有依赖的资源还须由调用方匹配 last-use，
+     *       不能仅凭插入顺序保证 descriptor set 先于 pool 销毁。
      */
     void release();
 

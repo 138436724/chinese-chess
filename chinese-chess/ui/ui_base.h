@@ -4,7 +4,7 @@
  * @details 摄像机、灯光、物体、棋局、环境五个面板互不继承，ui_manager 用
  *          std::vector<pro::proxy<ui_base>> 按固定顺序持有并转发调用。facade 只声明成员函数
  *          约定，不约束实现类型，也不要求拷贝；relocation 与 destruction 都要求 nothrow，
- *          以保证 vector 扩容与析构路径不抛异常。
+ *          使代理对象的迁移和销毁不抛异常；vector 扩容时的内存分配仍可能失败。
  */
 #pragma once
 
@@ -23,7 +23,8 @@ PRO_DEF_MEM_DISPATCH(mem_resize, resize);
  */
 PRO_DEF_MEM_DISPATCH(mem_update, update);
 /**
- * @brief 声明 handle 约定：参数与 GLFW 的 key callback 一致，面板自行决定是否消费。
+ * @brief 声明 handle 约定：接收 GLFW 键盘事件的四个整数参数，面板自行决定是否响应。
+ * @note 返回 void，不提供消费标志，也不阻止 ui_manager 把事件继续分发给其他面板。
  * @details 生成 dispatch tag；四个 int 依次是 key / scancode / action / mods。
  */
 PRO_DEF_MEM_DISPATCH(mem_handle, handle);

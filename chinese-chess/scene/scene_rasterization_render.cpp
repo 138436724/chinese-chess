@@ -233,7 +233,7 @@ void scene_rasterization_render::render(const scene_camera&            _camera,
 }
 
 /**
- * @brief 先建新管线，成功后才把旧管线搬进回收站，失败时旧管线保持可用。
+ * @brief 两条新管线创建成功后依次回收旧管线并替换；编译/创建失败保留旧对象，回收登记不具备整组回滚。
  */
 void scene_rasterization_render::recreate()
 {

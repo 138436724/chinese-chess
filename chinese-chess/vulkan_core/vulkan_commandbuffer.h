@@ -69,7 +69,7 @@ public:
     /**
      * @brief 等上一次提交完成后 reset 并 begin 一条新的录制。
      * @param _usage 录制用途标志，原样交给 VkCommandBufferBeginInfo。
-     * @note 这里的等待是「同一命令缓冲不得在 GPU 执行中复用」的唯一保证。
+     * @note 这里是命令缓冲自身的复用保护，不依赖上层是否已等待对应 frame slot。
      * @note 会清掉上一次录制的内容，提交前必须再走一次 end_record。
      */
     void begin_record(vk::CommandBufferUsageFlags _usage);

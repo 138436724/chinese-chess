@@ -59,8 +59,8 @@ public:
     /**
      * @brief GLFW 光标位置回调：转发到成员函数，当前为空实现。
      * @param _window 触发回调的 GLFW 窗口。
-     * @param _xpos   光标 x 坐标（屏幕坐标）。
-     * @param _ypos   光标 y 坐标（屏幕坐标）。
+     * @param _xpos   相对窗口内容区左上角的光标 x 坐标，使用 GLFW 屏幕坐标单位，不一定是 framebuffer 像素。
+     * @param _ypos   相对窗口内容区左上角的光标 y 坐标，与 _xpos 单位相同。
      * @note 成员实现是 noexcept，因此这里不捕获异常。
      */
     static void glfw_cursor_position_callback(GLFWwindow* _window, double _xpos, double _ypos) noexcept;

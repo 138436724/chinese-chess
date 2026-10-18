@@ -2,7 +2,7 @@
  * @file file_watcher.h
  * @brief 文件内容哈希与变更判定：SHA-256 摘要 + 进程内 memo + 跨进程的缓存文件。
  * @details 单例在静态初始化期读出 resources/cache/hash_cache.cache 里的「路径 -> 哈希」表，
- *          析构时把磁盘上仍存在的条目写回去，因此同一份文件下次启动时不必重新计算哈希。
+ *          析构时把磁盘上仍存在的条目写回去，供下次启动时比较；每次 is_file_modified 仍会重算内容哈希。
  *          is_file_modified 只比内容哈希、不看 mtime：内容没变就不算修改。
  */
 
@@ -19,7 +19,7 @@
  * @brief 文件变更检测单例：提供 SHA-256 计算与带缓存的「是否被改过」判定。
  * @details 缓存分两层：进程内的 file_watch_cache（mutable，const 查询也会写）与退出时落盘的
  *          hash_cache.cache。路径键统一用 generic_string，所以缓存里存的是正斜杠形式。
- *          不加锁，只应在主线程（F5 热重载）路径上使用。
+ *          不加锁，调用方须串行访问；纹理重载与 shader 依赖指纹计算都会使用它。
  */
 class file_watcher
 {
@@ -36,7 +36,7 @@ public:
      * @brief 与缓存的哈希比较，判断文件自上次记录以来是否变过。
      * @param _file_path 目标文件路径，内部转成 generic_string 作为缓存键。
      * @return 变了或首次见到返回 true；内容未变返回 false；读不了（不存在 / 无权限）同样返回 false。
-     * @note 读不出哈希时既不记录也不报错，所以「文件暂时不可读」不会被误判成修改。
+     * @note generate_file_hash 返回错误时不更新缓存，并返回 false；false 不能区分未修改与读取失败。
      * @note 命中缓存且哈希相同走 [[likely]] 早退，否则写回新哈希再返回 true。
      */
     [[nodiscard]] bool                 is_file_modified(const std::filesystem::path& _file_path) const;
@@ -48,7 +48,8 @@ public:
 
 private:
     /**
-     * @brief 构造时尝试读入 hash 缓存；文件缺失、头不匹配或读不满都按空缓存处理。
+     * @brief 构造时尝试读入 hash 缓存；文件缺失或头读取失败/不匹配时保留空表。
+     * @warning 条目长度和后续读取结果尚未校验；截断文件可能留下部分条目，分配异常会向外传播。
      */
     file_watcher();
     /**

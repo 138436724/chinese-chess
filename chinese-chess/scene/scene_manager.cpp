@@ -269,7 +269,8 @@ vulkan_submission_token scene_manager::render(uint32_t frame_slot, bool _need_ca
 
 /**
  * @brief 处理窗口按键：F5 重建活跃管线、F6 重载全部贴图。
- * @note 非 GLFW_PRESS 一律忽略；F5 的异常只打印，旧管线继续可用。
+ * @note 非 GLFW_PRESS 一律忽略；F5 捕获异常后只打印。编译失败可保留旧管线，但回收登记或描述符更新
+ *       失败时不保证整个活跃后端原样回滚。
  */
 void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/)
 {
@@ -547,10 +548,11 @@ scene_environment_data& scene_manager::get_environment() noexcept
 /**
  * @brief 三段式回读 render_output，并起后台线程做 OCIO 变换与写盘。
  * @note 先按输出格式决定 EXR 还是 PNG；路径由 CAPTURES_PATH 与本地时间拼出。
- * @note 重新赋值 save_thread 会先 join 上一次作业，因此连续截图会短暂阻塞主线程。
+ * @note 新线程先构造，随后 jthread 移动赋值请求旧线程停止并 join；旧任务不检查 stop_token，阻塞时长取决于旧作业。
  */
 vulkan_submission_token scene_manager::capture_frame(vulkan_submission_token _waited_info)
 {
+    // 保存这次截图的尺寸，不让后台作业在窗口 resize 后误用 scene_manager 的新宽高。
     const auto [image_width, image_height] = render_output.get_extent();
     const VkFormat image_format            = static_cast<VkFormat>(render_output.get_format());
 

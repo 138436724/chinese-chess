@@ -67,7 +67,7 @@ namespace ocio_helper {
  * @param _data 像素数据，元素类型 T 决定 OCIO 位深，通道数由 _data.size() / (width * height) 推出。
  * @throws OCIO::Exception config 打不开或处理器创建失败时由 OCIO 抛出。
  * @note 只接受 uint8_t / uint16_t / half / float 四种元素类型，其余被 requires 拒绝。
- * @note src / dst 两侧用同一个位深，所以不会额外做量化或反量化。
+ * @note 输入输出的元素类型与位深保持一致；整数位深的颜色转换仍受量化精度与数值范围限制。
  * @note 每次调用都重建 config 与 processor，并用 OPTIMIZATION_ALL 取优化后的 CPU 处理器。
  */
 template <typename T>

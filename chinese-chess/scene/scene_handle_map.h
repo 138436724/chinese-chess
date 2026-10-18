@@ -53,9 +53,11 @@ public:
 
     /**
      * @brief 插入一个实体，优先复用空闲槽。
-     * @param _value 待插入实体，成功时被移动进槽；失败时槽表保持调用前的状态。
+     * @param _value 待插入实体，成功时被移动进槽；其移动失败时的源对象状态取决于 T 的移动构造。
      * @return 带当前世代的新句柄。
-     * @throws 分配失败或 T 的移动构造抛出时原样传播；新槽已回滚，free_slots 未被消费。
+     * @throws std::bad_alloc 槽表或空闲表分配失败时传播。
+     * @note 实体 emplace 失败会移除本次追加的空槽，复用分支也不会消费 free_slots；但 vector 扩容或
+     *       T 的可抛移动构造不提供普遍的强异常保证，失败前还可能使旧指针失效。
      * @note 有 free_slots 时复用其末项并沿用该槽世代；否则先为 slots 与 free_slots 预留容量再追加，
      *       避免之后的 erase 在归还 GPU 资源之后再分配。
      */

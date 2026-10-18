@@ -3,7 +3,7 @@
  * @brief vulkan_frame_scheduler 的实现：slot 同步对象的创建与 idle/acquired/submitted 状态迁移。
  * @details prepare 复用 slot 前先等上次提交 token，再等 acquire fence 并重置它；finish 只在
  *          submitted 下推进游标，cancel 可在任意状态就地回到 idle。drain 与
- *          replace_acquire_semaphore 都会等 fence，保证替换或销毁信号量时它已不再被使用。
+ *          replace_acquire_semaphore 都会等 acquire fence；替换前的 GPU 消费完成由调用方另外保证。
  */
 #include "vulkan_frame_scheduler.h"
 
@@ -37,7 +37,7 @@ void vulkan_frame_scheduler::create(const vk::raii::Device& device, uint32_t cou
 
 /**
  * @brief 复用当前 slot 前等待上次提交 token，再等 acquire fence 并重置它。
- * @note 顺序不能反：token 覆盖提交完成，fence 只覆盖 acquire 信号的完成。
+ * @note token 与 fence 分别覆盖提交和 acquire，不能拿其中一个充当另一个的完成证明。
  */
 void vulkan_frame_scheduler::prepare(const vk::raii::Device& device)
 {

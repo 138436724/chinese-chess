@@ -1,9 +1,9 @@
 /**
  * @file vulkan_submission_token.h
  * @brief 指向某条队列完成时间线某一点的轻量 token。
- * @details token 只由 vulkan_queue::submit() 在提交成功后发布，因此等待它不会等一个从未被要求 signal 的值。
+ * @details 非零的提交完成点由 vulkan_queue::submit() 成功后发布；get_latest_token() 在尚未提交时返回值为 0 的前沿。
  *          默认构造的 token 无效，表示“无依赖”，is_complete() 对无效 token 恒为 true。
- *          不同队列的 token 携带不同信号量，除提交里记录的等待之外没有先后关系。
+ *          不同实际队列的 token 携带不同信号量，除显式依赖外没有先后关系；同一队列的别名共享时间线。
  */
 #pragma once
 
@@ -11,11 +11,6 @@
 
 #include <cstdint>
 
-// A point on one queue's completion timeline. Tokens are only produced by
-// vulkan_queue::submit() after the submit call succeeded, so waiting on (or
-// recycling against) a token can never observe a value the GPU was not asked
-// to signal. Tokens from different queues carry different semaphores and have
-// no ordering relationship beyond the waits recorded in their submissions.
 /**
  * @brief 一次提交的完成凭据：信号量指针加时间线值，可平凡拷贝的轻量聚合体。
  * @details 不拥有信号量；信号量属于 vulkan_queue 的 submission_state，必须比 token 活得久。
@@ -25,7 +20,7 @@ struct vulkan_submission_token
 {
     /** @brief 指向队列共享的时间线信号量；nullptr 表示无效 token。 */
     const vulkan_semaphore* semaphore = nullptr;
-    /** @brief 要等待的时间线值；semaphore 非空时从 1 开始。 */
+    /** @brief 要等待的时间线值；成功提交从 1 开始，0 表示尚无提交的已完成前沿。 */
     uint64_t                value     = 0;
 
     /**

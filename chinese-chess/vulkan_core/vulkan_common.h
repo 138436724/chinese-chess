@@ -143,7 +143,7 @@ inline constexpr uint32_t                MAX_BINDLESS_TEXTURES = 1024;
                                              const std::string&             _buffer_name = "");
 
 /**
- * @brief 创建或替换一张 2D 图像，并把 CPU 数据上传为着色器可读布局。
+ * @brief 按指定维度创建或替换图像，并把 CPU 数据上传为着色器可读布局。
  * @param _allocator VMA 分配器。
  * @param _device 逻辑设备，用于创建图像、staging 与命令缓冲。
  * @param _recycle_bin 延迟销毁 staging、命令缓冲与旧图像的回收站。
@@ -192,7 +192,7 @@ inline constexpr uint32_t                MAX_BINDLESS_TEXTURES = 1024;
  * @param _buffer_name 调试名，用于回读缓冲与回收站日志。
  * @return 图像恢复原状态且回读完成的 token。
  * @throws std::runtime_error 当回读缓冲创建、命令缓冲分配或队列提交失败。
- * @note 三段式：owner release（不改布局）→ transfer copy → owner re-acquire 并恢复 old_stage/old_access/old_layout。
+ * @note 三段式：owner release 到 TransferSrcOptimal → transfer copy 并释放回原布局 → owner acquire 恢复原阶段/访问。
  * @note token 完成后 CPU 才能安全读取 _buffer；非一致内存还需先 invalidate。
  */
 [[nodiscard]] vulkan_submission_token download_image(const vma::raii::Allocator&  _allocator,

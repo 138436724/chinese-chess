@@ -25,7 +25,7 @@ namespace model_loader {
 /**
  * @brief 一次加载的合并结果：所有 mesh / primitive 的顶点与索引。
  * @details 索引已经加上前面 primitive 的顶点偏移，所以整块可以直接建一个顶点缓冲 + 一个索引缓冲，
- *          不需要按 primitive 拆 submesh。顶点顺序与 glTF 里的 primitive 顺序一致。
+ *          当前按单一几何体使用；结果不保留 primitive 材质、拓扑或节点实例边界。
  */
 struct gltf_model_data
 {

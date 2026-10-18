@@ -416,6 +416,7 @@ scene_texture_manager::update_result scene_texture_manager::update()
 
     const bool layout_moved = layout_dirty;
     layout_dirty            = false;
+    // 句柄的世代身份不变，但压紧后的 GPU binding 可能改变；调用方须据 layout_moved 重建材质绑定。
 
     if (!is_dirty)
     {

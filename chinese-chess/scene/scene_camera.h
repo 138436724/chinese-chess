@@ -3,8 +3,8 @@
  * @brief 相机状态与投影/视图矩阵：保存正交与透视两套参数，切换时只重建矩阵。
  * @details 投影类型由 projection_type 决定；set_* 修改参数后立即重算 projection / view 与它们的逆矩阵，
  *          位置或方向变化还会先重建相机基向量。类不持有 Vulkan 对象，矩阵由渲染器每帧写进 UBO。
- * @note setter / getter 与两个 update_* 都标 noexcept：退化输入由 safe_normalize 与参考 up 兜底，
- *       不会把 NaN 写进矩阵；默认构造的异常规格由成员初始化决定。
+ * @note setter / getter 与两个 update_* 都标 noexcept；方向退化由 safe_normalize 与参考 up 兜底。
+ *       投影范围、视场角、宽高比与位置仍需调用方提供合法有限值，不能保证任意输入都生成有限矩阵。
  */
 #pragma once
 

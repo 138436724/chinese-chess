@@ -77,7 +77,7 @@ public:
      */
     [[nodiscard]] vulkan_submission_token render(uint32_t frame_slot);
     /**
-     * @brief 把 GLFW 键盘事件按面板顺序转发；各面板自行决定是否消费。
+     * @brief 把 GLFW 键盘事件转发给全部面板；各面板自行决定是否响应，不返回消费标志。
      * @param _key      GLFW 键码。
      * @param _scancode GLFW 扫描码。
      * @param _action   GLFW 动作，取 GLFW_PRESS / GLFW_REPEAT / GLFW_RELEASE。

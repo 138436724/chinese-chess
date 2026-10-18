@@ -117,7 +117,7 @@ template <typename new_string_class, typename old_string_class>
  * @param _file_path 待探测的文件，整份读入内存后再交给探测器。
  * @return 编码名（例如 GB18030、UTF-8）；string_class 为 std::wstring / std::u8string 时再经 convert_to 转一次。
  * @throws std::runtime_error 文件打不开（Cannot open file!），或探测器给不出匹配结果 / 探测过程报错。
- * @note 返回的是探测器给出的名字，不保证与写文件时的编码名逐字一致，只保证能用来解码同一份内容。
+ * @note 字符集探测是推测，可能误判；返回编码名不保证还原出原作者期望的文本，尤其是短文本或歧义编码。
  * @note std::ifstream 以 ate 模式打开并读完即关闭，文件大小完全由 tellg 决定。
  */
 template <typename string_class>

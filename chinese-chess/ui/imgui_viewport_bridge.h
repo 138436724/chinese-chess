@@ -14,9 +14,10 @@
 // Initializes only upstream's private VBO/IBO owner. The application owns WSI.
 /**
  * @brief 为指定平台视口分配上游的 ViewportData，并创建/复用一个副窗口绘制管线。
- * @param viewport ImGui 平台视口；RendererUserData 必须为空，PlatformHandle 是 GLFW 窗口。
- * @param format   副窗口交换链的颜色格式，写入管线的动态渲染 color attachment。
- * @return 上游 backend 持有的共享管线句柄；同一 backend 生命周期内多次调用返回同一管线。
+ * @param viewport ImGui 平台视口；RendererUserData 必须为空，且 Vulkan backend 已初始化。
+ * @param format   首次创建共享管线时使用的颜色格式；后续调用必须与该管线兼容。
+ * @return 上游 backend 持有的共享管线句柄；创建失败且错误回调返回时可能为空。
+ * @note 管线创建成功后，同一 backend 生命周期内的后续调用复用它，不根据 format 重建。
  * @note 调用方负责 WSI；本函数不创建 surface、swapchain 或顶点/索引缓冲。
  * @note 与上游 backend 的 ImGui 版本绑定，升级 Dear ImGui 时必须复核该私有入口。
  */

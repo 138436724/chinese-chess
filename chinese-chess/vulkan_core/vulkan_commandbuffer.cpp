@@ -89,7 +89,7 @@ std::vector<vulkan_commandbuffer> vulkan_commandbuffer::create(const vk::raii::D
 
 /**
  * @brief 先等上一次提交完成，再 reset 并 begin 一条新的录制。
- * @note 这个等待是「同一命令缓冲不得在执行中复用」的唯一保证，替代了旧的全局 CPU 计数。
+ * @note 按命令缓冲自己的上次提交 token 等待；上层 frame slot 的等待不能替代这层局部保护。
  */
 void vulkan_commandbuffer::begin_record(vk::CommandBufferUsageFlags _usage)
 {

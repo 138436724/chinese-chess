@@ -176,7 +176,7 @@ const vulkan_buffer& scene_model_manager::get_draw_commands() const noexcept
     return draw_commands;
 }
 
-/** @brief 只置 SSBO 脏标志，不触发网格 / BLAS 重建。 */
+/** @brief 置实例数据脏标志，后续 update 会更新 TLAS、间接绘制与 SSBO，不单独触发网格/BLAS 重建。 */
 void scene_model_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -402,7 +402,7 @@ void scene_model_manager::update_tlas(std::vector<vulkan_submission_token>& _wai
 }
 
 /**
- * @brief 生成间接绘制命令：索引数 / 实例数 / 首索引 / 顶点偏移全部来自网格槽的字节偏移。
+ * @brief 生成间接绘制命令：索引数取网格索引长度，实例数取可见性，首索引与顶点偏移由字节偏移换算。
  * @note 实例数只取 0 或 1；空场景直接返回，避免上传一条空缓冲。
  */
 void scene_model_manager::update_draw_commands(std::vector<vulkan_submission_token>& _waited_infos)

@@ -53,7 +53,7 @@ bool present_enqueued(vk::Result result)
 vulkan_swapchain::~vulkan_swapchain() { shutdown(); }
 
 /**
- * @brief 建 surface 副本、选格式与呈现模式、接上 present 队列与帧调度器，再建第一版交换链。
+ * @brief 接管 surface 所有权、选格式与呈现模式、接上 present 队列与帧调度器，再尝试创建交换链。
  * @note OCIO 开启时偏好 B8G8R8A8Unorm（合成阶段自己输出显示编码），否则偏好 sRGB；
  *       surface 支持 eMailbox 时用它，否则保持 eFifo。
  */
@@ -85,7 +85,7 @@ void vulkan_swapchain::create(const vk::raii::Instance& instance, const vk::raii
 }
 
 /**
- * @brief 先 drain 再建新交换链，新 image 状态建好后整体替换；失败则清空待重建。
+ * @brief 先 drain 再建新交换链，新 image 状态建好后整体替换；仅创建返回 OutOfDate 时清空旧链待重建。
  * @note image 数取 MAX_FRAMES_IN_FLIGHT + 1 供 present fence 轮转，并 clamp 到 surface 上下限；
  *       重建成功 generation 自增，重建前取得的帧上下文随即失效。
  */
@@ -98,6 +98,7 @@ bool vulkan_swapchain::recreate(uint32_t width, uint32_t height)
         vk::Extent2D(std::clamp(width, caps.minImageExtent.width, caps.maxImageExtent.width),
                      std::clamp(height, caps.minImageExtent.height, caps.maxImageExtent.height));
     if (!size.width || !size.height) return false;
+    // 图形提交完成不代表呈现已放开信号量；替换旧链前还需逐 image 等待 present fence。
     drain();
     auto count = std::max(vulkan_common::MAX_FRAMES_IN_FLIGHT + 1, caps.minImageCount);
     if (caps.maxImageCount) count = std::min(count, caps.maxImageCount);
@@ -192,6 +193,7 @@ vulkan_frame_result vulkan_swapchain::present_image()
     const vk::SwapchainPresentFenceInfoKHR present_fence(fence);
     const vk::PresentInfoKHR info(semaphore, *swapchain, context.image, {}, &present_fence);
     const auto result = present_queue.present(info);
+    // OUT_OF_DATE/SURFACE_LOST 仍会执行已入队的 semaphore wait；OOM 未入队，须保留 acquisition 供取消。
     if (present_enqueued(result))
     {
         image.present_pending = true;
@@ -224,6 +226,7 @@ void vulkan_swapchain::cancel_acquisition(bool reuse)
     // An acquire fence proves the signal operation has finished even if no
     // submit consumed the acquire semaphore. It can then be destroyed safely.
     frames.drain(*device);
+    // 帧的最终提交可能尚未发生；UI/scene 已提交的部分工作只能从图形队列前沿取得完成凭据。
     graphics->get_latest_token().wait();
     if (image_acquired)
     {

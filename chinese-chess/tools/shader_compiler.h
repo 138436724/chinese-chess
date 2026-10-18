@@ -44,17 +44,18 @@ public:
     [[nodiscard]] std::expected<std::vector<char>, std::string> compile_shader_to_spv(const std::filesystem::path& _shader_path,
                                                                                       const std::vector<std::string_view>& _entry_name) const;
     /**
-     * @brief 编译内存里的整份着色器源码，不读盘也不进缓存。
+     * @brief 直接从内存源码加载模块并编译，不查询或更新本类的编译结果缓存。
      * @param _shader_string 完整源码（OCIO 替换后的 vulkan_blend_image.slang）。
      * @param _entry_name 入口点名字列表，按顺序合成程序。
      * @return SPIR-V 字节；模块加载、入口缺失、链接或取码失败都返回错误串。
-     * @note 模块名固定 "shaders"、虚拟路径 "memory:shader"；没有 search path，所以不能 import 其它模块。
+     * @note 模块名固定 "shaders"、虚拟路径 "memory:shader"；没有额外设置该源码的文件搜索目录，
+     *       import 的解析仍取决于 Slang 会话搜索规则，不能据此认为编译过程绝不读盘。
      */
     [[nodiscard]] std::expected<std::vector<char>, std::string> compile_shader_to_spv(const std::string& _shader_string,
                                                                                       const std::vector<std::string_view>& _entry_name) const;
     /**
      * @brief 取全局唯一实例。
-     * @return 静态实例的引用；首次使用时完成 Slang 初始化并读入缓存。
+     * @return 静态实例的引用；Slang 初始化与缓存读取发生在该静态对象构造时，而非本函数首次调用时。
      */
     [[nodiscard]] static shader_compiler& get_shader_compiler() noexcept;
 

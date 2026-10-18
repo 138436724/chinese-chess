@@ -2,7 +2,8 @@
  * @file record_loader.cpp
  * @brief record_loader 的实现：一步着法的坐标换算与整份棋谱的逐帧推演。
  * @details move_piece 在匿名命名空间里，只做纯坐标计算；load_records 负责读文件、跑正则并维护
- *          「轮到谁走」与棋盘快照。所有失败都走 std::expected 的 error 串，串里带文件名与步号。
+ *          「轮到谁走」与棋盘快照。显式检查的读取或记谱错误通过 std::expected 返回；
+ *          逐步推演的错误附带文件名与步号，内存分配等异常仍可向外传播。
  */
 
 #include "record_loader.h"

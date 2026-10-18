@@ -47,7 +47,7 @@ public:
 
     /** @brief 空对象：family index 为 Ignored、队列 / 命令池 / 共享状态均为空。 */
     vulkan_queue()                               = default;
-    /** @brief 析构：由 vk::raii 释放队列与命令池；共享状态按 shared_ptr 引用计数决定是否随之销毁。 */
+    /** @brief 析构释放命令池及其包装；VkQueue 本身不单独销毁，共享状态按 shared_ptr 引用计数释放。 */
     ~vulkan_queue()                              = default;
     /** @brief 禁用拷贝：队列与命令池是独占资源（共享只经 shared_ptr<submission_state> 表达）。 */
     vulkan_queue(const vulkan_queue&)            = delete;
@@ -72,7 +72,7 @@ public:
      * @param _index queue family index，必须与 _state->queue_index 相同。
      * @param _state 被共享的提交状态，不能为空。
      * @throws std::runtime_error _state 为空，或它的 queue_index 与 _index 不一致。
-     * @note 校验发生在建队列与命令池之前 ⇒ 抛异常时对象保持未初始化状态，不会留下半套资源。
+     * @note 空状态或 family 不匹配的校验失败不会改成员；校验之后的 Vulkan 创建失败不保证恢复旧对象。
      */
     void create(const vk::raii::Device& _device, uint32_t _index, std::shared_ptr<submission_state> _state);
 
@@ -129,7 +129,7 @@ public:
      * @return 原始 vk::Result，由 swapchain 分成 eSuccess / eSuboptimalKHR / eErrorOutOfDateKHR / fatal。
      * @throws std::runtime_error 共享状态已被置 stopped。
      * @note 不走 vk::raii::Queue 的成员函数，而是在持锁状态下直接调 vkQueuePresentKHR ⇒ 结果原样返回、不做分类；
-     *       返回 eSuboptimalKHR 时本帧仍然完成了呈现，不能当成失败丢弃。
+     *       返回 eSuboptimalKHR 时呈现操作仍已入队，不能丢弃其 semaphore/fence 生命周期。
      */
     [[nodiscard]] vk::Result present(const vk::PresentInfoKHR& info) const;
 

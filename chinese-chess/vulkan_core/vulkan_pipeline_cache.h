@@ -3,7 +3,8 @@
  * @brief 磁盘持久化的 VkPipelineCache 包装：启动时校验并加载，退出前写回一次。
  * @details 缓存文件固定为 resources/cache/pipeline_cache.cache（相对运行目录 chinese-chess/）；
  *          加载前用 vk::PipelineCacheHeaderVersionOne 校验 vendorID / deviceID / pipelineCacheUUID，
- *          不匹配、截断或构造抛 vk::SystemError 都回退到空缓存，只损失首次编译时间，不影响正确性。
+ *          空数据或头部校验失败时创建空缓存，带初始数据创建失败时也尝试回退；读取分配、属性查询或
+ *          创建空缓存本身的异常仍可能传播，不能视为完整的容错边界。
  *          进程内单实例（vulkan_application 持有），只在 ~glfw_window() 里 wait_idle 之后 save 一次，F5 不写盘。
  */
 
@@ -37,14 +38,13 @@ public:
      * @param _physical_device 用于校验缓存头的物理设备（vendor / device / pipelineCacheUUID 三者全等才算命中）。
      * @param _device 创建 VkPipelineCache 的逻辑设备。
      * @throws vk::SystemError 建缓存本身失败时（加载失败已在内部捕获并回退）。
-     * @note 读取与校验都在这里同步完成；失败只打印（Debug）或静默（Release）回退，不阻止启动。
+     * @note 读取与校验同步完成；仅带初始数据创建缓存时的 vk::SystemError 被捕获并回退，其他失败可能传播。
      */
     void create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device);
     /**
      * @brief 把当前缓存数据写到 resources/cache/pipeline_cache.cache。
-     * @note noexcept 且内部吞掉所有失败（Debug 打印，Release 静默），写盘失败不影响退出流程。
-     *       必须在设备空闲（wait_idle）之后调用，避免把不完整的数据固化到磁盘；当前唯一调用点是
-     *       ~glfw_window()，紧跟 wait_idle_for_cleanup()。
+     * @note 已捕获的运行时/Vulkan 错误在 Debug 打印、Release 静默；未捕获异常（如 bad_alloc）会因 noexcept
+     *       触发 terminate。调用方需同步缓存访问；当前调用点是 ~glfw_window()，位于 wait_idle_for_cleanup() 之后。
      */
     void save() const noexcept;
 

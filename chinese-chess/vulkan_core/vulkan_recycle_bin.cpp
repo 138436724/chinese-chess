@@ -3,7 +3,7 @@
  * @brief 回收站的队列注册、析构排空与按 token 判定释放。
  * @details release() 为每个条目查询各时间线的 GPU 计数，同一时间线在一次调用内只查询一次。
  *          析构不丢弃条目：逐条等待 token 完成后再 pop，保证依赖资源的销毁顺序。
- *          资源所有权挂在条目里的 move_only_function 捕获上，erase 销毁条目时一并释放，顺序与插入顺序一致。
+ *          资源所有权挂在条目里的 move_only_function 捕获上；release 跳过未完成条目，只保持可释放条目的扫描顺序。
  */
 #include "vulkan_recycle_bin.h"
 
@@ -40,7 +40,7 @@ vulkan_recycle_bin::~vulkan_recycle_bin()
 
 /**
  * @brief 释放所有 last-use 已完成的条目，未完成的保留到下次调用。
- * @note 按插入顺序 erase 以保持配对资源（descriptor set 与 pool）的销毁顺序。
+ * @note 未完成条目会被跳过；配对资源必须同时匹配正确的 last-use token 和登记顺序，不能只依赖顺序。
  * @note 同一时间线在一次调用内只查询一次 GPU 计数，避免逐条目重复查询。
  */
 void vulkan_recycle_bin::release()
@@ -65,9 +65,8 @@ void vulkan_recycle_bin::release()
         return gpu_values.back().second >= _token.value;
     };
 
-    // Destroy in insertion order. Paired resources rely on it: descriptor sets
-    // must be freed before the pool they were allocated from, and a vector of
-    // raii descriptor sets frees them in its destructor.
+    // 不用会移动存活元素的批量压缩删除，以免资源在移动赋值时提前销毁。
+    // 本循环仍会跳过未完成条目，依赖资源的完成凭据须由登记方保持一致。
     for (auto iter = resources.begin(); iter != resources.end();)
     {
         if (std::ranges::all_of(iter->last_use, is_complete))

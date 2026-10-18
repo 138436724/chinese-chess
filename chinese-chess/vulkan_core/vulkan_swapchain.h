@@ -17,7 +17,7 @@
 
 /**
  * @brief 交换链 RAII 包装：WSI 资源、帧调度器与呈现状态的唯一所有者。
- * @details create 建 surface 副本、选格式与呈现模式、接上 present 队列，再调 recreate 建第一版交换链；
+ * @details create 接管传入 surface 的所有权、选格式与呈现模式、接上 present 队列，再调 recreate 建第一版交换链；
  *          recreate 会先 drain，再用临时 vector 建好新 image 状态后整体替换。
  *          acquire_image → 记录并提交 → submitted(token) → present_image 是唯一合法帧序。
  * @note present fence 只证明呈现资源可回收，不证明像素已经显示，因此释放 image 资源仍要等 fence。
@@ -27,7 +27,7 @@ class vulkan_swapchain
 public:
     /** @brief 构造空对象；create 之前所有句柄为空、extent 为 0。 */
     vulkan_swapchain() = default;
-    /** @brief 调 shutdown：取消未完成帧、排空帧调度器与 present fence，再按 view→semaphore→swapchain 销毁。 */
+    /** @brief 调 shutdown 排空在途工作，再由成员逆序析构；逐 image 的资源先于 swapchain 释放。 */
     ~vulkan_swapchain();
     /** @brief 禁止拷贝：交换链与信号量不可复制。 */
     vulkan_swapchain(const vulkan_swapchain&) = delete;
@@ -35,10 +35,10 @@ public:
     vulkan_swapchain& operator=(const vulkan_swapchain&) = delete;
 
     /**
-     * @brief 建 surface 副本、选格式与呈现模式、建 present 队列与帧调度器，并创建第一版交换链。
-     * @param instance      创建 surface 副本用的实例。
+     * @brief 接管 surface、选格式与呈现模式、建 present 队列与帧调度器，并尝试创建第一版交换链。
+     * @param instance      surface 所属实例，供内部 RAII 包装记录销毁入口；不复制底层 surface。
      * @param physical      物理设备，用于查询 surface 能力、格式与呈现模式。
-     * @param device        逻辑设备，所有 WSI 句柄都由它创建。
+     * @param device        逻辑设备，用于交换链、image view 与同步对象；surface 属于 instance。
      * @param surface       窗口系统给的 VkSurfaceKHR，所有权转交内部 raii 句柄。
      * @param graphics      图形队列，帧命令在它的族上提交。
      * @param transfer      传输队列，仅用于判断 present 队列是否可共享其提交状态。
@@ -57,7 +57,7 @@ public:
      * @brief 以新尺寸重建交换链及每个 image 的 view、render-finished semaphore 与 present fence。
      * @param width  新宽度（像素）。
      * @param height 新高度（像素）。
-     * @return 尺寸为 0 或交换链创建返回 OutOfDate 时为 false，此时 images 被清空、等待下次重建。
+     * @return 成功为 true；零尺寸返回 false 并保留原链；创建返回 OutOfDate 时清空旧链并返回 false。
      * @throws std::logic_error 仍有未完成的帧（frames.active()）时抛出。
      * @throws vk::SystemError surface 能力查询、drain 或交换链创建失败时抛出。
      * @note 先 drain 帧调度器与所有 present fence；image 数取 MAX_FRAMES_IN_FLIGHT + 1 并 clamp 到 surface 上下限。
@@ -78,9 +78,10 @@ public:
     void submitted(vulkan_submission_token token);
     /**
      * @brief 用该 image 的 render-finished semaphore 与 present fence 呈现当前 image。
-     * @return ready、recreate 或 fatal；recreate 时本帧仍算完成，下次 acquire 会触发重建。
+     * @return ready、recreate 或 fatal；recreate 表示本次已入队的帧结束，由上层安排重建后再 acquire。
      * @throws std::logic_error 尚未调用 submitted 时抛出。
-     * @throws vk::SystemError present fence 重置或 present 调用失败时抛出。
+     * @throws vk::SystemError present fence 重置失败；vkQueuePresentKHR 的错误由返回结果表达。
+     * @throws std::runtime_error 队列已停止提交时由 present_queue 抛出。
      * @note 呈现入队成功（含 OutOfDate/SurfaceLost）才置 present_pending 并推进 slot；
      *       present fence 只表示 image 资源可回收。
      */
@@ -90,7 +91,10 @@ public:
      * @throws vk::SystemError 等待 fence 或 releaseSwapchainImagesKHR 失败时抛出。
      */
     void abandon_frame();
-    /** @brief 幂等关闭：cancel_acquisition(false) 加 drain；device lost 只打印，其他异常 terminate。 */
+    /**
+     * @brief 可重复调用的清理等待：cancel_acquisition(false) 加 drain，句柄仍留给成员 RAII 析构。
+     * @note device lost 只打印，其他等待异常 terminate；本函数不负责把对象重置成未初始化状态。
+     */
     void shutdown() noexcept;
     /**
      * @brief 开关 acquire/present/recreate 的 WSI 日志。
@@ -143,7 +147,7 @@ public:
     [[nodiscard]] vk::SemaphoreSubmitInfo get_waited_info() const;
     /**
      * @brief 构造帧提交要信号的 render-finished semaphore 信息。
-     * @return 阶段为 ALL_COMMANDS 的 SemaphoreSubmitInfo，等待该 image 可再次呈现。
+     * @return 阶段为 ALL_COMMANDS 的信号项，覆盖最终布局转换，供本次 present 等待。
      * @throws std::logic_error 当前没有活动帧时抛出。
      */
     [[nodiscard]] vk::SemaphoreSubmitInfo get_signal_info() const;
@@ -177,7 +181,7 @@ private:
         vk::raii::ImageView view = nullptr;
         /** @brief 提交时信号、present 时等待的 render-finished semaphore。 */
         vk::raii::Semaphore render_finished = nullptr;
-        /** @brief 随 present fence 传入，present 完成后由驱动信号。 */
+        /** @brief 呈现资源达到可回收条件时由驱动信号；不表示像素已显示或 image 可直接再次使用。 */
         vk::raii::Fence present_done = nullptr;
         /** @brief 该 image 的 present 已入队但 fence 尚未确认。 */
         bool present_pending = false;
@@ -201,7 +205,7 @@ private:
     const vk::raii::Device* device = nullptr;
     /** @brief 物理设备，仅用于 surface 能力、格式与呈现模式查询。 */
     const vk::raii::PhysicalDevice* physical = nullptr;
-    /** @brief 图形队列指针，仅用于取队列族下标。 */
+    /** @brief 图形队列指针；用于查询族下标，并在取消时等待部分 UI/scene 提交的最新 token。 */
     const vulkan_queue* graphics = nullptr;
     /** @brief 选中的颜色格式。 */
     vk::Format format = vk::Format::eUndefined;
@@ -211,7 +215,7 @@ private:
     vk::Extent2D extent{0, 0};
     /** @brief 选中的呈现模式；surface 支持时用 eMailbox，否则 eFifo。 */
     vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo;
-    /** @brief surface 的 raii 副本，持有到对象销毁。 */
+    /** @brief 接管 native surface 所有权的 RAII 包装，持有到对象销毁；调用方不得重复销毁该句柄。 */
     vk::raii::SurfaceKHR surface = nullptr;
     /** @brief 当前交换链；重建失败后会短暂为空。 */
     vk::raii::SwapchainKHR swapchain = nullptr;

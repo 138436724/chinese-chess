@@ -1,7 +1,7 @@
 /**
  * @file vulkan_submission_scope.h
  * @brief 提交失败时的异常安全护栏：先停提交，再排空已发布 token。
- * @details 构造时记录 uncaught_exceptions 计数，只有异常展开（计数增加）才触发清理，正常退出零开销。
+ * @details 构造时记录 uncaught_exceptions 计数，只有异常展开（计数增加）才触发清理，正常退出不等待 GPU。
  *          清理包括 stop_submissions() 与两个队列最新 token 的 wait_for_cleanup()。
  *          这样被展开的局部资源不会在 GPU 仍可能写它时析构。
  */
@@ -15,7 +15,8 @@
 // Normal exit is non-blocking. Failure drains only published tokens before
 // those resources unwind, and forbids reuse of speculative resource states.
 /**
- * @brief 作用域级的提交回滚守卫，必须声明在可能被提交引用的局部资源之后。
+ * @brief 异常路径的停止提交与等待守卫，必须声明在可能被提交引用的局部资源之后。
+ * @note 已提交的 GPU 工作和 CPU 资源状态不会回滚；异常后禁止继续使用这段半完成的提交链。
  * @details 正常退出不做任何事；异常展开时先禁止队列继续提交，再排空已发布 token 才让局部资源析构。
  *          两个队列可以是同一个 VkQueue（别名队列），此时 stop 与 wait 重复执行也是幂等的。
  */

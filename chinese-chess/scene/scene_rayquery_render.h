@@ -77,7 +77,7 @@ public:
      * @brief 记录新的渲染尺寸；不创建任何图像（输出图由 scene_manager 持有）。
      * @param _width 新宽度，像素。
      * @param _height 新高度，像素。
-     * @note dispatch 组数 = ceil(width/8) x ceil(height/8)，尺寸为 0 时不会 dispatch。
+     * @note render 总会录入 dispatch，组数为 ceil(width/8) x ceil(height/8)；任一组数为 0 时不启动着色器调用。
      */
     void resize(uint32_t _width, uint32_t _height);
     /**
@@ -92,7 +92,7 @@ public:
      * @param _environment 环境数据（bindless 槽 + 强度），写进 UBO。
      * @param _frame_slot 帧槽下标，决定 UBO 的哪个槽；必须小于 MAX_FRAMES_IN_FLIGHT。
      * @note 依赖 update() 建好的 descriptor_sets，且至少有 _frame_slot + 1 个。
-     * @note 输出图在描述符里是 storage image，要求 eGeneral；dispatch 前后各转一次。
+     * @note 输出图作为 storage image 使用 eGeneral；前后屏障还负责访问同步，不一定发生布局改变。
      */
     void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, const vulkan_environment_data& _environment, uint32_t _frame_slot);
     /**

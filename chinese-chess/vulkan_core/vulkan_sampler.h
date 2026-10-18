@@ -30,7 +30,7 @@ struct sampler_create_info
     /** @brief mip 之间过滤方式，默认 eLinear；字形图集用 eNearest 配 max_lod = 0。 */
     vk::SamplerMipmapMode mipmap_mode = vk::SamplerMipmapMode::eLinear;
 
-    /** @brief U 方向寻址模式，默认 eRepeat；需要背景色兜底的贴图用 eClampToEdge。 */
+    /** @brief U 方向寻址模式，默认 eRepeat；eClampToEdge 将越界采样钳制到边缘 texel。 */
     vk::SamplerAddressMode address_mode_u = vk::SamplerAddressMode::eRepeat;
     /** @brief V 方向寻址模式，默认 eRepeat。 */
     vk::SamplerAddressMode address_mode_v = vk::SamplerAddressMode::eRepeat;
@@ -92,7 +92,8 @@ public:
      * @param _info 过滤、寻址与 LOD 参数。
      * @param _name Debug 名字后缀，仅 NDEBUG 未定义时生效。
      * @throws vk::SystemError 创建失败时由 Vulkan-Hpp 抛出。
-     * @note borderColor 恒为 eFloatOpaqueBlack：clamp-to-edge 采样越界会得到黑边。
+     * @note borderColor 恒为 eFloatOpaqueBlack，仅在相应方向使用 eClampToBorder 时参与越界采样；
+     *       eClampToEdge 采样边缘 texel，不使用 borderColor。
      * @note 重复调用会直接替换旧句柄，旧采样器立即销毁，不做任何等待。
      */
     void create(const vk::raii::PhysicalDevice& _physical_device,

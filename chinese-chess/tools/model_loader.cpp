@@ -24,10 +24,9 @@
 
 namespace
 {
-// accessor 一律按下标自查（不用 .at()：malformed / 截断的文件必须走 expected，而不是 std::terminate）
 /**
  * @brief 按下标取 accessor，越界返回 nullptr 而不是抛异常。
- * @note 坏 / 截断的 glTF 只能让加载返回 expected 错误，不能让 .at() 变成 std::terminate。
+ * @note 调用方据 nullptr 返回格式错误；这只覆盖 accessor 下标检查，不保证所有坏文件都能无异常恢复。
  */
 [[nodiscard]] const fastgltf::Accessor* find_accessor(const fastgltf::Asset& _gltf, size_t _index) noexcept
 {
@@ -48,7 +47,8 @@ namespace
 }  // namespace
 
 /**
- * @brief 读入 glTF、逐 primitive 合并顶点与索引，所有错误都走 expected 的 error 串。
+ * @brief 读入 glTF、逐 primitive 合并顶点与索引，显式检查出的格式与解析失败通过 expected 返回。
+ * @note 内存分配及底层库未转换为错误码的异常仍可能传播。
  * @note 先用 GltfDataBuffer::FromPath 读整份文件，再以文件所在目录为 base path 加载外部 .bin。
  * @note 顶点先按 POSITION 的 count 一次性扩容，属性回填用迭代下标写入；索引越界会让整个加载失败，
  *       不把半成品交给上层。

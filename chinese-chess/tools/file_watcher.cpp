@@ -34,7 +34,7 @@ file_watcher file_watcher::watcher;
 
 /**
  * @brief 读入 hash 缓存：文件打不开或头不匹配就直接返回，缓存保持为空。
- * @note 不逐条校验内容：截断的缓存可能留下空的或残缺的条目，析构时会被「文件不存在」那条过滤掉。
+ * @note 不逐条校验长度或流状态；截断的缓存可能留下部分/残缺条目，析构的路径存在性检查不能验证其哈希。
  */
 file_watcher::file_watcher()
 {
@@ -72,7 +72,7 @@ file_watcher::file_watcher()
 
 /**
  * @brief 先剔除文件已不存在的条目，再创建目录并把整份缓存写回。
- * @note 输出流打不开就放弃，退出路径上不抛异常。
+ * @note 输出流打不开就返回；filesystem 操作及内存分配异常未捕获，逸出析构会触发 terminate。
  */
 file_watcher::~file_watcher()
 {
@@ -104,7 +104,8 @@ file_watcher::~file_watcher()
 
 /**
  * @brief 用 OpenSSL EVP 接口算文件的 SHA-256，并按两位大写十六进制展开。
- * @note 失败一律走 expected 的 error：文件打不开、EVP_MD_CTX_new 返回空指针。
+ * @note 仅文件打开失败与 EVP_MD_CTX_new 返回空指针被转为 expected 错误；分配等异常仍可能传播。
+ * @warning 当前未检查 EVP 操作的返回值，也未处理非 EOF 的流读取错误；此处并非完整的错误恢复边界。
  * @note 摘要循环以「读完一块后是否 eof」为终止条件，gcount 决定本次喂入的字节数。
  */
 std::expected<std::string, std::string> file_watcher::generate_file_hash(const std::filesystem::path& _file_path)
@@ -151,6 +152,7 @@ std::expected<std::string, std::string> file_watcher::generate_file_hash(const s
  */
 bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) const
 {
+    // 这是“检查并更新基线”，不是纯查询；同一文件紧接着再查一次会得到未修改。
     const auto file_hash = generate_file_hash(_file_path);
     const auto file_path = _file_path.generic_string();
 

@@ -163,7 +163,7 @@ vk::DeviceSize vulkan_buffer::get_size() const noexcept
 
 /**
  * @brief 录一条 vkCmdCopyBuffer2，区域与大小全由 _copy_info 决定。
- * @note 不生成也不插入 barrier：调用前要自己保证 src 已可见、两端已转到 eTransferSrc/eTransferDst。
+ * @note 两端需带 eTransferSrc/eTransferDst usage，并由调用方同步传输读写；buffer 不存在 image layout 转换。
  */
 void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
                                           const vk::Buffer&              _src_buffer,
@@ -175,7 +175,7 @@ void vulkan_buffer::copy_buffer_to_buffer(const vk::raii::CommandBuffer& _comman
 
 /**
  * @brief 录一条 vkCmdCopyBufferToImage2，目标布局在内部固定为 eTransferDstOptimal。
- * @note 签名里没有布局参数：目标图像必须已经被 transition_state 转到 eTransferDstOptimal。
+ * @note 签名里没有布局参数：调用方须先录入并正确同步布局屏障；仅调用 transition_state 不会执行布局转换。
  */
 void vulkan_buffer::copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer,
                                          const vk::Buffer&              _buffer,

@@ -188,6 +188,7 @@ vulkan_frame_result vulkan_application::render(const vulkan_frame_context& frame
         bind_ui_image->transition_state(vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                                         vk::ImageLayout::eShaderReadOnlyOptimal, vk::QueueFamilyIgnored);
 
+    // src stage 与 acquire 的 wait stage 对齐；Undefined 只表示丢弃旧像素，不能省略 WSI 等待。
     const auto swapchain_barrier =
         vk::ImageMemoryBarrier2(vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eNone,
                                 vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,

@@ -165,6 +165,7 @@ vulkan_submission_token vulkan_common::upload_buffer(const vma::raii::Allocator&
 
     if (inline_upload || !distinct_families) return transferred;
 
+    // 返回消费者队列上的 acquire token，而非复制 token，后续渲染等待它才能同时覆盖数据和所有权交接。
     owner_acquire.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     owner_acquire.add_dependency(transferred);
     auto acquire = _buffer.transition_state(_consumer_stages, _consumer_access);
@@ -179,7 +180,7 @@ vulkan_submission_token vulkan_common::upload_buffer(const vma::raii::Allocator&
 /**
  * @brief 实现图像上传：建图像与 staging，复制后转入 eShaderReadOnlyOptimal 并替换旧图像。
  * @note transfer 侧先做布局转换与 release，再按队列族是否相同决定 owner 侧是否需要 acquire。
- * @note 空数据在入口直接抛 std::invalid_argument，避免创建出尺寸为 0 的图像。
+ * @note 空数据在入口抛 std::invalid_argument；图像 extent 的合法性仍由调用方保证。
  */
 vulkan_submission_token vulkan_common::upload_image(const vma::raii::Allocator& _allocator,
                                               const vk::raii::Device& _device,
@@ -246,6 +247,7 @@ vulkan_submission_token vulkan_common::upload_image(const vma::raii::Allocator& 
     {
         owner.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
         owner.add_dependency(transferred);
+        // 状态跟踪在 release 时已更新；acquire 仍须重复 release 的 old/new layout 和两个 queue family。
         image_barrier(owner, acquire_image(image, release, _consumer_stages, _consumer_access));
         owner.end_record();
         completed = owner.submit();
@@ -327,6 +329,7 @@ vulkan_submission_token vulkan_common::download_image(const vma::raii::Allocator
     owner_acquire.end_record();
     const auto completed = owner_acquire.submit();
     _recycle_bin.retire(std::move(owner_acquire), completed, "readback owner acquire");
+    // 完成点取最后的所有权归还提交，使 CPU 回读与后续渲染都能依赖同一个 token。
     _recycle_bin.retire_after_submitted(std::move(_buffer), "replaced readback buffer");
     _buffer = std::move(readback);
     return completed;

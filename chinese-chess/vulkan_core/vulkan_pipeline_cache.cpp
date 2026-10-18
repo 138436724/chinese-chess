@@ -1,8 +1,8 @@
 /**
  * @file vulkan_pipeline_cache.cpp
  * @brief vulkan_pipeline_cache 的实现：缓存文件读写、头部校验与加载失败回退。
- * @details 固定路径 resources/cache/pipeline_cache.cache；read_file 失败一律返回空 vector，由 create
- *          转成「建空缓存」分支。写盘前先 create_directories，写完再查流状态。
+ * @details 固定路径 resources/cache/pipeline_cache.cache；打不开或长度非正时 read_file 返回空 vector，
+ *          create 因此转入空缓存分支。写盘前先 create_directories，写完再查流状态。
  *          校验只认 PipelineCacheHeaderVersion::eOne，且 vendor / device / UUID 三者全等才算命中。
  */
 
@@ -29,7 +29,7 @@ constexpr std::string_view pipeline_cache_path = "resources\\cache\\pipeline_cac
 
 /**
  * @brief 整块读入文件；不存在、打不开或长度为 0 时返回空 vector。
- * @note 把失败统一成空数据 ⇒ 调用方只需判断 empty()，不必区分「没有缓存」和「缓存读不了」。
+ * @note 分配异常未捕获，read 后也未检查是否读满；此处不提供完整的读取失败回退保证。
  */
 [[nodiscard]] std::vector<uint8_t> read_file(const std::filesystem::path& _path)
 {
@@ -73,7 +73,7 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
 
 /**
  * @brief 校验缓存头：版本为 eOne、头部长度够，且 vendorID / deviceID / pipelineCacheUUID 与当前设备全等。
- * @note UUID 全等比较 ⇒ 换驱动或换设备后旧缓存自然失效。属性按值取 getProperties2().properties，
+ * @note 由设备提供的 UUID 判断缓存兼容性，并不直接比较驱动版本号。属性按值取 getProperties2().properties，
  *       避免把引用绑到临时对象上（本文件用不到 *2 链式查询，只取核心属性）。
  */
 [[nodiscard]] bool is_cache_valid(const vk::raii::PhysicalDevice& _physical_device, std::span<const uint8_t> _data)
@@ -100,7 +100,7 @@ void write_file(const std::filesystem::path& _path, const std::span<const uint8_
 
 /**
  * @brief 数据为空或头部校验失败就建空缓存，否则用读到的字节建缓存；构造抛 vk::SystemError 时也退到空缓存。
- * @note Debug 分支会打印失败原因，Release 分支静默 —— 缓存只是优化，任何失败都不该阻止启动。
+ * @note 仅带初始数据创建失败时打印（Debug）或静默（Release）回退；读取、查询及创建空缓存仍可能抛异常。
  */
 void vulkan_pipeline_cache::create(const vk::raii::PhysicalDevice& _physical_device, const vk::raii::Device& _device)
 {
@@ -131,7 +131,7 @@ void vulkan_pipeline_cache::create(const vk::raii::PhysicalDevice& _physical_dev
 
 /**
  * @brief 取 getData() 写盘；空句柄直接返回，取数据或写盘失败按 Debug / Release 分支处理。
- * @note noexcept ⇒ 所有异常都在函数内结束；调用方（~glfw_window）位于设备空闲之后，数据是完整的。
+ * @note 只捕获实现中列出的运行时/Vulkan 错误；noexcept 不等于捕获所有异常，未捕获异常会 terminate。
  */
 void vulkan_pipeline_cache::save() const noexcept
 {

@@ -19,15 +19,16 @@
  */
 enum class vulkan_frame_status
 {
-    ready,    ///< 已取得有效 image，可以继续渲染并提交。
+    ready,    ///< acquire 后可继续渲染；present 后表示无需重建，可开始后续帧。
     skip,     ///< 本帧跳过（TIMEOUT/NOT_READY），不推进 slot。
-    recreate, ///< image 失效（OUT_OF_DATE），需要重建交换链。
+    recreate, ///< 需要重建交换链，包括 OUT_OF_DATE 及已处理本帧后的 SUBOPTIMAL。
     fatal     ///< surface/device lost 等不可恢复错误。
 };
 
 /**
  * @brief 一帧的身份：frame slot、交换链 image 下标与交换链 generation。
- * @details render 用它校验帧上下文是否属于当前 acquisition；generation 在每次 recreate 后自增。
+ * @details render 校验 slot/image/generation 是否与当前帧一致；generation 在每次成功 recreate 后自增。
+ *          此三元组不是逐帧递增的序号，不应跨 acquisition 保存后再次使用。
  */
 struct vulkan_frame_context
 {
@@ -47,7 +48,7 @@ struct vulkan_frame_result
 {
     /** @brief 本步结果分类，默认 skip。 */
     vulkan_frame_status status = vulkan_frame_status::skip;
-    /** @brief 仅在 status 为 ready 时有效的帧身份。 */
+    /** @brief acquire 成功时为活动帧；present 结果保留本次呈现帧的身份，其状态可能已结束。 */
     vulkan_frame_context frame;
     /** @brief 驱动返回的原始结果，成功时为 eSuccess。 */
     vk::Result reason = vk::Result::eSuccess;
@@ -77,7 +78,7 @@ public:
      * @brief 复用当前 slot 前等待它上次提交的 token，再等 acquire fence 并重置该 fence。
      * @param device 逻辑设备，用于 waitForFences 与 resetFences。
      * @throws std::logic_error 当前已有活动帧时抛出。
-     * @note 顺序不能反：token 覆盖提交完成，fence 只覆盖 acquire 信号的完成。
+     * @note token 与 acquire fence 分别覆盖 GPU 提交与 WSI 信号操作，复用前必须确认两者完成。
      */
     void prepare(const vk::raii::Device& device);
     /**
@@ -100,7 +101,10 @@ public:
      * @note 只在 present 入队后调用；提前调用会让未呈现的 image 状态悬空。
      */
     void finish();
-    /** @brief 就地回到 idle，不推进 slot、不清 token；acquire 失败或异常取消时使用。 */
+    /**
+     * @brief 就地回到 idle，不推进 slot、不清 token。
+     * @pre 调用方已等待在途工作、归还已取得的 image，并按需处理未消费的二进制信号量；本函数只改 CPU 状态。
+     */
     void cancel() noexcept;
     /**
      * @brief 等所有 slot 的提交 token 与 pending acquire fence，不改变状态、不推进游标。
@@ -110,7 +114,8 @@ public:
     /**
      * @brief 等当前 slot 的 acquire fence 后换一个新的 acquire semaphore。
      * @param device 逻辑设备，用于创建新信号量。
-     * @note 旧信号量可能已被 acquire 信号却无提交消费，必须等 fence 后才能安全销毁。
+     * @pre 调用方已等待所有可能消费旧 semaphore 的 GPU 提交；本函数只额外等待 acquire 的信号操作。
+     * @note 允许替换 acquire 已信号、但从未被提交消费的 semaphore。
      */
     void replace_acquire_semaphore(const vk::raii::Device& device);
     /**
@@ -155,7 +160,7 @@ private:
     enum class state { idle, acquired, submitted };
     /**
      * @brief 一个 frame slot 的同步对象与上次提交凭据。
-     * @details acquire_pending 表示 acquire 已发出信号、fence 尚未被确认，prepare 与 drain 都要等它。
+     * @details acquire_pending 表示成功 acquire 关联的 fence 需要等待；drain 等待后不清标志，prepare 才清除它。
      */
     struct frame_slot
     {
@@ -165,7 +170,7 @@ private:
         vk::raii::Fence acquire_done = nullptr;
         /** @brief 该 slot 上次成功提交的 token，prepare 与 drain 等待它。 */
         vulkan_submission_token completion;
-        /** @brief acquire 已发出信号但 fence 尚未确认。 */
+        /** @brief 最近一次成功 acquire 的 fence 需要被等待；不表示它此刻仍未信号。 */
         bool acquire_pending = false;
     };
     /** @brief 全部 frame slot，create 时一次性建满。 */

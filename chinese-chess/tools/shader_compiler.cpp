@@ -489,7 +489,7 @@ std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to
 }
 
 /**
- * @brief 用内存源码建模块并编译，完全不碰缓存与文件系统。
+ * @brief 用内存源码建模块并编译，不使用本类缓存；Slang 的模块依赖解析仍可能访问文件系统。
  * @note 会话直接用成员的 session_desc，所以没有额外 search path。
  */
 std::expected<std::vector<char>, std::string> shader_compiler::compile_shader_to_spv(const std::string& _shader_string,
@@ -584,7 +584,7 @@ void shader_compiler::load_cache()
 
 /**
  * @brief 先剔除源文件已不存在的条目，再创建目录并整份重写缓存。
- * @note 输出流打不开就放弃，退出路径不抛异常。
+ * @note 输出流打不开就返回；filesystem 操作和分配异常未捕获，不能保证退出路径无异常。
  * @note 文件头也带长度前缀，读侧先读长度再读头的字节。
  */
 void shader_compiler::save_cache() const

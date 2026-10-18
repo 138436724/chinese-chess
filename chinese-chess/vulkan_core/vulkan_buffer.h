@@ -3,7 +3,7 @@
  * @brief VMA 缓冲区包装：一次 create 同时定下独占 queue family、同步状态与设备/主机地址。
  * @details create 只接受 queueFamilyIndexCount == 1 的 Exclusive 缓冲，并把 queue family 与
  *          字节数缓存下来；host 可见性只看 AllocationCreateFlags 里的 HOST_ACCESS 位
- *          （MemoryUsage 的 eAuto* 仅保证 HOST_VISIBLE），命中时补 eMapped 并缓存映射指针，
+ *          （eAuto* 由 VMA 选内存类型，并不单独保证 HOST_VISIBLE），命中时补 eMapped 并缓存映射指针，
  *          否则缓存 vkGetBufferAddress 的设备地址。transition_state 是唯一的 barrier 生成点，
  *          返回前就把追踪状态改成目标值，调用方必须把返回值交给 pipelineBarrier2 录制。
  */
@@ -59,7 +59,7 @@ public:
      * @param _allocator VMA 分配器，调用方保证它活得比本缓冲久。
      * @param _device 用于查询设备地址，Debug 下还用来设置对象名。
      * @param _buffer_info 创建信息；只接受 queueFamilyIndexCount == 1 且 eExclusive。
-     * @param _usage VMA 内存用途，eAuto* 只保证 host 可见、不保证映射。
+     * @param _usage VMA 内存选择策略；eAuto* 不单独保证 host 可见或持久映射。
      * @param _flags 分配标志；含 HOST_ACCESS 位时自动补 eMapped。
      * @param _name Debug 名字后缀，仅 NDEBUG 未定义时用于 setDebugUtilsObjectNameEXT。
      * @throws std::runtime_error 共享模式不是 Exclusive 或 queueFamilyIndexCount 不为 1。
@@ -145,10 +145,10 @@ public:
     /**
      * @brief 录一条 vkCmdCopyBufferToImage2；调用方必须先把目标图像转到 eTransferDstOptimal。
      * @param _commandbuffer 录制目标。
-     * @param _buffer 源缓冲，必须已处于 eTransferSrc 可读状态。
+     * @param _buffer 源缓冲，需带 eTransferSrc usage，并由调用方建立传输读取所需的同步。
      * @param _image 目标图像，必须已转到 eTransferDstOptimal。
      * @param _copy_info 拷贝区域与目标 mip/层。
-     * @note 不生成也不插入 barrier，同步由调用方负责；本函数不会替调用方转换布局。
+     * @note 不生成也不插入 barrier；transition_state 只返回屏障，调用方还必须将它录入命令缓冲。
      */
     static void copy_buffer_to_image(const vk::raii::CommandBuffer& _commandbuffer,
                                      const vk::Buffer&              _buffer,

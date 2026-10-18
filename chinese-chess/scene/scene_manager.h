@@ -307,7 +307,7 @@ private:
      * @throws std::runtime_error 输出格式既不是 16 位浮点也不是 8 位无符号整数时抛出。
      * @throws std::runtime_error download_image 的缓冲创建或命令提交失败时抛出。
      * @note 后台线程只读 staging 缓冲；失败时把异常存进 save_error，由下一次 update 在主线程重抛。
-     * @note 重新赋值 save_thread 会先 join 上一次作业，因此连续截图会短暂阻塞主线程。
+     * @note 新线程先构造，随后 jthread 移动赋值 join 旧作业；旧任务不响应 stop_token，主线程可能等待其全部完成。
      */
     [[nodiscard]] vulkan_submission_token capture_frame(vulkan_submission_token _waited_info);
 
@@ -366,6 +366,6 @@ private:
     std::mutex save_error_mutex;
     /** @brief 后台截图失败时保存的异常，由下一次 update 在主线程重抛。 */
     std::exception_ptr save_error;
-    /** @brief 单张截图的写盘线程；重新赋值前先 join 上一次作业，析构时在此 join。 */
+    /** @brief 截图保存线程；移动赋值时 join 旧作业，成员析构时 join 当前作业，新线程可能已提前开始。 */
     std::jthread save_thread; // joins before error state and GPU resources die
 };

@@ -64,7 +64,7 @@ constexpr glm::vec3 black_piece_absorption       = glm::vec3(4.0f, 1.6f, 1.0f);
  * @param _piece_color 棋子所属颜色。
  * @param _x           棋谱横坐标。
  * @param _y           棋谱纵坐标。
- * @return 以棋盘中心为原点的二维坐标，单位是棋盘格。
+ * @return 以棋盘中心为原点的二维世界坐标，每个棋盘格对应 0.25 个世界单位。
  */
 [[nodiscard]] constexpr glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
 {

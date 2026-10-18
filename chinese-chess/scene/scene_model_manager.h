@@ -66,7 +66,7 @@ public:
      * @param _model_path glTF 模型路径，相对运行目录 chinese-chess/。
      * @return 新模型句柄；加载失败时打印错误并返回默认构造（无效）的 model_handle。
      * @note 网格首次加载时只把顶点 / 索引留在 CPU 槽里，真正上传与 BLAS 构建推迟到下一次 update()。
-     * @note 只置 is_dirty；模型矩阵、材质与可见性由调用方随后经 get() 写入。
+     * @note 创建实例会置 is_dirty，首次加载网格还会置 meshes_dirty；模型矩阵、材质与可见性由调用方随后经 get() 写入。
      */
     [[nodiscard]] model_handle      create(const std::filesystem::path& _model_path);
     /**
@@ -95,7 +95,7 @@ public:
     [[nodiscard]] bool update(std::vector<vulkan_submission_token>& _waited_infos);
 
     /**
-     * @brief 只把模型 SSBO 标记为脏，不重建顶点 / 索引与 BLAS。
+     * @brief 标记实例数据为脏，更新 TLAS、间接绘制与模型 SSBO，不单独触发顶点/索引与 BLAS 重建。
      * @note 用于模型矩阵、可见性或材质绑定变化；网格增删走 create / destroy 自带的脏标志。
      */
     void need_update() noexcept;

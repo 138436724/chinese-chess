@@ -32,7 +32,7 @@ vulkan_sampler& vulkan_sampler::operator=(vulkan_sampler&& _other) noexcept
 /**
  * @brief 按 _info 组装 vk::SamplerCreateInfo 并创建采样器句柄。
  * @note 各向异性只在 enable_anisotropy 时生效，开启时用设备上限而不是固定倍数。
- * @note 边界色恒为不透明黑：clamp-to-edge 采样越界会得到黑边，要别的边界色只能另建采样器。
+ * @note 边界色恒为不透明黑，只供 clamp-to-border 使用；clamp-to-edge 使用边缘 texel。
  */
 void vulkan_sampler::create(const vk::raii::PhysicalDevice&     _physical_device,
                             const vk::raii::Device&             _device,
