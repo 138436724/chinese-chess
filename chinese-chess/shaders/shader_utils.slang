@@ -13,26 +13,18 @@ static const float PI          = 3.14159265358979323846;
 static const float INV_PI      = 0.31830988618379067154;
 static const float INV_FOUR_PI = 0.07957747154594767;  // 1 / (4π)：均匀球面采样 pdf
 
-// 路径追踪：主要靠俄罗斯轮盘赌终止路径，MAX_BOUNCES 只是防止病态输入的安全网。
-// 注意：RT pipeline 走的是着色器内递归（closest-hit 里再次 TraceRay），
-// 管线创建时 maxPipelineRayRecursionDepth 取设备的 maxRayRecursionDepth，
-// 因此 MAX_BOUNCES 直接决定所需的递归深度（约 MAX_BOUNCES + 2 层调用栈）。
-// 8 与旧实现一致，是在本项目设备上验证过的取值；调大前请先确认设备的
-// VkPhysicalDeviceRayTracingPipelinePropertiesKHR::maxRayRecursionDepth。
-static const int   MAX_BOUNCES        = 8;
+// 路径长度由俄罗斯轮盘赌决定，不设置确定性的弹射上限。
 static const int   RR_START_DEPTH     = 2;       // 从该级弹射开始做俄罗斯轮盘赌
 static const float RR_MIN_PROBABILITY = 0.05;    // 存活概率下限（仍按真实概率归一，保持无偏）
-static const float MAX_SAMPLES        = 2048.0;  // 时域累积的样本数上限
+static const float RR_MAX_PROBABILITY = 0.95;    // 无硬深度上限；长路径仍有非零存活概率
 
-static const float ALPHA_MIN       = 1e-3;  // 粗糙度下限：纯数值保护，非估计量偏差
-static const float SHADOW_EPSILON  = 1e-3;  // 阴影 / 自相交偏移
-static const float SURFACE_EPSILON = 1e-3;  // 弹射光线起点偏移
+static const float ALPHA_MIN       = 1e-3;  // 连续 GGX 的最小 alpha：定义正则化材质模型
 static const float RAY_TMAX        = 1e23;  // 主光线 / 弹射光线视为无限远
 
 // ---------------------------------------------------------------------------
-// rng：Wang hash 随机数发生器
-//   状态显式保存在 struct 内，沿路径以 inout 传递，保证同一像素同一帧内
-//   每个采样点使用互不相关的随机序列（时域累积要求各帧独立同分布）。
+// rng：PCG32 随机数发生器
+//   状态显式保存在 struct 内，沿路径以 inout 传递，沿同一路径推进伪随机序列；
+//   像素与样本编号参与播种，不宣称有限状态 PRNG 的输出数学独立。
 // ---------------------------------------------------------------------------
 struct rng
 {
@@ -63,7 +55,7 @@ struct rng
 
   // 64 位输出：两次 PCG32 拼接（阴影光线拿它当 any-hit 的局部种子）
   [mutating]
-  uint64_t next_uint64() { return (uint64_t(next_uint()) << 32u) | uint64_t(next_uint()); }
+  uint64_t next_uint64() { uint hi = next_uint(); uint lo = next_uint(); return (uint64_t(hi) << 32u) | uint64_t(lo); }
 
   // 64 位种子：像素与帧的组合直接给满 64 位。32 位种子在 4K × 2048 帧下会撞车
   // （像素 × 帧的对数超过 2^32 ⇒ 不同像素共用同一条流 ⇒ 噪声出现空间相关）。
@@ -81,18 +73,18 @@ struct rng
 
   // [0, 1) 均匀分布
   [mutating]
-  float next_float() { return float(next_uint()) / 4294967296.0; }
+  float next_float() { return float(next_uint() >> 8u) * (1.0 / 16777216.0); }
 
   [mutating]
-  float2 next_float2() { return float2(next_float(), next_float()); }
+  float2 next_float2() { float x = next_float(); float y = next_float(); return float2(x, y); }
 
   [mutating]
-  float3 next_float3() { return float3(next_float(), next_float(), next_float()); }
+  float3 next_float3() { float x = next_float(); float y = next_float(); float z = next_float(); return float3(x, y, z); }
 };
 
 // ---------------------------------------------------------------------------
 // basis：以法线为 +Z 的正交切线空间基
-//   Frisvad 方法构造（对任意法线方向数值稳定），成员函数负责局部 ↔ 世界变换。
+//   选择与法线不平行的坐标轴构造，成员函数负责局部 ↔ 世界变换。
 // ---------------------------------------------------------------------------
 struct basis
 {
@@ -153,8 +145,10 @@ float3 safe_normalize(float3 v)
 // 要求两个 pdf 是同一测度（同一方向上的立体角密度）。
 float power_heuristic(float pdf_a, float pdf_b)
 {
-  float a2    = pdf_a * pdf_a;
-  float b2    = pdf_b * pdf_b;
+  float scale = max(pdf_a, pdf_b);
+  if(scale <= 0.0) return 0.0;
+  float a2    = (pdf_a / scale) * (pdf_a / scale);
+  float b2    = (pdf_b / scale) * (pdf_b / scale);
   float denom = a2 + b2;
   return denom > 0.0 ? a2 / denom : 0.0;
 }
@@ -213,23 +207,33 @@ float uniform_sphere_pdf()
 }
 
 // ---------------------------------------------------------------------------
-// 时域累积：严格样本均值
-//   mean_n = (mean_{n-1} * (n-1) + x_n) / n  ⇔  (previous_mean * n + x) / (n + 1)
-//   这是无偏且**一致**的估计量（收敛到真值）。注意不要写成
-//   lerp(previous, sample, alpha) 之类的指数滑动平均：虽然逐帧期望无偏，
-//   但权重随帧号衰减，极限是随机变量而非真值，无法收敛。
-//   sample_index 为「本次之前已累积的样本数」，由 C++ 侧逐帧递增，
-//   相机或场景变化时复位为 0（首帧整帧替换）。
-// ---------------------------------------------------------------------------
-float3 accumulate_sample(float3 previous_mean, float3 sample_color, uint sample_index, float exposure)
+// 线性均值无样本上限；首样本由调用方直接写入，避免读取未初始化历史。
+// FP32 存储仍有舍入误差，不宣称无限样本下浮点运算精确。
+float3 accumulate_sample(float3 previous_mean, float3 sample_color, uint64_t sample_index)
 {
-  if(float(sample_index) >= MAX_SAMPLES)
-  {
-    // 达到样本数上限后冻结（冻结的是采样数而非数值，不引入估计量偏差）
-    return previous_mean;
-  }
+  // 不乘 n，避免高亮均值在中间乘法溢出；曝光只施加于独立的显示输出。
+  return previous_mean + (sample_color - previous_mean) / float(sample_index + 1ull);
+}
 
-  float3 exposed = sample_color * exposure;
-  float  n       = float(sample_index);
-  return (previous_mean * n + exposed) / (n + 1.0);
+// 逆转置的余子式形式；归一化约去 det 的大小，但必须保留它的符号。
+float3 transform_normal(float4x4 m, float3 n)
+{
+  float3 x = mul(m, float4(1, 0, 0, 0)).xyz;
+  float3 y = mul(m, float4(0, 1, 0, 0)).xyz;
+  float3 z = mul(m, float4(0, 0, 1, 0)).xyz;
+  float orientation = dot(x, cross(y, z)) < 0.0 ? -1.0 : 1.0;
+  return safe_normalize(orientation * (n.x * cross(y, z) + n.y * cross(z, x) + n.z * cross(x, y)));
+}
+
+// 按浮点坐标精度移动到几何法线一侧；不再叠加固定世界单位的 TMin。
+float3 offset_ray_origin(float3 p, float3 n)
+{
+  int3 delta = int3(256.0 * n);
+  int3 bits = asint(p) + int3(p.x < 0 ? -delta.x : delta.x,
+                            p.y < 0 ? -delta.y : delta.y,
+                            p.z < 0 ? -delta.z : delta.z);
+  float3 shifted = asfloat(bits);
+  return float3(abs(p.x) < 0.03125 ? p.x + n.x / 65536.0 : shifted.x,
+                abs(p.y) < 0.03125 ? p.y + n.y / 65536.0 : shifted.y,
+                abs(p.z) < 0.03125 ? p.z + n.z / 65536.0 : shifted.z);
 }

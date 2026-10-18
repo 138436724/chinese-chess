@@ -1,3 +1,11 @@
+/**
+ * @file scene_raytracing_render.cpp
+ * @brief 光追参考实现的实现：五入口五组的管线创建、SBT 构建、UBO 打包与 traceRaysKHR 录制。
+ * @details stage_indices 指定入口在 shader_stages 中的下标；shader_groups 另行组合：0 raygen、1 主 miss、
+ *          2 阴影 miss、3 closest-hit + any-hit、4 仅 any-hit。当前组数与入口数恰好都为 5。create_pipeline_and_sbt()
+ *          自己录并提交一条一次性命令缓冲，把 staging 拷进 SBT 缓冲后按令牌退休。
+ */
+
 #include "scene_raytracing_render.h"
 
 #include "scene_camera.h"
@@ -27,42 +35,43 @@
 #include <vector>
 
 namespace {
+/** @brief 着色器入口在 shader_stages 数组里的下标，供 shader_groups 引用；不是命中组编号。 */
 enum class stage_indices : uint32_t
 {
     ray_gen,
     miss,
     miss_shadow,
     closest_hit,
-    anyhit_shadow
+    any_hit
 };
 
 constexpr std::string_view RAY_GEN_ENTRY_NAME            = "rayGenMain";
 constexpr std::string_view RAY_MISS_ENTRY_NAME           = "rayMissMain";
 constexpr std::string_view RAY_SHADOW_MISS_ENTRY_NAME    = "rayShadowMissMain";
 constexpr std::string_view RAY_CLOSEST_HIT_ENTRY_NAME    = "rayClosestHitMain";
-constexpr std::string_view RAY_SHADOW_ANY_HIT_ENTRY_NAME = "rayShadowAnyHitMain";
+constexpr std::string_view RAY_ANY_HIT_ENTRY_NAME        = "rayAnyHitMain";
 
 }  // namespace
 
+/** @brief 建 UBO、RT 管线与 SBT；SBT 拷贝在 create_pipeline_and_sbt 内提交。 */
 scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&     _allocator,
                                                  const vk::raii::PhysicalDevice& _physical_device,
                                                  const vk::raii::Device&         _device,
                                                  const vk::raii::PipelineCache&  _pipeline_cache,
                                                  vulkan_recycle_bin&             _recycle_bin,
-                                                 vulkan_semaphore&               _semaphore,
                                                  const vulkan_queue&             _graphic_queue,
                                                  const vulkan_queue&             _transfer_queue,
                                                  const scene_model_manager&      _model_manager,
                                                  const scene_material_manager&   _material_manager,
                                                  const scene_light_manager&      _light_manager,
                                                  const scene_texture_manager&    _texture_manager,
-                                                 vulkan_image&                   _render_output)
+                                                 vulkan_image&                   _render_output,
+                                                 vulkan_image&                   _accumulation)
     : allocator(_allocator)
     , physical_device(_physical_device)
     , device(_device)
     , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
     , model_manager(_model_manager)
@@ -70,6 +79,7 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     , light_manager(_light_manager)
     , texture_manager(_texture_manager)
     , render_output(_render_output)
+    , accumulation(_accumulation)
 {
     ubo_offset = vulkan_common::align_up(sizeof(vulkan_rt_scene_data),
                                          physical_device.getProperties2().properties.limits.minUniformBufferOffsetAlignment);
@@ -85,6 +95,7 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     sbt                          = std::move(new_sbt);
 }
 
+/** @brief 只记录 traceRaysKHR 使用的宽高，宽高不变时直接返回；输出图与附件由 scene_manager 管理。 */
 void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
 {
     if (width == _width && height == _height)
@@ -96,29 +107,37 @@ void scene_raytracing_render::resize(uint32_t _width, uint32_t _height)
     height = _height;
 }
 
+/** @brief 清零 frame_index 并重建描述符集，使新的 TLAS / 输出图绑定从第 0 个样本开始累积。 */
 void scene_raytracing_render::update()
 {
     frame_index = 0;
     update_descriptor();
 }
 
+/** @brief 先成对建好新管线与新 SBT，成功后才把旧的一对搬进回收站。 */
 void scene_raytracing_render::recreate()
 {
     auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
-    recycle_bin.retire(std::move(pipeline), "old ray tracing pipeline on reload.");
-    recycle_bin.retire(std::move(sbt), "old ray tracing sbt on reload.");
+    recycle_bin.retire_after_submitted(std::move(pipeline), "old ray tracing pipeline on reload.");
+    recycle_bin.retire_after_submitted(std::move(sbt), "old ray tracing sbt on reload.");
     pipeline = std::move(new_pipeline);
     sbt      = std::move(new_sbt);
 }
 
+/** @brief 只把累积帧号清零；下次 shader 首样本覆盖累积图；描述符、管线与 SBT 保持不变。 */
 void scene_raytracing_render::reset_accumulation() noexcept
 {
     frame_index = 0;
 }
 
+/**
+ * @brief 写 UBO 槽、同步输出与累积图到 eGeneral、绑定管线与 SBT 后 traceRaysKHR，末尾只为输出图补屏障。
+ * @note descriptor_sets 必须已由 update() 建好，且 _frame_slot 在范围内。
+ * @note sbt 必须与当前 pipeline 成对；尺寸取 resize 记录的宽高，不走间接 traceRays。
+ */
 void scene_raytracing_render::render(const scene_camera&            _camera,
                                      const vk::raii::CommandBuffer& _commandbuffer,
-                                     const vulkan_environment_data& _environment)
+                                     const vulkan_environment_data& _environment, uint32_t _frame_slot)
 {
     // update ubo
     const vulkan_rt_scene_data ubo_data{
@@ -137,7 +156,7 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
         .environment_intensity = _environment.environment_intensity,
     };
 
-    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
+    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(_frame_slot) * ubo_offset;
     //std::memset(ubo_ptr, 0, ubo_offset);
     std::memcpy(ubo_ptr, &ubo_data, sizeof(ubo_data));
     ubo.flush();
@@ -148,12 +167,15 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
         render_output.transition_state(vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                        vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite,
                                        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored);
-    const std::array begin_barrier = {image_begin_barrier};
+    const auto accumulation_barrier = accumulation.transition_state(
+        image_begin_barrier.dstStageMask, vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite,
+        vk::ImageLayout::eGeneral, vk::QueueFamilyIgnored);
+    const std::array begin_barrier = {image_begin_barrier, accumulation_barrier};
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, begin_barrier));
 
     _commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
     _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0,
-                                      *(descriptor_sets.at(current_frame)), nullptr);
+                                      *(descriptor_sets.at(_frame_slot)), nullptr);
 
     _commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(),
                                 sbt.get_callable_region(), width, height, 1);
@@ -166,9 +188,13 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
     frame_index++;
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
+/**
+ * @brief 建 RT 管线与配套 SBT：先填五入口 / 五组并建管线，再录一次性命令缓冲把 staging 拷进 SBT。
+ * @note 组序必须匹配 SBT 布局：0 raygen、1/2 miss、3 主命中组、4 阴影命中组；两个命中组共享 any-hit 入口。
+ * @note staging 与命令缓冲按拷贝提交的令牌退休；返回的 pipeline / sbt 由调用方接管。
+ */
 std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render::create_pipeline_and_sbt()
 {
     vulkan_pipeline             new_pipeline;
@@ -181,6 +207,7 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
         vk::DescriptorSetLayoutBinding(2, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eAll, nullptr),
         vk::DescriptorSetLayoutBinding(3, vk::DescriptorType::eCombinedImageSampler,
                                        vulkan_common::MAX_BINDLESS_TEXTURES, vk::ShaderStageFlagBits::eAll, nullptr),
+        vk::DescriptorSetLayoutBinding(4, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eAll, nullptr),
     };
 
     constexpr std::array shader_stages = {
@@ -188,7 +215,7 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
         shader_stage_info{RAY_MISS_ENTRY_NAME, vk::ShaderStageFlagBits::eMissKHR},
         shader_stage_info{RAY_SHADOW_MISS_ENTRY_NAME, vk::ShaderStageFlagBits::eMissKHR},
         shader_stage_info{RAY_CLOSEST_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eClosestHitKHR},
-        shader_stage_info{RAY_SHADOW_ANY_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eAnyHitKHR},
+        shader_stage_info{RAY_ANY_HIT_ENTRY_NAME, vk::ShaderStageFlagBits::eAnyHitKHR},
     };
 
     constexpr std::array shader_groups = {
@@ -201,25 +228,23 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
                                                std::to_underlying(stage_indices::miss_shadow)),
         // Group 3: Primary hit group (triangles)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
-                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::closest_hit)),
+                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::closest_hit),
+                                               std::to_underlying(stage_indices::any_hit)),
         // Group 4: Shadow hit group (triangles, any-hit only)
         vk::RayTracingShaderGroupCreateInfoKHR(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup, vk::ShaderUnusedKHR,
-                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::anyhit_shadow)),
+                                               vk::ShaderUnusedKHR, std::to_underlying(stage_indices::any_hit)),
     };
 
-    const auto props =
-        physical_device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    const auto& properties = props.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
     new_pipeline.create_from_shader(device, pipeline_cache, bindings, {},
                                     std::filesystem::path(SHADERS_PATH) / "scene_raytracing_render.slang",
-                                    shader_stages, shader_groups, properties.maxRayRecursionDepth);
+                                    shader_stages, shader_groups, 1);
 
 
     // create shader binding table
     vulkan_commandbuffer commandbuffer = std::move(
         vulkan_commandbuffer::create(
             device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
-            &graphic_queue, &semaphore)
+            &graphic_queue)
             .front());
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -228,23 +253,27 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
                                          static_cast<uint32_t>(shader_stages.size()), graphic_queue.get_index());
 
     commandbuffer.end_record();
-    commandbuffer.submit();
+    const auto build_token = commandbuffer.submit();
 
-    recycle_bin.retire(std::move(staging_buffer), "ray tracing staging buffer to create sbt.");
-    recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create sbt.");
+    recycle_bin.retire(std::move(staging_buffer), build_token, "ray tracing staging buffer to create sbt.");
+    recycle_bin.retire(std::move(commandbuffer), build_token, "ray tracing commandbuffer to create sbt.");
 
     return std::make_pair(std::move(new_pipeline), std::move(new_sbt));
 }
 
+/**
+ * @brief 重建描述符池与每帧描述符集：TLAS 用 StructureChain 写，输出与累积图均声明 eGeneral 布局。
+ * @note 贴图数组按紧凑绑定序写入 binding 3 的各数组元素，数量来自 texture_manager.get_descriptor_info()。
+ */
 void scene_raytracing_render::update_descriptor()
 {
     // update descriptor pool
-    recycle_bin.retire(std::move(descriptor_sets), "ray tracing descriptor sets.");
-    recycle_bin.retire(std::move(descriptor_pool), "ray tracing descriptor pool.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_sets), "ray tracing descriptor sets.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_pool), "ray tracing descriptor pool.");
 
     constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),
-        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, vulkan_common::MAX_FRAMES_IN_FLIGHT),
+        vk::DescriptorPoolSize(vk::DescriptorType::eStorageImage, 2 * vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),
         vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler,
                                vulkan_common::MAX_BINDLESS_TEXTURES * vulkan_common::MAX_FRAMES_IN_FLIGHT)};
@@ -273,6 +302,9 @@ void scene_raytracing_render::update_descriptor()
         const vk::DescriptorImageInfo storage_image_info(nullptr, render_output.get_imageview(), vk::ImageLayout::eGeneral);
         write_sets.emplace_back(
             vk::WriteDescriptorSet(descriptor_set, 1, {}, vk::DescriptorType::eStorageImage, storage_image_info, {}));
+
+        const vk::DescriptorImageInfo accumulation_info(nullptr, accumulation.get_imageview(), vk::ImageLayout::eGeneral);
+        write_sets.emplace_back(vk::WriteDescriptorSet(descriptor_set, 4, 0, vk::DescriptorType::eStorageImage, accumulation_info, {}));
 
         const vk::DescriptorBufferInfo scene_uniform_info(ubo.get_buffer(), static_cast<vk::DeviceSize>(frame_index_set) * ubo_offset,
                                                           sizeof(vulkan_rt_scene_data));

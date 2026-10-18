@@ -1,3 +1,12 @@
+/**
+ * @file image_helper.h
+ * @brief 图像读写与 KTX2（UASTC）压缩：OIIO 负责 EXR / PNG 等常规格式，KTX 负责 GPU 纹理容器。
+ * @details read_image / write_image / paste_image 是 OIIO 的薄封装，元素类型 T 由 OIIO::TypeDescFromC
+ *          限定（half / float / uint8_t 等），缓冲区一律行紧密排列。compress_to_ktx2 在 CPU 侧把 4 通道
+ *          图压成 UASTC 的 KTX2（HDR 走 UASTC HDR 4x4），只在贴图与字形图集合成之后使用；真正的
+ *          BC6H / BC7 转码发生在读取或上传时。两个路径常量相对运行目录 chinese-chess/。
+ */
+
 #pragma once
 
 #include <Imath/half.h>
@@ -23,20 +32,39 @@
 constexpr std::string_view CAPTURES_PATH = "resources\\captures\\";
 constexpr std::string_view TEXTURES_PATH = "resources\\textures\\";
 
+/**
+ * @brief 一张解包后的图像：尺寸、通道数与行紧密排列的像素。
+ * @details 调用方应保持 buffer.size() == width * height * channels，结构本身不强制该约束。元素类型为 T，行间无
+ *          padding，可以直接交给 OIIO 的 ImageBuf 或 KTX2 的 ktxTexture_SetImageFromMemory。
+ */
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 struct image_info
 {
+    /** @brief 图像宽度（像素）。 */
     uint32_t       width    = 0;
+    /** @brief 图像高度（像素）。 */
     uint32_t       height   = 0;
+    /** @brief 每像素的通道数，buffer 的长度由它和宽高共同决定。 */
     uint32_t       channels = 0;
+    /** @brief 行紧密排列的像素数据，长度为 width * height * channels。 */
     std::vector<T> buffer;
 };
 
+/** @brief 带 KTX 销毁器的 ktxTexture2 智能指针，所有失败路径都不会漏释放。 */
 using ktx2_texture_ptr = std::unique_ptr<ktxTexture2, decltype(&ktxTexture2_Destroy)>;
 
 namespace image_helper {
 
+/**
+ * @brief 用 OIIO 打开图像并按元素类型 T 解包成行紧密的像素数组。
+ * @param _image_path 图像路径，格式由 OIIO 按扩展名或文件头判断。
+ * @param _channels 请求读取的通道数；缺省取源图全部通道。大于源通道数时不自动补 alpha 为 1。
+ * @return 成功返回 image_info<T>；打开失败或 read_image 失败都返回错误串。
+ * @note 缓冲区先按 width * height * channels 填 0，行跨度按 channels 计算。
+ * @note 固定读取 subimage 0、mip 0，按二维图分配；调用方应提供非深度、非体积图像。
+ * @note 像素类型转换交给 OIIO；expected 只承载显式检查的失败，内存分配等异常仍可能传播。
+ */
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 [[nodiscard]] inline std::expected<image_info<T>, std::string> read_image(const std::filesystem::path& _image_path,
@@ -65,6 +93,17 @@ template <typename T>
     return info;
 }
 
+/**
+ * @brief 把行紧密的像素写成图像文件，格式由扩展名决定。
+ * @param _image_path 输出路径（.exr / .png 等）。
+ * @param _width 图像宽度（像素）。
+ * @param _height 图像高度（像素）。
+ * @param _data 像素数据，长度应为 _width * _height * 通道数。
+ * @param _channels 通道数；缺省由 _data.size() / (_width * _height) 整除推出。
+ * @return 成功返回空 expected；创建输出、宽高为 0、open 失败或 write_image 失败都返回错误串。
+ * @note 只校验宽高非零；给定 _channels 时不核对 _data 的长度是否够，数据不足会让 OIIO 越界读。
+ * @note write_image 成功后显式 close()，但不检查 close 的结果；返回成功不保证最终关闭写入也成功。
+ */
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 [[nodiscard]] inline std::expected<void, std::string> write_image(const std::filesystem::path& _image_path,
@@ -99,6 +138,17 @@ template <typename T>
     return {};
 }
 
+/**
+ * @brief 把一张小图按左上角坐标贴到目标画布上，原地修改目标。
+ * @param _src 源图像，通道数要么与目标相同，要么为 1。
+ * @param _dst 目标画布，尺寸与通道数不变，只覆盖对应区域。
+ * @param _x 粘贴区域左上角在目标上的列坐标，从 0 开始。
+ * @param _y 粘贴区域左上角在目标上的行坐标，从 0 开始。
+ * @return 成功返回空 expected；越界、通道组合不支持或 OIIO paste 失败都返回错误串。
+ * @note 通道数相同时一次 paste；_src 只有 1 个通道时逐个目标通道复制（按通道广播）。
+ * @note 两个 ImageBuf 包住调用方 vector，不复制像素；调用方须保证缓冲长度与尺寸一致，坐标加法不溢出。
+ * @note 失败不回滚已写像素；逐通道复制时，前面通道可能已经修改。
+ */
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 [[nodiscard]] inline std::expected<void, std::string> paste_image(const image_info<T>& _src, image_info<T>& _dst, int _x, int _y)
@@ -137,6 +187,16 @@ template <typename T>
     return {};
 }
 
+/**
+ * @brief 把 4 通道图像压成 UASTC 的 KTX2 纹理。
+ * @param _image 源图像；宽高需非零且为 4 的倍数，通道数为 4；本函数显式检查倍数和通道数，零尺寸交给 KTX。
+ * @param _is_hdr true 时按 R16G16B16A16_SFLOAT 建纹理并用 UASTC HDR 4x4 压缩，false 时按 R8G8B8A8_UNORM + UASTC LDR 4x4。
+ * @return 成功返回持有 ktxTexture2 的指针；建纹理、填像素或压缩失败都返回错误串。
+ * @note 只建 1 个 mip 层、不生成 mipmap；压缩线程数取 std::thread::hardware_concurrency()。
+ * @note 返回的纹理仍是 UASTC 数据，转成 BC6H / BC7 发生在 upload_ktx2（上传）或 read_ktx2（读侧车）里。
+ * @note 会核对 buffer.size() 是否等于 width * height * channels；不会转换像素类型。
+ * @pre HDR 输入须使用 half（FP16）存储，LDR 输入须使用 uint8_t；requires 未限制 T 与 _is_hdr 的组合。
+ */
 template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 [[nodiscard]] inline std::expected<ktx2_texture_ptr, std::string> compress_to_ktx2(const image_info<T>& _image, bool _is_hdr)
@@ -197,8 +257,21 @@ template <typename T>
     return tex;
 }
 
+/**
+ * @brief 从 .ktx2 文件读入纹理并转码成 BC6H（HDR）或 BC7（LDR）。
+ * @param _ktx2_path 侧车文件路径。
+ * @return 成功返回已转码的 ktxTexture2；打开或转码失败返回错误串。
+ * @note 用 KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT 连像素数据一起读进内存；转码后 vkFormat 也随之变成 BC6H / BC7。
+ */
 [[nodiscard]] std::expected<ktx2_texture_ptr, std::string> read_ktx2(const std::filesystem::path& _ktx2_path);
 
+/**
+ * @brief 把内存里的 KTX2 纹理写成 .ktx2 文件（即写侧车）。
+ * @param _ktx2_path 目标文件路径。
+ * @param _tex 非空源纹理，只借用不转移所有权；本函数不判空。
+ * @return 成功返回空 expected；写文件失败返回错误串。
+ * @note 必须在转码成 BC6H / BC7 之前调用，否则侧车就不再是可移植的 UASTC 中间格式。
+ */
 [[nodiscard]] std::expected<void, std::string> write_ktx2(const std::filesystem::path& _ktx2_path, const ktx2_texture_ptr& _tex);
 
 }  // namespace image_helper

@@ -1,3 +1,12 @@
+/**
+ * @file file_watcher.cpp
+ * @brief file_watcher 的实现：SHA-256 计算与 hash 缓存文件的读写。
+ * @details 缓存文件是自定义二进制格式：先写死字符串头，再写 size_t 条目数，最后每条依次是
+ *          「size_t 路径长度 + 路径字节 + size_t 哈希长度 + 哈希字节」，全部按本机字节序。
+ *          构造读、析构写；写入前先剔除磁盘上已经不存在的路径，清理失效路径；仍存在的路径不受容量上限约束。
+ *          哈希计算走 OpenSSL 的 EVP 接口，读盘用 4 KiB 栈缓冲，结果按大写十六进制展开。
+ */
+
 #include "file_watcher.h"
 
 #include <array>
@@ -15,12 +24,18 @@
 #include <utility>
 
 namespace {
+/** @brief 哈希缓存文件路径，相对运行目录 chinese-chess/。 */
 constexpr std::string_view hash_cache_path   = "resources\\cache\\hash_cache.cache";
+/** @brief 缓存文件头，内容与长度都写死；读到的头不匹配就把整份缓存丢弃。 */
 constexpr std::string_view hash_cache_header = "hash_cache_header";
 }  // namespace
 
 file_watcher file_watcher::watcher;
 
+/**
+ * @brief 读入 hash 缓存：文件打不开或头不匹配就直接返回，缓存保持为空。
+ * @note 不逐条校验长度或流状态；截断的缓存可能留下部分/残缺条目，析构的路径存在性检查不能验证其哈希。
+ */
 file_watcher::file_watcher()
 {
     std::ifstream cache_file(hash_cache_path.data(), std::ios::binary);
@@ -55,6 +70,10 @@ file_watcher::file_watcher()
     }
 }
 
+/**
+ * @brief 先剔除文件已不存在的条目，再创建目录并把整份缓存写回。
+ * @note 输出流打不开就返回；filesystem 操作及内存分配异常未捕获，逸出析构会触发 terminate。
+ */
 file_watcher::~file_watcher()
 {
     std::erase_if(file_watch_cache, [](const auto& item) static { return !std::filesystem::exists(item.first); });
@@ -83,6 +102,12 @@ file_watcher::~file_watcher()
     }
 }
 
+/**
+ * @brief 用 OpenSSL EVP 接口算文件的 SHA-256，并按两位大写十六进制展开。
+ * @note 仅文件打开失败与 EVP_MD_CTX_new 返回空指针被转为 expected 错误；分配等异常仍可能传播。
+ * @warning 当前未检查 EVP 操作的返回值，也未处理非 EOF 的流读取错误；此处并非完整的错误恢复边界。
+ * @note 摘要循环以「读完一块后是否 eof」为终止条件，gcount 决定本次喂入的字节数。
+ */
 std::expected<std::string, std::string> file_watcher::generate_file_hash(const std::filesystem::path& _file_path)
 {
     std::ifstream file(_file_path, std::ios::binary);
@@ -121,8 +146,13 @@ std::expected<std::string, std::string> file_watcher::generate_file_hash(const s
            | std::ranges::to<std::string>();
 }
 
+/**
+ * @brief 比对哈希缓存：读不出哈希就返回 false，否则命中且相同即未修改，其余情况写回并返回 true。
+ * @note 缓存是 mutable 的，所以这个 const 方法会改表；单线程使用无需加锁。
+ */
 bool file_watcher::is_file_modified(const std::filesystem::path& _file_path) const
 {
+    // 这是“检查并更新基线”，不是纯查询；同一文件紧接着再查一次会得到未修改。
     const auto file_hash = generate_file_hash(_file_path);
     const auto file_path = _file_path.generic_string();
 

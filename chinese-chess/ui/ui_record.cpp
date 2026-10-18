@@ -1,3 +1,10 @@
+/**
+ * @file ui_record.cpp
+ * @brief ui_record 的实现：棋盘/棋子建模、字形图集材质、棋谱加载与局面回放。
+ * @details 构造函数按固定坐标创建棋盘、棋盘线与 32 个棋子；resize 在高度变化时重新合成
+ *          棋盘和棋子的字形图集材质；load_records 解析文本与所有局面；restore_board_state
+ *          先隐藏全部棋子，再按红黑双方的存活棋子重新摆放。
+ */
 #include "ui_record.h"
 
 #include "scene/scene_data_type.h"
@@ -51,6 +58,14 @@ constexpr glm::vec3 black_piece_background_color = glm::vec3(0.15f, 0.45f, 0.32f
 constexpr glm::vec3 black_piece_foreground_color = glm::vec3(0.02f, 0.10f, 0.06f);
 constexpr glm::vec3 black_piece_absorption       = glm::vec3(4.0f, 1.6f, 1.0f);
 
+/**
+ * @brief 把棋谱坐标转换成棋盘局部坐标，按观察方与棋子颜色选择镜像规则。
+ * @param _use_color   棋盘观察方；当前调用固定为 RED，与轮到谁行棋无关。
+ * @param _piece_color 棋子所属颜色。
+ * @param _x           棋谱横坐标。
+ * @param _y           棋谱纵坐标。
+ * @return 以棋盘中心为原点的二维世界坐标，每个棋盘格对应 0.25 个世界单位。
+ */
 [[nodiscard]] constexpr glm::vec2 location_transform(PIECE_COLOR _use_color, PIECE_COLOR _piece_color, uint8_t _x, uint8_t _y) noexcept
 {
     // 棋盘中心为坐标的(0, 0)点，而右下和左上作为双方棋子的定位原点
@@ -93,6 +108,10 @@ constexpr glm::vec3 black_piece_absorption       = glm::vec3(4.0f, 1.6f, 1.0f);
 }  // namespace
 
 
+/**
+ * @brief 创建棋盘、棋盘线与 32 个棋子，并给棋盘设置默认 PBR 参数。
+ * @note 棋盘 roughness 0.4、reflectance 0.4；三个 z 常量让棋盘线、棋子依次位于棋盘前方。
+ */
 ui_record::ui_record(scene_manager& _manager)
     : manager(_manager)
 {
@@ -132,6 +151,10 @@ ui_record::ui_record(scene_manager& _manager)
     }
 }
 
+/**
+ * @brief 高度变化时按新字号重建棋盘与棋子的字形图集材质，并保持当前回放局面。
+ * @note 宽度只更新缓存；字号 = floor(height / 9.0 * 2)，图集 padding 固定 2 texel。
+ */
 void ui_record::resize(uint32_t _width, uint32_t _height)
 {
     const bool size_changed = _height != height;
@@ -162,6 +185,10 @@ void ui_record::resize(uint32_t _width, uint32_t _height)
     restore_board_state(static_cast<uint32_t>(now_record_index));
 }
 
+/**
+ * @brief 按“字形 + 棋子名”逐对建立或更新材质，并把图集贴图写到 albedo 通道。
+ * @note 已有类型复用原材质句柄，只重设 PBR 参数与贴图；材质基色取白，颜色全在图集里。
+ */
 void ui_record::rebuild_piece_materials(std::unordered_map<PIECE_TYPE, material_handle>& _materials,
                                         std::wstring_view                                _characters,
                                         std::u16string_view                              _piece_names,
@@ -208,6 +235,10 @@ void ui_record::rebuild_piece_materials(std::unordered_map<PIECE_TYPE, material_
     });
 }
 
+/**
+ * @brief 构建棋局区：加载棋谱按钮、局面列表与上一步/下一步按钮。
+ * @note 文件对话框只在 Win32 下弹；load_records 返回 expected 错误时保留旧缓存，但随后仍会摆到旧缓存第 0 项；异常会传播。
+ */
 void ui_record::update()
 {
     ImGui::SeparatorText(RECORDS_MANAGER.data());
@@ -260,6 +291,10 @@ void ui_record::update()
     }
 }
 
+/**
+ * @brief 把 W/A 映射为上一步、S/D 映射为下一步，其余按键忽略。
+ * @note 只处理 GLFW_PRESS，避免按住键时重复触发。
+ */
 void ui_record::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/) noexcept
 {
     if (_action != GLFW_PRESS)
@@ -282,6 +317,10 @@ void ui_record::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/) 
     }
 }
 
+/**
+ * @brief 读取棋谱文本与全部局面，成功后整体替换缓存并把回放位置归零。
+ * @note 解析器返回 expected 错误或空局面时打印并保留旧缓存；异常会传播，缓存替换不保证回滚。
+ */
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
     auto records = record_loader::read_record<std::string>(_record_path);
@@ -313,28 +352,27 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
     now_record_index = 0;
 }
 
-//all_board_state ui_record::capture_board_state()
-//{
-//	all_board_state state;
-//
-//	for (auto [_color, _pieces] : all_chess_pieces | std::views::enumerate)
-//	{
-//		for (auto& _piece : _pieces)
-//		{
-//			if (_piece.get_is_on_board())
-//			{
-//				state.at(_color).emplace_back(piece_state(_piece.get_piece_type(), _piece.get_piece_location().first, _piece.get_piece_location().second));
-//			}
-//		}
-//	}
-//
-//	return state;
-//}
-
+/**
+ * @brief 先隐藏全部棋子，再按局面里的红黑棋子重新设置材质、可见性与矩阵。
+ * @note noexcept：进入循环前先校验棋子总数不超过 32，材质缓存没有该类型或模型句柄失效时跳过；不验证缓存中的材质句柄是否仍存活。
+ */
 void ui_record::restore_board_state(uint32_t _index) noexcept
 {
     if (_index >= board_state.size())
     {
+        return;
+    }
+
+    const all_board_state& state        = board_state.at(_index);
+    const auto&            black_pieces = state.at(static_cast<size_t>(PIECE_COLOR::BLACK));
+    const auto&            red_pieces   = state.at(static_cast<size_t>(PIECE_COLOR::RED));
+
+    // 坏棋谱的防御：局面里的棋子数不能超过已建好的 32 个槽
+    // （函数是 noexcept，下面每个越界访问都会直接 terminate，所以先自查再进循环）
+    if (black_pieces.size() + red_pieces.size() > all_chess_pieces.size())
+    {
+        std::println(std::cerr, "Board state {} has {} pieces, but only {} are built.", _index,
+                     black_pieces.size() + red_pieces.size(), all_chess_pieces.size());
         return;
     }
 
@@ -345,33 +383,32 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         }
     });
 
-    const all_board_state& state        = board_state.at(_index);
-    size_t                 index_offset = 0;
-    std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::BLACK)) | std::views::enumerate, [&](const auto& _pair) {
+    size_t index_offset = 0;
+    std::ranges::for_each(black_pieces | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& handle         = all_chess_pieces.at(index + index_offset);
-        auto*       sp             = manager.get(handle);
-        if (sp == nullptr)
+        const auto material_iter   = black_chess_piece_materials.find(piece.piece_type);
+        auto*      sp              = manager.get(all_chess_pieces.at(index + index_offset));
+        if (sp == nullptr || material_iter == black_chess_piece_materials.end())
         {
             return;
         }
-        sp->material = black_chess_piece_materials.at(piece.piece_type);
+        sp->material = material_iter->second;
         sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
                            glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, piece.x, piece.y), chess_piece_z));
     });
 
-    index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
-    std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::RED)) | std::views::enumerate, [&](const auto& _pair) {
+    index_offset = black_pieces.size();
+    std::ranges::for_each(red_pieces | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& handle         = all_chess_pieces.at(index + index_offset);
-        auto*       sp             = manager.get(handle);
-        if (sp == nullptr)
+        const auto material_iter   = red_chess_piece_materials.find(piece.piece_type);
+        auto*      sp              = manager.get(all_chess_pieces.at(index + index_offset));
+        if (sp == nullptr || material_iter == red_chess_piece_materials.end())
         {
             return;
         }
-        sp->material = red_chess_piece_materials.at(piece.piece_type);
+        sp->material = material_iter->second;
         sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),

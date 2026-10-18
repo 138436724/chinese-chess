@@ -1,26 +1,11 @@
 import shader_utils;
 import vulkan_data_type;
 
-// ============================================================================
-// pbr.slang — 物理着色模型：Fresnel / 微表面 / 材质 / BSDF 采样
-//
-// 模型（metallic-roughness + 平滑介质界面）：
-//   BSDF = (1 - transmission) · [ Lambert(diffuse_albedo) + GGX(f0) ]
-//        + transmission · [ 平滑介质界面：F·δ_reflect + (1-F)·δ_refract ]
-//
-//   · 反射部分（Lambert + GGX）是连续 BRDF，可求值、可采样、有 pdf：
-//     它参与直接光 NEE、环境光 NEE 与 MIS（本文件提供严格一致的
-//     eval / pdf / sample 三者，采样权重直接取 fr·cosθ / pdf，
-//     不手写解析约简，避免三者不一致引入偏差）。
-//   · 介质界面是 delta 波瓣：NEE 对其贡献恒为 0（立体角测度为零），
-//     只能由 BSDF 采样处理，其权重取「波瓣反射率 / 分支概率」。
-//   · 介质内部的吸收由「每段行进距离上的 Beer-Lambert 指数衰减」精确结算
-//     （见 path_tracing.slang），不使用固定厚度近似，因此对任意厚度无偏。
-//
-// 说明：GGX 采用单次散射（无多重散射能量补偿），这是 Disney / glTF 的
-// 标准建模选择；蒙特卡洛估计量对该 BRDF 无偏。粗糙度下限 ALPHA_MIN 是
-// 数值保护（eval / pdf / sample 使用同一个 alpha），不构成估计量偏差。
-// ============================================================================
+// 连续反射采用能量守恒的凸组合：Lambert + 单次散射 GGX。
+// dielectric 的常量镜面比例与 metallic 控制混合权重，不宣称等同 glTF 分层模型。
+// transmission 混入平滑介质界面，按精确 Fresnel 选择 delta 反射 / 折射。
+// 采样权重为 f*cos/pdf，透射额外包含 radiance 运输的 eta_i²/eta_t²。
+// ALPHA_MIN 定义最小连续波瓣宽度；它是材质模型的正则化，不是完美镜面。
 
 // ---------------------------------------------------------------------------
 // Fresnel
@@ -65,22 +50,16 @@ struct microfacet
   float d(float n_dot_m)
   {
     float a2    = alpha * alpha;
-    float denom = n_dot_m * n_dot_m * (a2 - 1.0) + 1.0;
-    return a2 / max(PI * denom * denom, 1e-12);
+    float cos2 = n_dot_m * n_dot_m;
+    float denom = max(1.0 - cos2, 0.0) + a2 * cos2;
+    return a2 / (PI * denom * denom);
   }
 
-  // Smith 遮蔽辅助量 Λ(w)
-  float lambda(float n_dot_w)
+  // 稳定计算 Smith 项，保持 VNDF 的真实密度，不钳制掠射角余弦。
+  float projected_length(float c)
   {
-    float c  = abs(n_dot_w);
-    float c2 = max(c * c, 1e-8);
-    return 0.5 * (sqrt(1.0 + alpha * alpha * (1.0 - c2) / c2) - 1.0);
+    return sqrt(alpha * alpha + (1.0 - alpha * alpha) * c * c);
   }
-
-  float g1(float n_dot_w) { return 1.0 / (1.0 + lambda(n_dot_w)); }
-
-  // 高度相关 Smith 联合遮蔽
-  float g2(float n_dot_v, float n_dot_l) { return 1.0 / (1.0 + lambda(n_dot_v) + lambda(n_dot_l)); }
 
   float3 half_vector(float3 wo, float3 wi) { return safe_normalize(wo + wi); }
 
@@ -98,7 +77,8 @@ struct microfacet
     float  n_dot_h = max(dot(n, h), 0.0);
     float  v_dot_h = max(dot(wo, h), 0.0);
 
-    return d(n_dot_h) * g2(n_dot_v, n_dot_l) * fresnel_schlick(f0, v_dot_h) / (4.0 * n_dot_v * n_dot_l);
+    return d(n_dot_h) * fresnel_schlick(f0, v_dot_h)
+      / (2.0 * (n_dot_l * projected_length(n_dot_v) + n_dot_v * projected_length(n_dot_l)));
   }
 
   // VNDF 采样对应的方向 pdf（立体角密度）：
@@ -113,7 +93,7 @@ struct microfacet
     }
 
     float n_dot_h = max(dot(n, half_vector(wo, wi)), 0.0);
-    return g1(n_dot_v) * d(n_dot_h) / (4.0 * n_dot_v);
+    return d(n_dot_h) / (2.0 * (n_dot_v + projected_length(n_dot_v)));
   }
 
   // 可见法线分布（VNDF）重要性采样（Heitz 2018）：返回世界空间反射方向
@@ -130,7 +110,7 @@ struct microfacet
     float3 t1    = lensq > 0.0 ? float3(-vh.y, vh.x, 0.0) / sqrt(lensq) : float3(1.0, 0.0, 0.0);
     float3 t2    = cross(vh, t1);
 
-    // §4.2 投影面积参数化（同心圆盘采样）
+    // §4.2 投影面积参数化（极坐标圆盘采样）
     float r   = sqrt(u.x);
     float phi = 2.0 * PI * u.y;
     float p1  = r * cos(phi);
@@ -179,14 +159,22 @@ struct pbr_material
   float3 f0() { return lerp(dielectric_f0(), albedo, clamp(metallic, 0.0, 1.0)); }
 
   // 漫反射反照率：金属没有漫反射
-  float3 diffuse_albedo() { return (1.0 - clamp(metallic, 0.0, 1.0)) * albedo; }
+  // 能量守恒的凸组合：常量介质镜面比例 + 漫反射；金属只保留带色 GGX。
+  // 精确介质 Fresnel 在独立的 transmission 界面分支中求值。
+  float specular_weight() { return lerp(dielectric_f0().x, 1.0, clamp(metallic, 0.0, 1.0)); }
+  float3 reflection_f0()
+  {
+    float weight = specular_weight();
+    return weight > 0.0 ? f0() / weight : float3(0.0);
+  }
+  float3 diffuse_albedo() { return (1.0 - specular_weight()) * albedo; }
 
   // 连续波瓣中 GGX 镜面的采样概率。
   // 任意 (0,1) 内的取值都不影响无偏性（eval / pdf 使用同一取值），
   // 此处按两种波瓣的能量占比分配以降方差。
   float specular_probability()
   {
-    float e_spec = luminance(f0());
+    float e_spec = specular_weight();
     float e_diff = luminance(diffuse_albedo());
     return clamp(e_spec / max(e_spec + e_diff, 1e-4), 0.05, 0.95);
   }
@@ -211,7 +199,7 @@ float3 resolve_albedo(vulkan_material_data data, float3 texture_albedo, bool has
 pbr_material make_material(vulkan_material_data data, float3 albedo)
 {
   pbr_material m;
-  m.albedo            = albedo;
+  m.albedo            = clamp(albedo, float3(0.0), float3(1.0));
   m.emission          = data.emission;
   m.absorption        = data.absorption;
   m.roughness         = data.roughness;
@@ -248,17 +236,20 @@ struct shading_context
   float3       wo;          // 出射方向（指向观察者，单位向量）
   bool         front_face;  // 是否从几何正面入射（决定介质界面的 eta 方向）
 
+  float3 geometric_n; // 面向 wo 的几何法线，约束支持域并处理介质边界
+  float eta;          // 当前介质 IOR / 界面另一侧 IOR
+
   // 非 delta 部分：Lambert 漫反射 + GGX 镜面反射
   float3 eval(float3 wi)
   {
     float n_dot_l = dot(n, wi);
-    if(n_dot_l <= 0.0 || dot(n, wo) <= 0.0)
+    if(n_dot_l <= 0.0 || dot(n, wo) <= 0.0 || dot(geometric_n, wi) <= 0.0)
     {
       return float3(0.0);
     }
 
     float3 f_diffuse  = material.diffuse_albedo() * INV_PI;
-    float3 f_specular = ggx.eval(material.f0(), wo, wi);
+    float3 f_specular = material.specular_weight() * ggx.eval(material.reflection_f0(), wo, wi);
     return (1.0 - material.transmission_probability()) * (f_diffuse + f_specular);
   }
 
@@ -266,7 +257,7 @@ struct shading_context
   float pdf(float3 wi)
   {
     float n_dot_l = dot(n, wi);
-    if(n_dot_l <= 0.0 || dot(n, wo) <= 0.0)
+    if(n_dot_l <= 0.0 || dot(n, wo) <= 0.0 || dot(geometric_n, wi) <= 0.0)
     {
       return 0.0;
     }
@@ -277,18 +268,8 @@ struct shading_context
     return (1.0 - material.transmission_probability()) * (p_spec * pdf_spec + (1.0 - p_spec) * pdf_diff);
   }
 
-  // BSDF 采样。三分支：
-  //   1) 平滑介质界面（delta）：Fresnel 反射 / 折射
-  //   2) GGX 镜面（VNDF）
-  //   3) Lambert 漫反射（余弦加权）
-  // 连续波瓣统一用 fr·cosθ / pdf 计算权重 —— 与 eval / pdf 同源，
-  // 且混合 pdf 有余弦项托底，权重天然有界（不会出现 firefly）。
-  //
-  // 介质界面的权重恒为 1（**不**再除以分支概率）：本模型的混合式是
-  //   BSDF = (1 - p)·[Lambert + GGX] + p·[F·δ_reflect + (1-F)·δ_refract]
-  // 采样该界面的概率已经是 p·F（或 p·(1-F)），即分支概率本身就携带了 p 这份能量；
-  // 若再写成「波瓣反射率 / 分支概率」= F/(p·F)，期望能量会多出 1/p 倍
-  // （p < 1 时直接违反能量守恒，半透材质会明显过亮）。
+  // 连续波瓣使用完整混合 PDF；delta 分支的混合概率与 Fresnel 概率约去。
+  // 反射权重为 1，折射为 eta²；Beer 衰减在积分器按当前介质逐段结算。
   bsdf_sample sample(inout rng r)
   {
     bsdf_sample result;
@@ -305,32 +286,31 @@ struct shading_context
     {
       // ---------- 平滑介质界面（delta 波瓣）----------
       result.is_delta = true;
+      result.weight = float3(1.0);
 
-      float cos_i   = max(dot(n, wo), 1e-6);
-      float eta     = front_face ? (1.0 / max(material.ior, 1.0)) : max(material.ior, 1.0);
+      float cos_i   = max(dot(geometric_n, wo), 0.0);
       float fresnel = fresnel_dielectric(cos_i, eta);
 
       if(r.next_float() < fresnel)
       {
         // 镜面反射：采样概率 = p·F，贡献 = p·F·L → 权重 = 1
-        result.direction = reflect(-wo, n);
+        result.direction = reflect(-wo, geometric_n);
         result.valid     = true;
         return result;
       }
 
-      float3 refracted = refract(-wo, n, eta);
+      float3 refracted = refract(-wo, geometric_n, eta);
       if(dot(refracted, refracted) < 1e-8)
       {
         // 全反射：有效反射率 = 1，采样概率 = p → 贡献 = p·L → 权重 = 1
-        result.direction = reflect(-wo, n);
+        result.direction = reflect(-wo, geometric_n);
         result.valid     = true;
         return result;
       }
 
-      // 折射：采样概率 = p·(1-F)，贡献 = p·(1-F)·T_medium·L → 权重 = 1。
-      // 介质内的 Beer-Lambert 衰减按「每段行进距离」在命中下一个表面时精确结算
-      // （与分段长度无关，对任意厚度无偏）。
+      // 折射只推进介质状态，当前段的 Beer 衰减由积分器在命中前结算。
       result.direction       = refracted;
+      result.weight          = float3(eta * eta); // radiance 运输的折射缩放
       result.is_transmission = true;
       result.valid           = true;
       return result;
@@ -348,7 +328,7 @@ struct shading_context
     }
 
     float n_dot_l = dot(n, wi);
-    if(n_dot_l <= 0.0)
+    if(n_dot_l <= 0.0 || dot(geometric_n, wi) <= 0.0)
     {
       // 采样方向位于宏观表面以下：该方向的 BRDF 值为 0，
       // 去掉这份恰好为 0 的贡献不引入偏差，直接终止路径即可。

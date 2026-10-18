@@ -1,3 +1,9 @@
+/**
+ * @file vulkan_buffer.cpp
+ * @brief vulkan_buffer 的具体实现，同时应是全工程唯一展开 VMA 实现的编译单元。
+ * @details include 之前先定义 VMA_IMPLEMENTATION，整个工程只在这里展开一次 VMA。
+ */
+
 #define VMA_IMPLEMENTATION
 
 #include "vulkan_buffer.h"

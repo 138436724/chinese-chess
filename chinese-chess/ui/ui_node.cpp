@@ -1,3 +1,10 @@
+/**
+ * @file ui_node.cpp
+ * @brief ui_node 的实现：贴图热重载、材质字段编辑、模型变换分解与文件对话框。
+ * @details select_file 封装 Win32 的 GetOpenFileName；update 先用 FILE_WATCHER 检查缓存贴图是否变过，
+ *          再清掉失效的贴图缓存项；失效模型/材质句柄仍留在列表中，绘制时跳过。模型变换在分解出的平移/欧拉角/缩放上编辑，
+ *          改完按 T * R * S 重组成 model_matrix。
+ */
 #include "ui_node.h"
 
 #include "scene/scene_data_type.h"
@@ -54,13 +61,20 @@ constexpr std::string_view MODEL_SCALING     = "缩放";
 constexpr std::string_view DELETE_MODEL      = "删除物体";
 constexpr std::string_view NO_MODEL          = "无物体";
 
+/** @brief 贴图通道与材质面板按钮文案的对照行，驱动通道按钮的循环。 */
 struct texture_channel_name_map
 {
     texture_channel  channel;
     std::string_view label;
 };
+/** @brief 当前参与 UI 的通道表；目前只有 albedo，扩展通道时在此追加一行。 */
 constexpr std::array CHANNEL_NAME_MAP = {texture_channel_name_map{texture_channel::albedo, ADD_IMAGE}};
 
+/**
+ * @brief 弹出 Win32 打开文件对话框，按调用方给的过滤器选文件；取消或非 Windows 返回空路径。
+ * @param _filters 双空字符结尾的 Win32 过滤器串，直接作为 lpstrFilter。
+ * @return 选中的路径；用户取消时为空。
+ */
 [[nodiscard]] std::filesystem::path select_file(std::wstring_view _filters)
 {
     std::filesystem::path file_path;
@@ -96,6 +110,11 @@ ui_node::ui_node(scene_manager& _manager) noexcept
 
 void ui_node::resize(uint32_t /* _width*/, uint32_t /* _height*/) noexcept {}
 
+/**
+ * @brief 先热重载被修改的贴图并清理失效贴图缓存，再构建物体区与材质区。
+ * @note 仅对存活句柄检查文件并调用 reload_texture；返回 false 时忽略结果并保留旧图，异常仍会传播。
+ * @note 文件监视先更新哈希基线，重载失败后若文件内容不再变化，后续帧不会自动重试。
+ */
 void ui_node::update()
 {
     for (const auto& [path, handle] : textures)
@@ -113,6 +132,10 @@ void ui_node::update()
 
 void ui_node::handle(int /*_key*/, int /*_scancode*/, int /*_action*/, int /*_mods*/) noexcept {}
 
+/**
+ * @brief 构建材质区：添加/删除、albedo、贴图通道按钮与全部 PBR 参数。
+ * @note 删除只记下标，循环结束后统一 destroy 并 erase；按钮文案由 CHANNEL_NAME_MAP 驱动。
+ */
 void ui_node::update_material()
 {
     ImGui::SeparatorText(MATERIAL_MANAGER.data());
@@ -179,7 +202,7 @@ void ui_node::update_material()
                 ImGui::PopID();
             }
 
-            // 粗糙度下限交给着色器（alpha 有数值下限），UI 允许到 0（完美镜面）
+            // UI 允许 roughness = 0；着色器仍以 ALPHA_MIN 限制连续 GGX 波瓣宽度，不是 delta 镜面。
             if (ImGui::DragFloat(MATERIAL_ROUGHNESS.data(), &material_ptr->roughness, 0.01f, 0.f, 1.f))
             {
                 manager.need_material_update();
@@ -196,6 +219,7 @@ void ui_node::update_material()
                 manager.need_material_update();
             }
 
+            // opacity 是 RT/RQ 所有射线的表面覆盖概率；现有“阴影透射率”标签与语义不符。
             if (ImGui::DragFloat(MATERIAL_OPACITY.data(), &material_ptr->opacity, 0.01f, 0.f, 1.f))
             {
                 manager.need_material_update();
@@ -248,6 +272,10 @@ void ui_node::update_material()
     }
 }
 
+/**
+ * @brief 构建物体区：添加/删除、可见性、分解后的变换编辑与材质下拉。
+ * @note glm::decompose 失败时只跳过变换控件；材质下拉的字符串表每次重建。
+ */
 void ui_node::update_model()
 {
     ImGui::SeparatorText(MODEL_MANAGER.data());

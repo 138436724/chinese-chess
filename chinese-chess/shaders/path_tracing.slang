@@ -3,28 +3,19 @@ import vulkan_data_type;
 import pbr;
 import lighting;
 
-// ============================================================================
-// path_tracing.slang — 路径追踪的共享上下文与几何 / 路径状态工具
-//
-// 本模块不触碰任何全局着色器参数（RT 的 RaytracingAccelerationStructure 与
-// Ray Query 的候选遍历 API 不能共存于同一模块），因此它只提供纯函数与
-// 纯数据结构；两个入口文件各自负责：
-//   · 主光线与弹射光线的求交（TraceRay / RayQuery）
-//   · 阴影光线的可见性测试
-//   · bindless 纹理数组取值（索引守卫）
-// 其余（几何插值、材质解析、BSDF、光照、路径状态、累积）全部共享，
-// 从而保证 RT pipeline 与 Ray Query 两条路径的渲染行为逐像素一致。
-// ============================================================================
+// RT 与 Ray Query 共享的表面路径积分器；后端只提供求交与纹理读取。
+// 数学上无固定路径截断；实现仍受浮点精度及离散几何表示的限制。
 
 // ---------------------------------------------------------------------------
 // hit_geometry：命中点的几何属性（顶点属性插值结果）
 // ---------------------------------------------------------------------------
 struct hit_geometry
 {
-  float3 position;  // 世界空间位置
-  float3 normal;    // 世界空间几何法线（未定向）
-  float2 uv;        // 纹理坐标
-  float  distance;  // 沿当前光线到该点的距离（方向已归一化 → 即世界距离）
+  float3 position;
+  float3 normal; // 着色法线
+  float3 geometric_normal; // 几何外法线
+  float2 uv;
+  float distance;
 };
 
 // ---------------------------------------------------------------------------
@@ -74,147 +65,352 @@ material_lookup fetch_material(vulkan_material_data* materials, uint material_co
   return lookup;
 }
 
-// ---------------------------------------------------------------------------
-// 顶点属性插值 → 命中点几何
-//   索引 / 顶点缓冲经模型结构体中的设备地址直接解引用（与 C++ 侧
-//   scene_model_manager 的缓冲布局一致：索引为 uint32，顶点步长 32B）。
-// ---------------------------------------------------------------------------
-hit_geometry interpolate_hit(vulkan_model_data model, uint primitive_id, float2 bary, float3 ray_origin, float3 ray_direction)
+
+hit_geometry interpolate_hit(vulkan_model_data model, uint primitive_id, float2 bary, float3 origin, float3 direction)
 {
-  uint i0 = model.index_address[primitive_id * 3u + 0u];
-  uint i1 = model.index_address[primitive_id * 3u + 1u];
-  uint i2 = model.index_address[primitive_id * 3u + 2u];
-
-  vulkan_model_vertex v0 = model.vertex_address[i0];
-  vulkan_model_vertex v1 = model.vertex_address[i1];
-  vulkan_model_vertex v2 = model.vertex_address[i2];
-
-  float3 local_position = interpolate(bary, v0.position, v1.position, v2.position);
-  float3 local_normal   = interpolate(bary, v0.normal, v1.normal, v2.normal);
-
-  hit_geometry geom;
-  geom.position = mul(model.model_matrix, float4(local_position, 1.0)).xyz;
-  // 法线用逆转置才是严格正确的；本场景模型矩阵只有平移 / 旋转 / 等比缩放，
-  // 乘法与逆转置等价（非等比缩放会引入方向误差，属已知限制）。
-  geom.normal = normalize(mul(model.model_matrix, float4(local_normal, 0.0)).xyz);
-  geom.uv     = interpolate(bary, v0.uv, v1.uv, v2.uv);
-
-  float3 delta  = geom.position - ray_origin;
-  geom.distance = max(dot(delta, ray_direction), 0.0);
-  return geom;
+  vulkan_model_vertex a = model.vertex_address[model.index_address[primitive_id * 3u]];
+  vulkan_model_vertex b = model.vertex_address[model.index_address[primitive_id * 3u + 1u]];
+  vulkan_model_vertex c = model.vertex_address[model.index_address[primitive_id * 3u + 2u]];
+  hit_geometry hit;
+  hit.position = mul(model.model_matrix, float4(interpolate(bary, a.position, b.position, c.position), 1)).xyz;
+  hit.normal = transform_normal(model.model_matrix, interpolate(bary, a.normal, b.normal, c.normal));
+  hit.geometric_normal = transform_normal(model.model_matrix, cross(b.position - a.position, c.position - a.position));
+  if(dot(hit.normal, hit.geometric_normal) < 0) hit.normal = -hit.normal;
+  hit.uv = interpolate(bary, a.uv, b.uv, c.uv);
+  hit.distance = max(dot(hit.position - origin, direction), 0.0);
+  return hit;
 }
 
-// ---------------------------------------------------------------------------
-// resolved_surface：一次表面交互的完整着色输入
-// ---------------------------------------------------------------------------
 struct resolved_surface
 {
-  float3       position;    // 世界空间位置
-  float3       normal;      // 朝向观察者的宏观法线
-  float3       wo;          // 出射方向（指向观察者，单位向量）
-  float        distance;    // 到该点的距离（介质衰减结算用）
-  bool         front_face;  // 是否从几何正面入射（介质界面 eta 方向）
+  float3 position;
+  float3 normal;
+  float3 geometric_normal;
+  float3 wo;
+  float distance;
+  bool front_face;
   pbr_material material;
 
-  // 构造 BSDF 着色上下文
   shading_context make_context()
   {
     shading_context ctx;
-    ctx.material   = material;
-    ctx.ggx.n      = normal;
-    ctx.ggx.alpha  = material.alpha();
-    ctx.n          = normal;
-    ctx.wo         = wo;
+    ctx.material = material;
+    ctx.ggx.n = normal;
+    ctx.ggx.alpha = material.alpha();
+    ctx.n = normal;
+    ctx.geometric_n = geometric_normal;
+    ctx.wo = wo;
     ctx.front_face = front_face;
+    ctx.eta = front_face ? 1.0 / max(material.ior, 1.0) : max(material.ior, 1.0);
     return ctx;
   }
 };
 
-// 法线定向：翻转几何法线使其朝向观察者。
-// 本项目对**所有**光线都关闭背面剔除（不使用 RAY_FLAG_CULL_BACK_FACING_TRIANGLES）：
-// 介质内部的光线必须能命中所属物体的背面才能正确穿出，
-// 因此由着色阶段统一做定向，而不是依赖遍历阶段的剔除。
-resolved_surface make_surface(hit_geometry geom, material_lookup lookup, float3 ray_direction)
+resolved_surface make_surface(hit_geometry hit, material_lookup lookup, float3 direction)
 {
-  resolved_surface surface;
-  surface.position   = geom.position;
-  surface.distance   = geom.distance;
-  surface.wo         = safe_normalize(-ray_direction);
-  surface.front_face = dot(geom.normal, surface.wo) > 0.0;
-  surface.normal     = surface.front_face ? geom.normal : -geom.normal;
-  surface.material   = lookup.to_material();
-  return surface;
+  resolved_surface s;
+  s.position = hit.position;
+  s.distance = hit.distance;
+  s.wo = -direction;
+  s.front_face = dot(hit.geometric_normal, s.wo) > 0;
+  s.geometric_normal = s.front_face ? hit.geometric_normal : -hit.geometric_normal;
+  s.normal = s.front_face ? hit.normal : -hit.normal;
+  // 法线插值不应让 wo 落在着色半球背面；边界判定始终使用几何法线。
+  if(dot(s.normal, s.wo) <= 0) s.normal = s.geometric_normal;
+  s.material = lookup.to_material();
+  return s;
 }
 
-// ---------------------------------------------------------------------------
-// path_vertex：路径追踪状态（沿路径以 inout 传递；RT pipeline 中直接作为光线载荷）
-// ---------------------------------------------------------------------------
-struct path_vertex
+struct trace_hit
 {
-  float3 radiance;      // 已累积辐射度
-  float3 throughput;    // 路径吞吐量（BSDF·cosθ/pdf 连乘）
-  float  bsdf_pdf;      // 生成当前光线的连续 BSDF 方向 pdf（环境光 MIS 用）
-  int    depth;         // 已完成的弹射次数
-  bool   ray_inside;    // 当前光线是否在介质内部传播
-  bool   has_bsdf_pdf;  // bsdf_pdf 是否有效（相机主光线 / delta 波瓣 → false）
-  rng    rng_state;     // 蒙特卡洛随机数状态
-
-  // 介质内 Beer-Lambert 衰减：对「刚刚穿过的那一段」精确结算。
-  // 均匀介质中 T = exp(-σ_a · d) 是解析精确解，因此对任意厚度都无偏
-  // （替代旧实现的「固定厚度 × 进入时一次性吸收」近似）。
-  [mutating]
-  void apply_medium_absorption(resolved_surface surface)
-  {
-    if(ray_inside)
-    {
-      throughput *= exp(-max(surface.material.absorption, float3(0.0)) * surface.distance);
-    }
-  }
-
-  // 自发光：命中自发光表面时把辐亮度直接计入（无偏，不需要额外采样）
-  [mutating]
-  void add_emission(float3 emitted) { radiance += throughput * emitted; }
+  bool found;
+  uint model_index;
+  uint primitive_id;
+  float2 bary;
+  float distance;
 };
 
-// ---------------------------------------------------------------------------
-// 路径状态工具
-// ---------------------------------------------------------------------------
-
-// 俄罗斯轮盘赌的存活缩放因子（0 表示路径终止）。
-//   p = clamp(max(throughput), RR_MIN_PROBABILITY, 1)，
-//   存活时吞吐量除以 p → 期望不变；下限只是避免极低存活率造成的病态长路径，
-//   由于「始终按真实概率归一」而不是直接截断，估计量保持无偏。
-//   返回 1/p，由调用方乘到吞吐量上（避免 inout 参数与 payload 成员的别名问题）。
-float russian_roulette_scale(inout rng r, float3 throughput, int depth)
+trace_hit empty_hit()
 {
-  if(depth < RR_START_DEPTH)
-  {
-    return 1.0;
-  }
-
-  float p = clamp(max_component(throughput), RR_MIN_PROBABILITY, 1.0);
-  if(r.next_float() >= p)
-  {
-    return 0.0;
-  }
-
-  return 1.0 / p;
+  trace_hit h;
+  h.found = false;
+  h.model_index = 0xffffffffu;
+  h.primitive_id = 0;
+  h.bary = float2(0);
+  h.distance = RAY_TMAX;
+  return h;
 }
 
-// 光线逃逸到环境时的 MIS 贡献（与 NEE 权重互补，和为 1）
-float3 environment_miss_contribution(path_vertex pv, float3 env_radiance)
+// 两种求交后端只负责求交和纹理读取，积分、MIS、介质、RR 全部在此模块。
+interface path_backend
 {
-  return pv.throughput * env_radiance * environment_miss_weight(pv.has_bsdf_pdf, pv.bsdf_pdf);
+  trace_hit trace(RayDesc ray, uint64_t seed);
+  bool occluded(RayDesc ray, uint64_t seed);
+  float3 texture(uint index, float2 uv);
 }
 
-// ---------------------------------------------------------------------------
-// 时域累积：把本次采样写入输出图像（严格样本均值，见 shader_utils.slang）
-//   frame_index 由 C++ 侧逐帧递增并在场景 / 相机变化时复位；
-//   本函数同时施加相机曝光（线性缩放，不改变无偏性）。
-// ---------------------------------------------------------------------------
-void write_accumulated(RWTexture2D<float4> image, int2 pixel, float3 sample_color, uint frame_index, float exposure)
+// 每条光线、每个图元一个 Bernoulli 覆盖样本，与 BVH 候选遍历顺序无关。
+// 主光线、间接光线、阴影光线必须使用同一规则；opacity 不等于玻璃 transmission。
+bool accepts_coverage(vulkan_rt_scene_data scene, uint instance, uint primitive, uint64_t seed)
 {
-  float4 previous = image[pixel];
-  float3 mean     = accumulate_sample(previous.rgb, sample_color, frame_index, exposure);
-  image[pixel]    = float4(mean, 1.0);
+  if(instance >= scene.model_count) return true;
+  uint material_index = scene.models[instance].material_index;
+  if(material_index >= scene.material_count) return true;
+  float opacity = clamp(scene.materials[material_index].opacity, 0.0, 1.0);
+  if(opacity >= 1.0) return true;
+  if(opacity <= 0.0) return false;
+  rng r;
+  r.reset(seed ^ (uint64_t(instance) << 32u) ^ uint64_t(primitive));
+  return r.next_float() < opacity;
+}
+
+struct medium_state
+{
+  float ior;
+  float3 absorption;
+  float3 transmittance(float distance) { return exp(-absorption * distance); }
+};
+
+medium_state vacuum_medium()
+{
+  medium_state m;
+  m.ior = 1.0;
+  m.absorption = float3(0.0);
+  return m;
+}
+
+medium_state material_medium(vulkan_material_data material)
+{
+  medium_state m;
+  m.ior = max(material.ior, 1.0);
+  m.absorption = max(material.absorption, float3(0.0));
+  return m;
+}
+
+// 封闭、外法线一致、互不相交或严格嵌套的介质实例：从点发射探测射线，
+// 各实例最近面为背面时点在内部。包含它的实例中，最近出口属于最内层介质。
+// 初始相机与退出界面时查询，避免固定容量介质栈；不支持开放网格定义体积。
+medium_state locate_medium(RaytracingAccelerationStructure accel, vulkan_rt_scene_data scene,
+                           float3 origin, uint excluded_model = 0xffffffffu)
+{
+  medium_state medium = vacuum_medium();
+  float nearest_exit = RAY_TMAX;
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = normalize(float3(0.3127, 0.7193, 0.6209));
+  ray.TMin = 0.0;
+  ray.TMax = RAY_TMAX;
+  var candidates = RayQuery<RAY_FLAG_FORCE_NON_OPAQUE>();
+  candidates.TraceRayInline(accel, 0u, 0xffu, ray);
+  while(candidates.Proceed())
+  {
+    uint i = candidates.CandidateInstanceIndex();
+    float candidate_t = candidates.CandidateTriangleRayT();
+    if(i == excluded_model || i >= scene.model_count || candidate_t >= nearest_exit) continue;
+    uint material_index = scene.models[i].material_index;
+    if(material_index >= scene.material_count) continue;
+    vulkan_material_data material = scene.materials[material_index];
+    if(material.transmission <= 0 || material.opacity <= 0) continue;
+    hit_geometry candidate = interpolate_hit(scene.models[i], candidates.CandidatePrimitiveIndex(),
+      candidates.CandidateTriangleBarycentrics(), origin, ray.Direction);
+    if(dot(candidate.geometric_normal, ray.Direction) <= 0) continue;
+
+    // 只对真正遇到的出口候选验证包含关系，避免每个像素按全部模型重复遍历 TLAS。
+    // 外部物体也有背面，必须确认本实例在它之前没有更近的正面，不能只取最近背面。
+    RayDesc probe = ray;
+    probe.TMax = candidate_t;
+    var query = RayQuery<RAY_FLAG_FORCE_NON_OPAQUE>();
+    query.TraceRayInline(accel, 0u, 0xffu, probe);
+    float nearest = candidate_t;
+    bool inside = true;
+    while(query.Proceed())
+    {
+      if(query.CandidateInstanceIndex() != i) continue;
+      float t = query.CandidateTriangleRayT();
+      if(t >= nearest) continue;
+      nearest = t;
+      hit_geometry h = interpolate_hit(scene.models[i], query.CandidatePrimitiveIndex(),
+                                      query.CandidateTriangleBarycentrics(), origin, ray.Direction);
+      inside = dot(h.geometric_normal, ray.Direction) > 0;
+    }
+    if(inside && nearest < nearest_exit)
+    {
+      nearest_exit = nearest;
+      medium = material_medium(material);
+    }
+  }
+  return medium;
+}
+
+__generic<T : path_backend>
+float3 path_environment(T backend, vulkan_rt_scene_data scene, float3 direction)
+{
+  environment env;
+  env.environment_index = scene.environment_index;
+  env.texture_count = scene.texture_count;
+  env.has_hdr = env.environment_index < env.texture_count;
+  env.environment_intensity = scene.environment_intensity;
+  if(env.has_hdr)
+  {
+    float2 uv = float2(0.5 + 0.5 * atan2(direction.z, direction.x) * INV_PI,
+                       1.0 - acos(clamp(direction.y, -1.0, 1.0)) * INV_PI);
+    return backend.texture(env.environment_index, uv) * env.environment_intensity;
+  }
+  return env.procedural_sky(direction);
+}
+
+RayDesc make_shadow_ray(resolved_surface surface, float3 direction, float distance)
+{
+  RayDesc ray;
+  ray.Origin = offset_ray_origin(surface.position, surface.geometric_normal);
+  ray.Direction = direction;
+  ray.TMin = 0.0;
+  ray.TMax = distance;
+  if(distance < RAY_TMAX)
+  {
+    float3 to_light = surface.position + direction * distance - ray.Origin;
+    float length_to_light = length(to_light);
+    ray.Direction = safe_normalize(to_light);
+    ray.TMax = asfloat(max(asuint(length_to_light), 1u) - 1u);
+  }
+  return ray;
+}
+
+__generic<T : path_backend>
+float3 estimate_direct(T backend, vulkan_rt_scene_data scene, resolved_surface surface,
+                       shading_context ctx, medium_state medium, inout rng r)
+{
+  float3 direct = float3(0);
+  for(uint i = 0; i < scene.light_count; ++i)
+  {
+    light_source light;
+    light.data = scene.lights[i];
+    if(!light.enabled()) continue;
+    light_sample ls = light.sample(surface.position);
+    if(!ls.valid || dot(surface.normal, ls.direction) <= 0 || dot(surface.geometric_normal, ls.direction) <= 0) continue;
+    RayDesc shadow = make_shadow_ray(surface, ls.direction, ls.distance);
+    if(!backend.occluded(shadow, r.next_uint64()))
+      direct += medium.transmittance(ls.distance) * nee_light_contribution(ctx, ls, 1.0);
+  }
+
+  float3 direction = sample_uniform_sphere(r.next_float2());
+  if(dot(surface.normal, direction) > 0 && dot(surface.geometric_normal, direction) > 0)
+  {
+    RayDesc shadow = make_shadow_ray(surface, direction, RAY_TMAX);
+    if(!backend.occluded(shadow, r.next_uint64()))
+      direct += medium.transmittance(RAY_TMAX) * nee_environment_contribution(
+        ctx, direction, path_environment(backend, scene, direction), 1.0);
+  }
+  return direct;
+}
+
+// RR 的概率与存活补偿严格配对；上限小于 1 保证无硬深度限制时几乎必然终止。
+float russian_roulette_scale(inout rng r, float3 throughput, float eta_scale, uint depth)
+{
+  if(depth < RR_START_DEPTH) return 1.0;
+  float p = clamp(max_component(throughput) * eta_scale, RR_MIN_PROBABILITY, RR_MAX_PROBABILITY);
+  return r.next_float() < p ? 1.0 / p : 0.0;
+}
+
+__generic<T : path_backend>
+float3 trace_path(T backend, RaytracingAccelerationStructure accel, vulkan_rt_scene_data scene,
+                  RayDesc ray, inout rng r)
+{
+  float3 radiance = float3(0);
+  float3 throughput = float3(1);
+  medium_state medium = locate_medium(accel, scene, ray.Origin);
+  float eta_scale = 1.0;
+  float previous_pdf = 0.0;
+  bool has_previous_pdf = false;
+  uint depth = 0;
+  while(true)
+  {
+    trace_hit hit = backend.trace(ray, r.next_uint64());
+    if(!hit.found)
+    {
+      radiance += throughput * medium.transmittance(RAY_TMAX)
+        * path_environment(backend, scene, ray.Direction)
+        * environment_miss_weight(has_previous_pdf, previous_pdf);
+      break;
+    }
+    if(hit.model_index >= scene.model_count) break;
+    vulkan_model_data model = scene.models[hit.model_index];
+    hit_geometry geometry = interpolate_hit(model, hit.primitive_id, hit.bary, ray.Origin, ray.Direction);
+    geometry.distance = hit.distance;
+    material_lookup lookup = fetch_material(scene.materials, scene.material_count, model.material_index);
+    if(lookup.valid && lookup.data.texture_index < scene.texture_count)
+    {
+      lookup.has_albedo_map = true;
+      lookup.albedo_map = backend.texture(lookup.data.texture_index, geometry.uv);
+    }
+    resolved_surface surface = make_surface(geometry, lookup, ray.Direction);
+    shading_context ctx = surface.make_context();
+    // 刚经过的线段属于起点处的介质，与本次命中的物体材质无关。
+    throughput *= medium.transmittance(hit.distance);
+    radiance += throughput * surface.material.emitted_radiance();
+    radiance += throughput * estimate_direct(backend, scene, surface, ctx, medium, r);
+
+    medium_state destination = medium;
+    if(surface.material.transmission_probability() > 0)
+    {
+      destination = surface.front_face ? material_medium(lookup.data)
+        : locate_medium(accel, scene, offset_ray_origin(surface.position, -surface.geometric_normal), hit.model_index);
+      ctx.eta = medium.ior / destination.ior;
+    }
+    float rr = russian_roulette_scale(r, throughput, eta_scale, depth);
+    if(rr == 0) break;
+    bsdf_sample bs = ctx.sample(r);
+    if(!bs.valid) break;
+    throughput *= bs.weight * rr;
+    if(all(throughput == float3(0))) break;
+    if(bs.is_transmission)
+    {
+      medium = destination;
+      eta_scale /= ctx.eta * ctx.eta;
+    }
+    // 连续反射与全反射都留在原介质；只有透射穿越边界。
+    previous_pdf = bs.pdf;
+    has_previous_pdf = !bs.is_delta;
+    depth = min(depth + 1u, uint(RR_START_DEPTH));
+    ray.Origin = offset_ray_origin(surface.position, bs.is_transmission ? -surface.geometric_normal : surface.geometric_normal);
+    ray.Direction = safe_normalize(bs.direction);
+    ray.TMin = 0.0;
+    ray.TMax = RAY_TMAX;
+  }
+  return radiance;
+}
+
+RayDesc camera_ray(vulkan_rt_scene_data scene, uint2 pixel, uint2 size, inout rng r)
+{
+  float2 clip = (float2(pixel) + r.next_float2()) / float2(size) * 2.0 - 1.0;
+  float4 near_point = mul(scene.proj_inv_matrix, float4(clip, 0, 1));
+  float4 far_point = mul(scene.proj_inv_matrix, float4(clip, 1, 1));
+  near_point /= near_point.w;
+  far_point /= far_point.w;
+  RayDesc ray;
+  ray.Origin = mul(scene.view_inv_matrix, near_point).xyz;
+  ray.Direction = safe_normalize(mul(scene.view_inv_matrix, far_point).xyz - ray.Origin);
+  ray.TMin = 0.0;
+  ray.TMax = RAY_TMAX;
+  return ray;
+}
+
+rng pixel_rng(uint2 pixel, uint64_t sample_index)
+{
+  rng r;
+  r.state = 0ull;
+  r.inc = 1ull;
+  r.reset((uint64_t(pixel.x) << 32u) ^ uint64_t(pixel.y) ^ r.splitmix64(sample_index));
+  return r;
+}
+
+void write_accumulated(RWTexture2D<float4> accumulation, RWTexture2D<float4> output,
+                       int2 pixel, float3 sample_color, uint64_t sample_index, float exposure)
+{
+  float3 mean = sample_color;
+  // 必须在加载图像之前分支：未初始化内容以及旧 NaN 都不能参与首样本运算。
+  if(sample_index != 0ull)
+    mean = accumulate_sample(accumulation[pixel].rgb, sample_color, sample_index);
+  accumulation[pixel] = float4(mean, 1);
+  output[pixel] = float4(mean * exposure, 1);
 }

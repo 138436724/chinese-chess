@@ -1,4 +1,14 @@
+/**
+ * @file scene_model_manager.cpp
+ * @brief 模型管理器的实现：网格去重与共享缓冲上传、BLAS/TLAS 构建或 refit、间接命令与 SSBO 上传。
+ * @details update() 先按引用数回收零引用网格，再在脏门控下依次执行
+ *          update_meshes → update_tlas → update_draw_commands → update_ssbo。上传 / 构建提交
+ *          一次性命令缓冲，以 token 串联依赖并交给 waited_infos；scene_manager 在 render 提交时纳入
+ *          GPU 等待依赖，旧资源由回收站按完成情况释放，正常路径不做统一 CPU 等待。
+ */
+
 #include "scene_model_manager.h"
+#include "vulkan_core/vulkan_submission_scope.h"
 
 #include "scene_material_manager.h"
 #include "tools/model_loader.h"
@@ -18,11 +28,11 @@
 #include <utility>
 #include <vector>
 
+/** @brief 只保存引用，不分配 GPU 资源，因此构造不会与设备或队列交互。 */
 scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _allocator,
                                          const vk::raii::PhysicalDevice& _physical_device,
                                          const vk::raii::Device&         _device,
                                          vulkan_recycle_bin&             _recycle_bin,
-                                         vulkan_semaphore&               _semaphore,
                                          const vulkan_queue&             _graphic_queue,
                                          const vulkan_queue&             _transfer_queue,
                                          scene_material_manager&         _material_manager) noexcept
@@ -30,13 +40,16 @@ scene_model_manager::scene_model_manager(const vma::raii::Allocator&     _alloca
     , physical_device(_physical_device)
     , device(_device)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
     , material_manager(_material_manager)
 {
 }
 
+/**
+ * @brief 加载模型并新建模型实例；网格按路径去重，加载失败返回无效句柄。
+ * @note 网格插入即置 meshes_dirty，真正上传推迟到 update()；模型插入只置 is_dirty。
+ */
 model_handle scene_model_manager::create(const std::filesystem::path& _model_path)
 {
     mesh_handle mesh;
@@ -80,7 +93,12 @@ bool scene_model_manager::destroy(model_handle _handle) noexcept
     return true;
 }
 
-bool scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+/**
+ * @brief 更新入口：先按引用数回收网格，再按脏标志重建 GPU 数据。
+ * @note 网格引用数每轮都重算；只有网格集合变化才重建顶点 / 索引与 BLAS，其余按 is_dirty 决定。
+ * @note 只有全部步骤成功才清脏标志；中途异常可能留下部分更新并停止队列提交，不能据此保证下一帧可重试。
+ */
+bool scene_model_manager::update(std::vector<vulkan_submission_token>& _waited_infos)
 {
     for (auto&& mesh : meshes.live())
     {
@@ -103,7 +121,7 @@ bool scene_model_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_i
     {
         if (auto* slot = meshes.get(handle); slot != nullptr)
         {
-            recycle_bin.retire(std::move(slot->blas), "scene model manager unused mesh blas.");
+            recycle_bin.retire_after_submitted(std::move(slot->blas), "scene model manager unused mesh blas.");
         }
 
         std::ignore = meshes.erase(handle);
@@ -158,6 +176,7 @@ const vulkan_buffer& scene_model_manager::get_draw_commands() const noexcept
     return draw_commands;
 }
 
+/** @brief 置实例数据脏标志，后续 update 会更新 TLAS、间接绘制与 SSBO，不单独触发网格/BLAS 重建。 */
 void scene_model_manager::need_update() noexcept
 {
     is_dirty = true;
@@ -168,7 +187,12 @@ const vulkan_buffer& scene_model_manager::get_ssbo_buffer() const noexcept
     return ssbo;
 }
 
-void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+/**
+ * @brief 重建共享顶点 / 索引缓冲并重建全部网格的 BLAS。
+ * @note 两种缓冲都按网格槽序紧凑排布，字节偏移写回各槽；旧缓冲先移到局部变量，新缓冲上传后再登记旧缓冲退休。
+ * @note 先在 CPU 侧拼好顶点 / 索引字节数组再分两次 upload_buffer，最后用一次性命令缓冲录 BLAS 并提交。
+ */
+void scene_model_manager::update_meshes(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (meshes.empty())
     {
@@ -177,6 +201,8 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
 
     vulkan_buffer old_vertices = std::move(vertices_buffer);
     vulkan_buffer old_indices  = std::move(indices_buffer);
+    std::vector<vulkan_buffer> scratch_buffers;
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
 
     size_t vertices_size = 0;
     for (auto&& mesh : meshes.live())
@@ -193,7 +219,7 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
     }
 
     const auto vertex_upload = vulkan_common::upload_buffer(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vertices_buffer,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, vertices_buffer,
         vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
             | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         vk::PipelineStageFlagBits2::eVertexAttributeInput | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
@@ -219,7 +245,7 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
     }
 
     const auto index_upload = vulkan_common::upload_buffer(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, indices_buffer,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, indices_buffer,
         vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer
             | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         vk::PipelineStageFlagBits2::eIndexInput | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
@@ -228,24 +254,26 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
         staging_index, "model_index");
     _waited_infos.push_back(index_upload);
 
-    recycle_bin.retire(std::move(old_vertices), "scene model manager meshes dirty old vertices buffer.");
-    recycle_bin.retire(std::move(old_indices), "scene model manager meshes dirty old indices buffer.");
+    recycle_bin.retire_after_submitted(std::move(old_vertices), "scene model manager meshes dirty old vertices buffer.");
+    recycle_bin.retire_after_submitted(std::move(old_indices), "scene model manager meshes dirty old indices buffer.");
 
 
     vulkan_commandbuffer commandbuffer = std::move(
         vulkan_commandbuffer::create(
             device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
-            &graphic_queue, &semaphore)
+            &graphic_queue)
             .front());
-    commandbuffer.add_waited_info(vertex_upload);
-    commandbuffer.add_waited_info(index_upload);
+    commandbuffer.add_dependency(vertex_upload);
+    commandbuffer.add_dependency(index_upload);
 
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+    scratch_buffers.reserve(meshes.live_size());
 
     for (auto&& entry : meshes.live())
     {
         scene_mesh_data& mesh = entry.value;
-        recycle_bin.retire(std::move(mesh.blas), "scene model manager update mesh old blas info.");
+        recycle_bin.retire_after_submitted(std::move(mesh.blas), "scene model manager update mesh old blas info.");
 
         mesh.blas           = vulkan_acceleration_structure();
         auto scratch_buffer = mesh.blas.create_bottom_level_acceleration_structure(
@@ -253,29 +281,41 @@ void scene_model_manager::update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _w
             vertices_buffer.get_buffer_address().deviceAddress + mesh.vertex_offset, static_cast<uint32_t>(mesh.indices.size()),
             indices_buffer.get_buffer_address().deviceAddress + mesh.index_offset, graphic_queue.get_index());
 
-        recycle_bin.retire(std::move(scratch_buffer), "scene model manager update mesh scratch buffer to create blas.");
+        scratch_buffers.push_back(std::move(scratch_buffer));
     }
 
     commandbuffer.end_record();
-    commandbuffer.submit();
+    const auto build_token = commandbuffer.submit();
 
-    _waited_infos.push_back(commandbuffer.get_submit_info());
-    recycle_bin.retire(std::move(commandbuffer), "scene model manager update mesh commandbuffer.");
+    // Scratch buffers are last read by the BLAS build above; retire them with
+    // the token of that submission, never before it is submitted.
+    for (auto& scratch_buffer : scratch_buffers)
+    {
+        recycle_bin.retire(std::move(scratch_buffer), build_token, "scene model manager update mesh scratch buffer to create blas.");
+    }
+
+    _waited_infos.push_back(build_token);
+    recycle_bin.retire(std::move(commandbuffer), build_token, "scene model manager update mesh commandbuffer.");
 }
 
-void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+/**
+ * @brief 重建或 refit TLAS。
+ * @note 上次实例数非零且本次不变时只上传新实例并 refit（复用 scratch），否则重建结构并重新分配 scratch。
+ * @note 没有模型时建 0 实例 TLAS；实例的 mask 由 is_show 决定（0xFF / 0）。
+ */
+void scene_model_manager::update_tlas(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())
     {
         // create a empty tlas
-        recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
-        recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
+        recycle_bin.retire_after_submitted(std::move(tlas), "ray tracing old tlas.");
+        recycle_bin.retire_after_submitted(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
 
         vulkan_commandbuffer commandbuffer =
             std::move(vulkan_commandbuffer::create(device,
                                                    vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                  vk::CommandBufferLevel::ePrimary, 1),
-                                                   &graphic_queue, &semaphore)
+                                                   &graphic_queue)
                           .front());
         commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -285,11 +325,11 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
         tlas_instance_count = 0;
 
         commandbuffer.end_record();
-        commandbuffer.submit();
+        const auto build_token = commandbuffer.submit();
 
-        _waited_infos.push_back(commandbuffer.get_submit_info());
+        _waited_infos.push_back(build_token);
 
-        recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
+        recycle_bin.retire(std::move(commandbuffer), build_token, "ray tracing commandbuffer to create tlas.");
 
         return;
     }
@@ -308,15 +348,17 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
     vulkan_commandbuffer commandbuffer = std::move(
         vulkan_commandbuffer::create(
             device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
-            &graphic_queue, &semaphore)
+            &graphic_queue)
             .front());
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
+    vulkan_buffer tlas_instance_buffer;
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
+
     if (tlas_instance_count != 0 && instances.size() == tlas_instance_count)
     {
-        vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
+        commandbuffer.add_dependency(vulkan_common::upload_buffer(
+            allocator, device, recycle_bin, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
@@ -327,17 +369,14 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
         tlas.update_top_level_acceleration_structure(*commandbuffer, static_cast<uint32_t>(instances.size()),
                                                      tlas_instance_buffer.get_buffer_address().deviceAddress,
                                                      tlas_scratch_buffer.get_buffer_address().deviceAddress);
-
-        recycle_bin.retire(std::move(tlas_instance_buffer), "ray tracing old tlas instance buffer.");
     }
     else
     {
-        recycle_bin.retire(std::move(tlas), "ray tracing old tlas.");
-        recycle_bin.retire(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
+        recycle_bin.retire_after_submitted(std::move(tlas), "ray tracing old tlas.");
+        recycle_bin.retire_after_submitted(std::move(tlas_scratch_buffer), "ray tracing old tlas scratch buffer.");
 
-        vulkan_buffer tlas_instance_buffer;
-        commandbuffer.add_waited_info(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, tlas_instance_buffer,
+        commandbuffer.add_dependency(vulkan_common::upload_buffer(
+            allocator, device, recycle_bin, graphic_queue, transfer_queue, tlas_instance_buffer,
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
                 | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR,
@@ -348,21 +387,25 @@ void scene_model_manager::update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _wai
         tlas_scratch_buffer = tlas.create_top_level_acceleration_structure(
             physical_device, device, allocator, *commandbuffer, static_cast<uint32_t>(instances.size()),
             tlas_instance_buffer.get_buffer_address().deviceAddress, graphic_queue.get_index());
-
-        recycle_bin.retire(std::move(tlas_instance_buffer), "ray tracing old tlas instance buffer.");
     }
 
     tlas_instance_count = instances.size();
 
     commandbuffer.end_record();
-    commandbuffer.submit();
+    const auto build_token = commandbuffer.submit();
 
-    _waited_infos.push_back(commandbuffer.get_submit_info());
+    // Instance buffer and command buffer are last read by this submission.
+    recycle_bin.retire(std::move(tlas_instance_buffer), build_token, "ray tracing tlas instance buffer.");
+    _waited_infos.push_back(build_token);
 
-    recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create tlas.");
+    recycle_bin.retire(std::move(commandbuffer), build_token, "ray tracing commandbuffer to create tlas.");
 }
 
-void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+/**
+ * @brief 生成间接绘制命令：索引数取网格索引长度，实例数取可见性，首索引与顶点偏移由字节偏移换算。
+ * @note 实例数只取 0 或 1；空场景直接返回，避免上传一条空缓冲。
+ */
+void scene_model_manager::update_draw_commands(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())
     {
@@ -384,7 +427,7 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
         | std::ranges::to<std::vector>();
 
     _waited_infos.push_back(vulkan_common::upload_buffer(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, draw_commands,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, draw_commands,
         vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         vk::PipelineStageFlagBits2::eDrawIndirect, vk::AccessFlagBits2::eIndirectCommandRead,
         std::span(reinterpret_cast<const uint8_t*>(all_draw_commands.data()),
@@ -392,7 +435,12 @@ void scene_model_manager::update_draw_commands(std::vector<vk::SemaphoreSubmitIn
         "draw_commands"));
 }
 
-void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+/**
+ * @brief 生成 vulkan_model_data 数组：模型矩阵 + 材质紧凑绑定 + 顶点 / 索引设备地址。
+ * @note 地址取共享缓冲的 deviceAddress，所以本函数重新打包时写入当前地址，已上传的 SSBO 不会自动跟随缓冲变化。
+ * @note 材质增删由 scene_manager 同时置材质与模型脏；仅改材质参数不会改变 binding，不必重传模型。
+ */
+void scene_model_manager::update_ssbo(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (models.empty())
     {
@@ -415,7 +463,7 @@ void scene_model_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
                              | std::ranges::to<std::vector>();
 
     _waited_infos.push_back(vulkan_common::upload_buffer(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, ssbo,
         vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader
             | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,

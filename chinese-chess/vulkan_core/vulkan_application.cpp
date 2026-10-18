@@ -1,14 +1,24 @@
+/**
+ * @file vulkan_application.cpp
+ * @brief vulkan_application 的具体实现，实例与设备创建、OCIO 合成管线构建、逐帧提交与呈现。
+ * @details create_pipeline 用 OCIO 生成 LUT，逐个 upload_image 对应的 LUT 后按 shader binding index 填进 descriptor set layou
+ *          render 记录一条主命令缓冲，等待 UI/scene token 后绘制全屏三角形。
+ *          所有一次性上传都登记到 recycle_bin，提交与呈现交给 swapchain 的帧调度器。
+ */
 #include "vulkan_application.h"
 
 #include "tools/ocio_helper.h"
 #include "tools/shader_compiler.h"
 #include "vulkan_common.h"
+#include "vulkan_submission_scope.h"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <exception>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -26,6 +36,9 @@ namespace {
 constexpr std::string_view VERT_ENTRY_NAME = "vertMain";
 constexpr std::string_view FRAG_ENTRY_NAME = "fragMain";
 
+/**
+ * @brief 生成屏幕合成与 OCIO LUT 共用的 clamp to edge 和 linear 的采样器参数。max_lod 默认 0。
+ */
 [[nodiscard]] sampler_create_info generate_sampler_info(vk::Filter _filter, float _max_lod = 0.f) noexcept
 {
     return sampler_create_info{.mag_filter        = _filter,
@@ -40,6 +53,9 @@ constexpr std::string_view FRAG_ENTRY_NAME = "fragMain";
 }
 
 #ifndef NDEBUG
+/**
+ * @brief Debug 下构建的校验层回调。
+ */
 VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT      _severity,
                                                 vk::DebugUtilsMessageTypeFlagsEXT             _type,
                                                 const vk::DebugUtilsMessengerCallbackDataEXT* _callback_data,
@@ -48,6 +64,8 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFla
     if (_severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
         || _severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo)
     {
+        if (_severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
+            std::fputs("VULKAN_VALIDATION_ERROR\n", stderr);
         std::println("{}: {} {} {}\n", vk::to_string(_type), _callback_data->messageIdNumber,
                      _callback_data->pMessageIdName, _callback_data->pMessage);
     }
@@ -57,12 +75,18 @@ VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFla
 
 }  // namespace
 
+/**
+ * @brief 等待 GPU 空闲再清空描述符声明。swapchain 的 shutdown 在成员析构阶段执行。
+ */
 vulkan_application::~vulkan_application()
 {
     wait_idle();
     descriptor.clear_descriptor_info();
 }
 
+/**
+ * @brief 只负责创建实例。
+ */
 void vulkan_application::init(const std::vector<const char*>& _instance_layers,
                               const std::vector<const char*>& _instance_extensions,
                               vk::InstanceCreateFlags         _flags)
@@ -70,9 +94,14 @@ void vulkan_application::init(const std::vector<const char*>& _instance_layers,
     create_instance(_instance_layers, _instance_extensions, _flags);
 }
 
+/**
+ * @brief 创建成套初始化如设备、分配器、队列、命令缓冲、交换链、管线缓存与屏幕合成管线等。
+ * @note surface 先由 raii 守卫接管，直到作为参数释放给 swapchain。若此前抛异常由守卫销毁。
+ */
 void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32_t _height)
 {
-    const auto present_index = create_physical_device_and_logical_device(_surface);
+    vk::raii::SurfaceKHR surface_guard(instance, _surface);
+    const auto           present_index = create_physical_device_and_logical_device(*surface_guard);
     pick_msaa_sample_count(physical_device);
     pick_depth_format(physical_device);
 
@@ -81,18 +110,29 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
                                                               {}, {}, {}, {}, {}, {}, {}, vk::ApiVersion14));
 
     graphic_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eGraphics));
-    transfer_queue.create(*device, physical_device.get_queue_index(vk::QueueFlagBits::eTransfer));
 
-    semaphore.create(*device);
-    recycle_bin.create(&semaphore);
+    const uint32_t transfer_index = physical_device.get_queue_index(vk::QueueFlagBits::eTransfer);
+    if (transfer_index == graphic_queue.get_index())
+    {
+        // Same VkQueue: share completion timeline, submission sequence and mutex.
+        transfer_queue.create(*device, transfer_index, graphic_queue.get_submission_state());
+    }
+    else
+    {
+        transfer_queue.create(*device, transfer_index);
+    }
+
+    recycle_bin.add_queue(graphic_queue);
+    recycle_bin.add_queue(transfer_queue);
 
     commandbuffers = vulkan_commandbuffer::create(*device,
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
-                                                  &graphic_queue, &semaphore);
+                                                  &graphic_queue);
 
-    swapchain.create(instance, *physical_device, *device, _surface, present_index, _width, _height);
+    swapchain.create(instance, *physical_device, *device, surface_guard.release(), graphic_queue, transfer_queue,
+                     present_index, _width, _height);
 
     pipeline_cache.create(*physical_device, *device);
     create_pipeline();
@@ -101,26 +141,47 @@ void vulkan_application::create(vk::SurfaceKHR _surface, uint32_t _width, uint32
     image_sampler.create(*physical_device, *device, generate_sampler_info(vk::Filter::eLinear), "screen");
 }
 
-void vulkan_application::resize(uint32_t _width, uint32_t _height)
+/**
+ * @brief 直接转发给 swapchain.recreate。尺寸无效或交换链 OutOfDate 时返回 false。
+ */
+bool vulkan_application::resize(uint32_t _width, uint32_t _height)
 {
-    swapchain.recreate(*physical_device, *device, _width, _height);
+    return swapchain.recreate(_width, _height);
 }
 
-void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, const vk::SemaphoreSubmitInfo& _scene_waited_info)
+/**
+ * @brief 先释放回收站中已完成的资源再 acquire。frame slot 的复用等待由交换链帧调度器负责。
+ */
+vulkan_frame_result vulkan_application::begin_frame()
 {
     recycle_bin.release();
+    return swapchain.acquire_image();
+}
 
-    vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+/**
+ * @brief 转发给 swapchain.abandon_frame：归还 image、替换信号量并复位帧调度器。
+ */
+void vulkan_application::cancel_frame()
+{
+    swapchain.abandon_frame();
+}
+
+/**
+ * @brief 记录并提交屏幕合成命令缓冲，然后呈现。
+ * @note 先校验帧上下文，再把 UI/scene token 与 acquire semaphore 作为依赖。
+ *       进入 fragment 前两张离屏图统一转到 eShaderReadOnlyOptimal，swapchain image 从 eUndefined 转到 color attachment。
+ */
+vulkan_frame_result vulkan_application::render(const vulkan_frame_context& _frame, vulkan_submission_token _ui_token, vulkan_submission_token _scene_token)
+{
+    const auto active = swapchain.frame();
+    if (_frame.slot != active.slot || _frame.image != active.image || _frame.generation != active.generation)
+        throw std::logic_error("Frame context belongs to another acquisition.");
+
+    vulkan_commandbuffer& commandbuffer = commandbuffers.at(_frame.slot);
     commandbuffer.begin_record({});
 
-    if (!swapchain.acquire_image()) [[unlikely]]
-    {
-        commandbuffer.end_record();
-        return;
-    }
-
-    commandbuffer.add_waited_info(_ui_waited_info);
-    commandbuffer.add_waited_info(_scene_waited_info);
+    commandbuffer.add_dependency(_ui_token);
+    commandbuffer.add_dependency(_scene_token);
     commandbuffer.add_waited_info(swapchain.get_waited_info());
     commandbuffer.add_signal_info(swapchain.get_signal_info());
 
@@ -132,8 +193,9 @@ void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, 
         bind_ui_image->transition_state(vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                                         vk::ImageLayout::eShaderReadOnlyOptimal, vk::QueueFamilyIgnored);
 
+    // src stage 与 acquire 的 wait stage 对齐；Undefined 只表示丢弃旧像素，不能省略 WSI 等待。
     const auto swapchain_barrier =
-        vk::ImageMemoryBarrier2(vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+        vk::ImageMemoryBarrier2(vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eNone,
                                 vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
                                 vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
                                 vk::QueueFamilyIgnored, vk::QueueFamilyIgnored, swapchain.get_current_image(),
@@ -162,7 +224,7 @@ void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, 
     (*commandbuffer).bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
     (*commandbuffer)
         .bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0,
-                            *(descriptor.get_descriptor_sets().at(current_frame)), nullptr);
+                            *(descriptor.get_descriptor_sets().at(_frame.slot)), nullptr);
     (*commandbuffer).draw(3, 1, 0, 0);
 
 
@@ -179,16 +241,8 @@ void vulkan_application::render(const vk::SemaphoreSubmitInfo& _ui_waited_info, 
 
     commandbuffer.end_record();
 
-    commandbuffer.submit();
-
-    swapchain.present_image();
-
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
-}
-
-void vulkan_application::wait_frame() const
-{
-    commandbuffers.at(current_frame).wait();
+    swapchain.submitted(commandbuffer.submit());
+    return swapchain.present_image();
 }
 
 void vulkan_application::wait_idle() const
@@ -201,6 +255,10 @@ void vulkan_application::wait_idle() const
     (*device).waitIdle();
 }
 
+/**
+ * @brief 清空并重建屏幕合成描述符声明：scene 图、UI 图、屏幕采样器、OCIO 的 LUT 与 uniform 缓冲。
+ * @note 描述符集数量固定为 MAX_FRAMES_IN_FLIGHT。加入顺序决定 binding 下标，OCIO 的图与采样器成对追加。
+ */
 void vulkan_application::bind_image(vulkan_image& _scene_image, vulkan_image& _ui_image)
 {
     bind_scene_image = &_scene_image;
@@ -277,6 +335,16 @@ const vulkan_swapchain& vulkan_application::get_swapchain() const noexcept
     return swapchain;
 }
 
+vulkan_queue& vulkan_application::get_graphic_queue() noexcept
+{
+    return graphic_queue;
+}
+
+vulkan_queue& vulkan_application::get_transfer_queue() noexcept
+{
+    return transfer_queue;
+}
+
 void vulkan_application::pick_msaa_sample_count(const vulkan_physical_device& _physical_device) noexcept
 {
     const auto                 physical_device_properties = (*_physical_device).getProperties2().properties;
@@ -315,6 +383,8 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 {
     required_instance_layers     = _instance_layers;
     required_instance_extensions = _instance_extensions;
+    required_instance_extensions.push_back(vk::KHRGetSurfaceCapabilities2ExtensionName);
+    required_instance_extensions.push_back(vk::KHRSurfaceMaintenance1ExtensionName);
 
     const uint32_t loader_version = context.enumerateInstanceVersion();
     if (loader_version < vk::ApiVersion14)
@@ -342,11 +412,18 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
             return strcmp(layer_property.layerName, "VK_LAYER_KHRONOS_validation") == 0;
         }))
     {
-        required_instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
+        if (std::ranges::none_of(required_instance_layers,
+                                 [](const auto* name) { return std::strcmp(name, "VK_LAYER_KHRONOS_validation") == 0; }))
+            required_instance_layers.emplace_back("VK_LAYER_KHRONOS_validation");
     }
 #endif  // !NDEBUG
 
-    const auto extension_properties = context.enumerateInstanceExtensionProperties();
+    auto extension_properties = context.enumerateInstanceExtensionProperties();
+    for (const auto* layer : required_instance_layers)
+    {
+        const auto provided = context.enumerateInstanceExtensionProperties(std::string(layer));
+        extension_properties.insert(extension_properties.end(), provided.begin(), provided.end());
+    }
     for (const auto& required_extension : required_instance_extensions)
     {
         if (std::ranges::none_of(extension_properties, [required_extension](const auto& extension_property) {
@@ -366,8 +443,7 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
     }
 #endif  // !NDEBUG
 
-    const vk::InstanceCreateInfo instance_create_info(_flags, &app_info, required_instance_layers,
-                                                      required_instance_extensions, nullptr);
+    vk::InstanceCreateInfo instance_create_info(_flags, &app_info, required_instance_layers, required_instance_extensions, nullptr);
     instance = vk::raii::Instance(context, instance_create_info);
 
 #ifndef NDEBUG
@@ -382,17 +458,26 @@ void vulkan_application::create_instance(const std::vector<const char*>& _instan
 #endif  // !NDEBUG
 }
 
+/**
+ * @brief 用 Vulkan 1.4、光追与 swapchain_maintenance1 的扩展及特性谓词选设备，再建逻辑设备。
+ * @note 特性谓词与随后的启用链一一对应。
+ *       队列列表含 graphics、transfer、compute 与 present 四个族下标。
+ *       vulkan_device::create 会去重后为每个族各建一个队列。
+ */
 uint32_t vulkan_application::create_physical_device_and_logical_device(vk::SurfaceKHR _surface)
 {
-    constexpr std::array required_device_extensions = {vk::KHRSwapchainExtensionName, vk::KHRAccelerationStructureExtensionName,
-                                                       vk::KHRRayTracingPipelineExtensionName, vk::KHRRayQueryExtensionName,
+    constexpr std::array required_device_extensions = {vk::KHRSwapchainExtensionName,
+                                                       vk::KHRSwapchainMaintenance1ExtensionName,
+                                                       vk::KHRAccelerationStructureExtensionName,
+                                                       vk::KHRRayTracingPipelineExtensionName,
+                                                       vk::KHRRayQueryExtensionName,
                                                        vk::KHRDeferredHostOperationsExtensionName};
 
     const auto has_all_required_features = [](const vk::raii::PhysicalDevice& _physical_device) static {
         const auto features =
             _physical_device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
-                                                   vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-                                                   vk::PhysicalDeviceRayTracingPipelineFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR>();
+                                                   vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+                                                   vk::PhysicalDeviceRayQueryFeaturesKHR, vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR>();
 
         return features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy
                && features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect
@@ -401,6 +486,7 @@ uint32_t vulkan_application::create_physical_device_and_logical_device(vk::Surfa
                && features.get<vk::PhysicalDeviceVulkan13Features>().synchronization2
                && features.get<vk::PhysicalDeviceVulkan13Features>().shaderIntegerDotProduct
                && features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress
+               && features.get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing
                && features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray
                && features.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout
                && features.get<vk::PhysicalDeviceVulkan12Features>().timelineSemaphore
@@ -408,14 +494,25 @@ uint32_t vulkan_application::create_physical_device_and_logical_device(vk::Surfa
                && features.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure
                && features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline
                && features.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTraversalPrimitiveCulling
-               && features.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery;
+               && features.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery
+               && features.get<vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR>().swapchainMaintenance1;
     };
 
 
-    const auto present_index = physical_device.create(instance, required_device_extensions, has_all_required_features, _surface);
+    uint32_t present_index;
+    try
+    {
+        present_index = physical_device.create(instance, required_device_extensions, has_all_required_features, _surface);
+    }
+    catch (const std::runtime_error& error)
+    {
+        throw std::runtime_error(std::format("GPU must support Vulkan 1.4, RT and VK_KHR_swapchain_maintenance1 (swapchainMaintenance1=true): {}",
+                                             error.what()));
+    }
 
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan11Features,
-                       vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR, vk::PhysicalDeviceRayQueryFeaturesKHR>
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan12Features,
+                       vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceAccelerationStructureFeaturesKHR, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+                       vk::PhysicalDeviceRayQueryFeaturesKHR, vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR>
         feature_pnext_chain(
             vk::PhysicalDeviceFeatures2().setFeatures(
                 vk::PhysicalDeviceFeatures().setSamplerAnisotropy(vk::True).setMultiDrawIndirect(vk::True).setShaderInt64(vk::True)),
@@ -424,21 +521,29 @@ uint32_t vulkan_application::create_physical_device_and_logical_device(vk::Surfa
             vk::PhysicalDeviceVulkan12Features()
                 .setBufferDeviceAddress(vk::True)
                 .setRuntimeDescriptorArray(vk::True)
+                .setShaderSampledImageArrayNonUniformIndexing(vk::True)
                 .setScalarBlockLayout(vk::True)
                 .setTimelineSemaphore(vk::True),
             vk::PhysicalDeviceVulkan11Features().setShaderDrawParameters(vk::True),
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR().setAccelerationStructure(vk::True),
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR().setRayTracingPipeline(vk::True).setRayTraversalPrimitiveCulling(vk::True),
-            vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True));
+            vk::PhysicalDeviceRayQueryFeaturesKHR().setRayQuery(vk::True),
+            vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR().setSwapchainMaintenance1(vk::True));
 
     const std::array queues = {physical_device.get_queue_index(vk::QueueFlagBits::eGraphics),
                                physical_device.get_queue_index(vk::QueueFlagBits::eTransfer),
                                physical_device.get_queue_index(vk::QueueFlagBits::eCompute), present_index};
     device.create(*physical_device, queues, required_device_extensions, feature_pnext_chain.get<vk::PhysicalDeviceFeatures2>());
+    std::fputs("WSI: VK_KHR_swapchain_maintenance1 enabled; presentation resources use present fences.\n", stdout);
 
     return present_index;
 }
 
+/**
+ * @brief 编译 vulkan_blend_image.slang（USE_OCIO 时先注入 OCIO 生成的转换代码）并建合成管线。
+ * @note binding 0/1/2 固定为 scene 图、UI 图与采样器；OCIO 有 uniform 时占 binding 3，
+ *       其后按 shader binding index 成对追加 LUT 图与采样器。每张 LUT 上传都用 vulkan_submission_scope 兜底，异常时先终止提交再退栈。
+ */
 void vulkan_application::create_pipeline()
 {
     // pipeline
@@ -470,13 +575,13 @@ void vulkan_application::create_pipeline()
 
     if constexpr (vulkan_common::USE_OCIO)
     {
-        vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+        vulkan_commandbuffer& commandbuffer = commandbuffers.at(0);
         if (shader_desc->getNumUniforms() > 0 && shader_desc->getUniformBufferSize() > 0)
         {
             const auto buffer = ocio_helper::get_uniform_buffer_data(shader_desc);
 
-            commandbuffer.add_waited_info(vulkan_common::upload_buffer(
-                allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, ocio_ubo,
+            commandbuffer.add_dependency(vulkan_common::upload_buffer(
+                allocator, *device, recycle_bin, graphic_queue, transfer_queue, ocio_ubo,
                 vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer,
                 vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead, buffer, "ocio_ubo"));
 
@@ -536,9 +641,10 @@ void vulkan_application::create_pipeline()
                 }
             }
 
-            vulkan_image image;
-            commandbuffer.add_waited_info(vulkan_common::upload_image(
-                allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, image_type, image_view_type, format,
+            vulkan_image                  image;
+            const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
+            commandbuffer.add_dependency(vulkan_common::upload_image(
+                allocator, *device, recycle_bin, graphic_queue, transfer_queue, image_type, image_view_type, format,
                 vk::Extent3D(width, height, 1), image, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(decltype(rgba_values)::value_type)),
                 "ocio_lut"));
@@ -593,9 +699,10 @@ void vulkan_application::create_pipeline()
                 rgba_values.at(j * 4 + 3) = 1.f;
             }
 
-            vulkan_image image;
-            commandbuffer.add_waited_info(vulkan_common::upload_image(
-                allocator, *device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e3D,
+            vulkan_image                  image;
+            const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
+            commandbuffer.add_dependency(vulkan_common::upload_image(
+                allocator, *device, recycle_bin, graphic_queue, transfer_queue, vk::ImageType::e3D,
                 vk::ImageViewType::e3D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D(edge_len, edge_len, edge_len),
                 image, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead,
                 std::span(reinterpret_cast<uint8_t*>(rgba_values.data()), rgba_values.size() * sizeof(decltype(rgba_values)::value_type)),

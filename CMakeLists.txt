@@ -32,6 +32,11 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/chinese-chess"
              FILES ${MY_SOURCES} ${MY_HEADERS} ${MY_SHADERS})
 
 add_executable(chinese-chess ${MY_SOURCES} ${MY_HEADERS} ${MY_SHADERS})
+target_sources(chinese-chess PRIVATE third_party/imgui/imgui_impl_vulkan.cpp)
+target_include_directories(chinese-chess BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui)
+if(MSVC)
+    set_source_files_properties(third_party/imgui/imgui_impl_vulkan.cpp PROPERTIES COMPILE_OPTIONS /W0)
+endif()
 
 if(MSVC)
     target_compile_options(chinese-chess PRIVATE /std:c++23preview /utf-8 /W4 /WX)

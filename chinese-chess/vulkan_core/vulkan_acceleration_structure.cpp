@@ -1,3 +1,8 @@
+/**
+ * @file vulkan_acceleration_structure.cpp
+ * @brief vulkan_acceleration_structure 的具体实现。
+ */
+
 #include "vulkan_acceleration_structure.h"
 
 #include "vulkan_common.h"
@@ -112,6 +117,11 @@ const vk::raii::Buffer& vulkan_acceleration_structure::get_buffer() const noexce
     return buffer.get_buffer();
 }
 
+/**
+ * @brief 完整的创建流程。懒查 scratch 对齐、检查 build 尺寸、创建 backing buffer 与加速结构句柄、获取加速结构的设备地址、创建 scratch buffer、录制 build 命令。
+ * @note backing buffer 使用 eAccelerationStructureStorageKHR | eShaderDeviceAddress 创建，scratch buffer 额外携带 eStorageBuffer。
+ * @note scratch buffer 以返回值移交、backing buffer 留在成员里，两者都不由本函数回收。
+ */
 vulkan_buffer vulkan_acceleration_structure::create_acceleration_structure(const vk::raii::PhysicalDevice& _physical_device,
                                                                            const vk::raii::Device&     _device,
                                                                            const vma::raii::Allocator& _allocator,

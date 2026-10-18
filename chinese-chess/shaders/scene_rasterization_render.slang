@@ -70,7 +70,7 @@ float3 environment_radiance(environment env, float3 direction)
 {
   if(env.has_hdr)
   {
-    return env.equirect_radiance(direction, samplers[env.environment_index]);
+    return env.equirect_radiance(direction, samplers[NonUniformResourceIndex(env.environment_index)]);
   }
   return env.procedural_sky(direction);
 }
@@ -123,7 +123,7 @@ float3 estimate_environment_lighting(shading_context ctx, environment env)
 
   float3 mirror_dir = reflect(-wo, n);
   float3 spec_dir   = safe_normalize(lerp(n, mirror_dir, 1.0 - clamp(ctx.material.roughness, 0.0, 1.0)));
-  float3 f_env      = fresnel_schlick(ctx.material.f0(), max(dot(n, wo), 0.0));
+  float3 f_env      = ctx.material.specular_weight() * fresnel_schlick(ctx.material.reflection_f0(), max(dot(n, wo), 0.0));
   indirect += f_env * environment_radiance(env, spec_dir);
 
   // 连续波瓣在混合式里的能量权重是 (1 - transmission)，与 BSDF 一致
@@ -132,8 +132,8 @@ float3 estimate_environment_lighting(shading_context ctx, environment env)
 
 // ---------------------------------------------------------------------------
 // 透射近似：沿折射方向取一次环境辐亮度。
-//   与光追路径的能量一致：介质界面的期望贡献是 transmission·(1-F)·T_medium·L；
-//   光栅化算不出厚度与 Beer-Lambert 吸收，这里只保留 transmission·(1-F)·L
+//   与光追路径的能量一致：介质界面的期望贡献含 transmission·(1-F)·eta²·T_medium·L；
+//   光栅化算不出厚度与 Beer-Lambert 吸收，这里只保留 transmission·(1-F)·eta²·L
 //   （即 T_medium ≈ 1）。全反射时没有透射分量。
 // ---------------------------------------------------------------------------
 float3 estimate_transmitted_lighting(shading_context ctx, environment env)
@@ -153,7 +153,7 @@ float3 estimate_transmitted_lighting(shading_context ctx, environment env)
     return float3(0.0);  // 全反射：无透射分量
   }
 
-  return p_transmission * (1.0 - fresnel) * environment_radiance(env, refracted);
+  return p_transmission * (1.0 - fresnel) * eta * eta * environment_radiance(env, refracted);
 }
 
 [shader("vertex")]
@@ -178,13 +178,12 @@ raster_varying vertMain(raster_vertex input, uint draw_id: SV_DrawIndex)
   float4x4 model_matrix   = scene_params.models[draw_id].model_matrix;
   uint     material_index = scene_params.models[draw_id].material_index;
 
-  // 局部 → 世界：位置与法线都用模型矩阵（与光追路径一致；
-  // 非等比缩放下法线严格来说需要逆转置，属已知限制）
+  // 局部 → 世界：位置用模型矩阵，法线用逆转置（支持非等比缩放）。
   float4 world = mul(model_matrix, float4(input.position, 1.0));
 
   output.position       = mul(scene_params.proj_matrix, mul(scene_params.view_matrix, world));
   output.world_position = world.xyz;
-  output.world_normal   = mul(model_matrix, float4(input.normal, 0.0)).xyz;
+  output.world_normal   = transform_normal(model_matrix, input.normal);
   output.uv             = input.uv;
   output.material_index = material_index;
   return output;
@@ -210,7 +209,7 @@ float4 fragMain(raster_varying input)
   float3 albedo_map     = float3(0.0);
   if(has_albedo_map)
   {
-    albedo_map = samplers[material_data.texture_index].Sample(input.uv).rgb;
+    albedo_map = samplers[NonUniformResourceIndex(material_data.texture_index)].Sample(input.uv).rgb;
   }
 
   // 几何：把几何法线定向到朝向观察者的一侧
@@ -227,6 +226,8 @@ float4 fragMain(raster_varying input)
   ctx.n          = ctx.ggx.n;
   ctx.wo         = wo;
   ctx.front_face = front_face;
+  ctx.geometric_n = ctx.n; // 光栅近似路径，无体积边界追踪
+  ctx.eta = front_face ? 1.0 / max(material.ior, 1.0) : max(material.ior, 1.0);
 
   environment env = make_environment();
 
