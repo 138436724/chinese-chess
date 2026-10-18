@@ -14,13 +14,11 @@
 scene_light_manager::scene_light_manager(const vma::raii::Allocator& _allocator,
                                          const vk::raii::Device&     _device,
                                          vulkan_recycle_bin&         _recycle_bin,
-                                         vulkan_semaphore&           _semaphore,
                                          const vulkan_queue&         _graphic_queue,
                                          const vulkan_queue&         _transfer_queue) noexcept
     : allocator(_allocator)
     , device(_device)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
 {
@@ -48,7 +46,7 @@ bool scene_light_manager::destroy(light_handle _handle) noexcept
     return true;
 }
 
-bool scene_light_manager::update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_light_manager::update(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (!is_dirty)
     {
@@ -77,7 +75,7 @@ const vulkan_buffer& scene_light_manager::get_ssbo_buffer() const noexcept
     return ssbo;
 }
 
-void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+void scene_light_manager::update_ssbo(std::vector<vulkan_submission_token>& _waited_infos)
 {
     if (!lights.empty())
     {
@@ -96,7 +94,7 @@ void scene_light_manager::update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _wai
             | std::ranges::to<std::vector>();
 
         _waited_infos.push_back(vulkan_common::upload_buffer(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, ssbo,
+            allocator, device, recycle_bin, graphic_queue, transfer_queue, ssbo,
             vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
             vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader
                 | vk::PipelineStageFlagBits2::eFragmentShader,

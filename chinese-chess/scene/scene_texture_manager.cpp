@@ -5,6 +5,7 @@
 #include "tools/font_loader.h"
 #include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
+#include "vulkan_core/vulkan_submission_scope.h"
 
 #include <algorithm>
 #include <cassert>
@@ -92,14 +93,12 @@ scene_texture_manager::scene_texture_manager(const vma::raii::Allocator&     _al
                                              const vk::raii::PhysicalDevice& _physical_device,
                                              const vk::raii::Device&         _device,
                                              vulkan_recycle_bin&             _recycle_bin,
-                                             vulkan_semaphore&               _semaphore,
                                              const vulkan_queue&             _graphic_queue,
                                              const vulkan_queue&             _transfer_queue)
     : allocator(_allocator)
     , physical_device(_physical_device)
     , device(_device)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
 {
@@ -116,7 +115,7 @@ scene_texture_manager::scene_texture_manager(const vma::raii::Allocator&     _al
 
 texture_handle scene_texture_manager::create(const std::filesystem::path&          _image_path,
                                              texture_usage                         _usage,
-                                             std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+                                             std::vector<vulkan_submission_token>& _waited_infos)
 {
     const texture_key key{_usage, _image_path};
     if (const auto iter = texture_cache.find(key); iter != texture_cache.end())
@@ -135,6 +134,7 @@ texture_handle scene_texture_manager::create(const std::filesystem::path&       
                       .binding         = scene_handle<texture_tag>::npos,
                       .reference_count = 0};
 
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
     if (auto result = upload_texture_data(_image_path, _usage, slot.image, _waited_infos); !result)
     {
         std::println(std::cerr, "create texture {} failed: {}", _image_path.generic_string(), result.error());
@@ -156,7 +156,7 @@ texture_handle scene_texture_manager::create(const std::filesystem::path&       
                                              uint32_t                              _padding,
                                              const glm::vec3&                      _foreground_color,
                                              const glm::vec3&                      _background_color,
-                                             std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+                                             std::vector<vulkan_submission_token>& _waited_infos)
 {
     const std::string color_key =
         std::format("fg{:.4f},{:.4f},{:.4f}_bg{:.4f},{:.4f},{:.4f}", _foreground_color.x, _foreground_color.y,
@@ -246,6 +246,7 @@ texture_handle scene_texture_manager::create(const std::filesystem::path&       
                       .binding         = scene_handle<texture_tag>::npos,
                       .reference_count = 0};
 
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
     if (compressible)
     {
         if (auto ktx2 = image_helper::compress_to_ktx2(image, false); ktx2)
@@ -272,7 +273,7 @@ texture_handle scene_texture_manager::create(const std::filesystem::path&       
     }
 
     _waited_infos.push_back(vulkan_common::upload_image(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, vk::ImageType::e2D,
         vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D(atlas_width, atlas_height, 1), slot.image,
         vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
         vk::AccessFlagBits2::eShaderSampledRead, image.buffer, "font-atlas"));
@@ -292,7 +293,7 @@ scene_texture_data* scene_texture_manager::get(texture_handle _handle) noexcept
     return slot != nullptr ? &slot->data : nullptr;
 }
 
-bool scene_texture_manager::reload_texture(texture_handle _handle, std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_texture_manager::reload_texture(texture_handle _handle, std::vector<vulkan_submission_token>& _waited_infos)
 {
     auto* slot = textures.get(_handle);
     if (slot == nullptr || slot->data.usage == texture_usage::glyph)
@@ -301,19 +302,20 @@ bool scene_texture_manager::reload_texture(texture_handle _handle, std::vector<v
     }
 
     vulkan_image new_image;
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
     if (auto result = upload_texture_data(slot->data.source, slot->data.usage, new_image, _waited_infos); !result)
     {
         std::println(std::cerr, "reload {} failed: {}", slot->data.source.generic_string(), result.error());
         return false;
     }
 
-    recycle_bin.retire(std::exchange(slot->image, std::move(new_image)), "reloaded texture old image.");
+    recycle_bin.retire_after_submitted(std::exchange(slot->image, std::move(new_image)), "reloaded texture old image.");
     is_dirty = true;
 
     return true;
 }
 
-bool scene_texture_manager::reload_all_textures(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos)
+bool scene_texture_manager::reload_all_textures(std::vector<vulkan_submission_token>& _waited_infos)
 {
     bool reloaded = false;
     for (auto&& [handle, slot] : textures.live())
@@ -434,11 +436,11 @@ std::vector<vk::DescriptorImageInfo> scene_texture_manager::get_descriptor_info(
            | std::ranges::to<std::vector>();
 }
 
-bool scene_texture_manager::destroy(texture_handle _handle) noexcept
+bool scene_texture_manager::destroy(texture_handle _handle)
 {
     if (auto* slot = textures.get(_handle); slot != nullptr)
     {
-        recycle_bin.retire(std::move(slot->image), "scene texture manager unused texture.");
+        recycle_bin.retire_after_submitted(std::move(slot->image), "scene texture manager unused texture.");
     }
 
     std::ignore = textures.erase(_handle);
@@ -453,7 +455,7 @@ bool scene_texture_manager::destroy(texture_handle _handle) noexcept
 std::expected<void, std::string> scene_texture_manager::upload_texture_data(const std::filesystem::path& _source,
                                                                             texture_usage                _usage,
                                                                             vulkan_image&                _image,
-                                                                            std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) const
+                                                                            std::vector<vulkan_submission_token>& _waited_infos) const
 {
     const bool       is_hdr        = (_usage == texture_usage::environment);
     const auto       target_format = is_hdr ? compressed_hdr_format : compressed_ldr_format;
@@ -511,7 +513,7 @@ std::expected<void, std::string> scene_texture_manager::upload_texture_data(cons
 
         const auto& image_data = *image_data_result;
         _waited_infos.push_back(vulkan_common::upload_image(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+            allocator, device, recycle_bin, graphic_queue, transfer_queue, vk::ImageType::e2D,
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), _image,
             vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
                 | vk::PipelineStageFlagBits2::eComputeShader,
@@ -532,7 +534,7 @@ std::expected<void, std::string> scene_texture_manager::upload_texture_data(cons
 
         const auto& image_data = *image_data_result;
         _waited_infos.push_back(vulkan_common::upload_image(
-            allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+            allocator, device, recycle_bin, graphic_queue, transfer_queue, vk::ImageType::e2D,
             vk::ImageViewType::e2D, image_format, vk::Extent3D(image_data.width, image_data.height, 1), _image,
             vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR
                 | vk::PipelineStageFlagBits2::eComputeShader,
@@ -545,7 +547,7 @@ std::expected<void, std::string> scene_texture_manager::upload_texture_data(cons
 std::expected<void, std::string> scene_texture_manager::upload_ktx2(const ktx2_texture_ptr& _ktx2,
                                                                     vk::Format              _target_format,
                                                                     vulkan_image&           _image,
-                                                                    std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
+                                                                    std::vector<vulkan_submission_token>& _waited_infos,
                                                                     const std::string&                    _name) const
 {
     if (static_cast<vk::Format>(_ktx2->vkFormat) != _target_format)
@@ -594,7 +596,7 @@ std::expected<void, std::string> scene_texture_manager::upload_ktx2(const ktx2_t
     const auto  size = _ktx2->dataSize - offset;
 
     _waited_infos.push_back(vulkan_common::upload_image(
-        allocator, device, recycle_bin, semaphore, graphic_queue, transfer_queue, vk::ImageType::e2D,
+        allocator, device, recycle_bin, graphic_queue, transfer_queue, vk::ImageType::e2D,
         vk::ImageViewType::e2D, _target_format, vk::Extent3D(_ktx2->baseWidth, _ktx2->baseHeight, 1), _image,
         vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
         vk::AccessFlagBits2::eShaderSampledRead, std::span(data, size), _name));

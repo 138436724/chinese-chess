@@ -4,12 +4,12 @@
 #include "scene_handle.h"
 #include "scene_handle_map.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_submission_token.h"
 
 #include <cstddef>
 #include <vector>
 
 class vulkan_recycle_bin;
-class vulkan_semaphore;
 class vulkan_queue;
 
 class scene_light_manager
@@ -18,7 +18,6 @@ public:
     scene_light_manager(const vma::raii::Allocator& _allocator,
                         const vk::raii::Device&     _device,
                         vulkan_recycle_bin&         _recycle_bin,
-                        vulkan_semaphore&           _semaphore,
                         const vulkan_queue&         _graphic_queue,
                         const vulkan_queue&         _transfer_queue) noexcept;
     ~scene_light_manager() = default;
@@ -27,7 +26,7 @@ public:
     [[nodiscard]] scene_light_data* get(light_handle _handle) noexcept;
     [[nodiscard]] bool              destroy(light_handle _handle) noexcept;
 
-    [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    [[nodiscard]] bool update(std::vector<vulkan_submission_token>& _waited_infos);
 
     void need_update() noexcept;
 
@@ -36,12 +35,11 @@ public:
 
 
 private:
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update_ssbo(std::vector<vulkan_submission_token>& _waited_infos);
 
     const vma::raii::Allocator& allocator;
     const vk::raii::Device&     device;
     vulkan_recycle_bin&         recycle_bin;
-    vulkan_semaphore&           semaphore;
     const vulkan_queue&         graphic_queue;
     const vulkan_queue&         transfer_queue;
 

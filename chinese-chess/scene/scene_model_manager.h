@@ -5,6 +5,7 @@
 #include "scene_handle_map.h"
 #include "vulkan_core/vulkan_acceleration_structure.h"
 #include "vulkan_core/vulkan_buffer.h"
+#include "vulkan_core/vulkan_submission_token.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +14,6 @@
 #include <vector>
 
 class vulkan_recycle_bin;
-class vulkan_semaphore;
 class vulkan_queue;
 class scene_material_manager;
 
@@ -24,7 +24,6 @@ public:
                         const vk::raii::PhysicalDevice& _physical_device,
                         const vk::raii::Device&         _device,
                         vulkan_recycle_bin&             _recycle_bin,
-                        vulkan_semaphore&               _semaphore,
                         const vulkan_queue&             _graphic_queue,
                         const vulkan_queue&             _transfer_queue,
                         scene_material_manager&         _material_manager) noexcept;
@@ -34,7 +33,7 @@ public:
     [[nodiscard]] scene_model_data* get(model_handle _handle) noexcept;
     [[nodiscard]] bool              destroy(model_handle _handle) noexcept;
 
-    [[nodiscard]] bool update(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    [[nodiscard]] bool update(std::vector<vulkan_submission_token>& _waited_infos);
 
     void need_update() noexcept;
 
@@ -56,16 +55,15 @@ private:
         vulkan_acceleration_structure    blas;
     };
 
-    void update_meshes(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void update_tlas(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void update_draw_commands(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    void update_ssbo(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    void update_meshes(std::vector<vulkan_submission_token>& _waited_infos);
+    void update_tlas(std::vector<vulkan_submission_token>& _waited_infos);
+    void update_draw_commands(std::vector<vulkan_submission_token>& _waited_infos);
+    void update_ssbo(std::vector<vulkan_submission_token>& _waited_infos);
 
     const vma::raii::Allocator&     allocator;
     const vk::raii::PhysicalDevice& physical_device;
     const vk::raii::Device&         device;
     vulkan_recycle_bin&             recycle_bin;
-    vulkan_semaphore&               semaphore;
     const vulkan_queue&             graphic_queue;
     const vulkan_queue&             transfer_queue;
     scene_material_manager&         material_manager;

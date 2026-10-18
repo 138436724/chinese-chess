@@ -20,6 +20,6 @@ struct gltf_model_data
     std::vector<uint32_t>            indices;
 };
 
-[[nodiscard]] std::expected<gltf_model_data, std::string> load_model(const std::filesystem::path& _file_path) noexcept;
+[[nodiscard]] std::expected<gltf_model_data, std::string> load_model(const std::filesystem::path& _file_path);
 
 }  // namespace model_loader

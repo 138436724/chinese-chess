@@ -338,6 +338,19 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         return;
     }
 
+    const all_board_state& state        = board_state.at(_index);
+    const auto&            black_pieces = state.at(static_cast<size_t>(PIECE_COLOR::BLACK));
+    const auto&            red_pieces   = state.at(static_cast<size_t>(PIECE_COLOR::RED));
+
+    // 坏棋谱的防御：局面里的棋子数不能超过已建好的 32 个槽
+    // （函数是 noexcept，下面每个越界访问都会直接 terminate，所以先自查再进循环）
+    if (black_pieces.size() + red_pieces.size() > all_chess_pieces.size())
+    {
+        std::println(std::cerr, "Board state {} has {} pieces, but only {} are built.", _index,
+                     black_pieces.size() + red_pieces.size(), all_chess_pieces.size());
+        return;
+    }
+
     std::ranges::for_each(all_chess_pieces, [this](const auto& _handle) {
         if (auto* model = manager.get(_handle); model != nullptr)
         {
@@ -345,33 +358,32 @@ void ui_record::restore_board_state(uint32_t _index) noexcept
         }
     });
 
-    const all_board_state& state        = board_state.at(_index);
-    size_t                 index_offset = 0;
-    std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::BLACK)) | std::views::enumerate, [&](const auto& _pair) {
+    size_t index_offset = 0;
+    std::ranges::for_each(black_pieces | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& handle         = all_chess_pieces.at(index + index_offset);
-        auto*       sp             = manager.get(handle);
-        if (sp == nullptr)
+        const auto material_iter   = black_chess_piece_materials.find(piece.piece_type);
+        auto*      sp              = manager.get(all_chess_pieces.at(index + index_offset));
+        if (sp == nullptr || material_iter == black_chess_piece_materials.end())
         {
             return;
         }
-        sp->material = black_chess_piece_materials.at(piece.piece_type);
+        sp->material = material_iter->second;
         sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),
                            glm::vec3(location_transform(PIECE_COLOR::RED, PIECE_COLOR::BLACK, piece.x, piece.y), chess_piece_z));
     });
 
-    index_offset = state.at(static_cast<size_t>(PIECE_COLOR::BLACK)).size();
-    std::ranges::for_each(state.at(static_cast<size_t>(PIECE_COLOR::RED)) | std::views::enumerate, [&](const auto& _pair) {
+    index_offset = black_pieces.size();
+    std::ranges::for_each(red_pieces | std::views::enumerate, [&](const auto& _pair) {
         const auto& [index, piece] = _pair;
-        const auto& handle         = all_chess_pieces.at(index + index_offset);
-        auto*       sp             = manager.get(handle);
-        if (sp == nullptr)
+        const auto material_iter   = red_chess_piece_materials.find(piece.piece_type);
+        auto*      sp              = manager.get(all_chess_pieces.at(index + index_offset));
+        if (sp == nullptr || material_iter == red_chess_piece_materials.end())
         {
             return;
         }
-        sp->material = red_chess_piece_materials.at(piece.piece_type);
+        sp->material = material_iter->second;
         sp->is_show  = true;
         sp->model_matrix =
             glm::translate(glm::mat4(1.f),

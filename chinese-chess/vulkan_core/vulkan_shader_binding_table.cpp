@@ -1,3 +1,12 @@
+/**
+ * @file vulkan_shader_binding_table.cpp
+ * @brief vulkan_shader_binding_table 的实现：组句柄布局计算、staging 写入与设备拷贝录制。
+ * @details 布局固定为 [raygen][miss_primary][miss_shadow][hit_primary][hit_shadow]，每个组起点按 base_alignment
+ *          对齐，region 的 stride 取实际组间距；miss / hit region 的项数由 _group_count 决定（>= 5 时各 2 项）。
+ *          写入路径：查属性 → 建 SBT 缓冲 → 建 staging → 取组句柄 memcpy → flush → 录 copy_buffer_to_buffer。
+ *          函数返回时 copy 只是「录进命令缓冲」，所以 staging 的所有权移交给调用方（由它 retire 到回收站）。
+ */
+
 #include "vulkan_shader_binding_table.h"
 
 #include "vulkan_common.h"
@@ -11,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+/** @brief 移动构造：三个对齐值、四个 region 与缓冲一律 std::exchange 搬走，源对象被置空。 */
 vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept
     : handle_size(std::exchange(_other.handle_size, {}))
     , handle_alignment(std::exchange(_other.handle_alignment, {}))
@@ -23,6 +33,7 @@ vulkan_shader_binding_table::vulkan_shader_binding_table(vulkan_shader_binding_t
 {
 }
 
+/** @brief 移动赋值：逐成员 std::ranges::swap，旧缓冲被换给源对象并随其析构释放。 */
 vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shader_binding_table&& _other) noexcept
 {
     if (this != &_other)
@@ -39,6 +50,12 @@ vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shade
     return *this;
 }
 
+/**
+ * @brief 按对齐规则把 _group_count 个组句柄排进 SBT 缓冲，并填好四个 region。
+ * @note 只有第一次调用才查 PhysicalDeviceRayTracingPipelinePropertiesKHR，之后复用缓存的三个对齐值；
+ *       offsets 数组固定 5 项，用 views::take(_group_count) 限制实际拷贝的组数 ⇒ 组数不足 5 时后面的组不写。
+ *       callable region 恒为 (0,0,0)；copy 录在调用方已 begin_record 的命令缓冲上，本函数不提交。
+ */
 vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice& _physical_device,
                                                   const vk::raii::Device&         _device,
                                                   const vma::raii::Allocator&     _allocator,
@@ -144,26 +161,31 @@ vulkan_buffer vulkan_shader_binding_table::create(const vk::raii::PhysicalDevice
     return staging_buffer;
 }
 
+/** @brief 返回 raygen region（设备地址 + stride + size）；create 之前全 0。 */
 const vk::StridedDeviceAddressRegionKHR& vulkan_shader_binding_table::get_raygen_region() const noexcept
 {
     return raygen_region;
 }
 
+/** @brief 返回 miss region：起始为主 miss，stride 是 base_alignment 对齐后的组间距。 */
 const vk::StridedDeviceAddressRegionKHR& vulkan_shader_binding_table::get_miss_region() const noexcept
 {
     return miss_region;
 }
 
+/** @brief 返回 hit region：起始为主 hit，stride 是 base_alignment 对齐后的组间距。 */
 const vk::StridedDeviceAddressRegionKHR& vulkan_shader_binding_table::get_hit_region() const noexcept
 {
     return hit_region;
 }
 
+/** @brief 返回 callable region；本项目不注册 callable 着色器，所以恒为 (0,0,0)。 */
 const vk::StridedDeviceAddressRegionKHR& vulkan_shader_binding_table::get_callable_region() const noexcept
 {
     return callable_region;
 }
 
+/** @brief 返回 SBT 缓冲；未 create 时为空缓冲，create 之后是设备本地的 eShaderBindingTableKHR 缓冲。 */
 const vulkan_buffer& vulkan_shader_binding_table::get_shader_binding_table_buffer() const noexcept
 {
     return sbt_buffer;

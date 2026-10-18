@@ -13,7 +13,6 @@
 
 class scene_camera;
 class vulkan_recycle_bin;
-class vulkan_semaphore;
 class vulkan_queue;
 class vulkan_image;
 class scene_model_manager;
@@ -29,7 +28,6 @@ public:
                             const vk::raii::Device&         _device,
                             const vk::raii::PipelineCache&  _pipeline_cache,
                             vulkan_recycle_bin&             _recycle_bin,
-                            vulkan_semaphore&               _semaphore,
                             const vulkan_queue&             _graphic_queue,
                             const vulkan_queue&             _transfer_queue,
                             const scene_model_manager&      _model_manager,
@@ -41,7 +39,7 @@ public:
 
     void resize(uint32_t _width, uint32_t _height);
     void update();
-    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, const vulkan_environment_data& _environment);
+    void render(const scene_camera& _camera, const vk::raii::CommandBuffer& _commandbuffer, const vulkan_environment_data& _environment, uint32_t _frame_slot);
     void recreate();
     void reset_accumulation() noexcept;
 
@@ -55,7 +53,6 @@ private:
     const vk::raii::Device&         device;
     const vk::raii::PipelineCache&  pipeline_cache;
     vulkan_recycle_bin&             recycle_bin;
-    vulkan_semaphore&               semaphore;
     const vulkan_queue&             graphic_queue;
     const vulkan_queue&             transfer_queue;
 
@@ -67,7 +64,6 @@ private:
 
     uint32_t width         = 0;
     uint32_t height        = 0;
-    uint32_t current_frame = 0;
     uint32_t frame_index   = 0;
 
     vk::DeviceSize ubo_offset = 0;

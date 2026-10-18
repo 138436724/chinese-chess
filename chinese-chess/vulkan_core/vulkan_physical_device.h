@@ -1,3 +1,10 @@
+/**
+ * @file vulkan_physical_device.h
+ * @brief 物理设备选择：过滤 Vulkan 1.4、必需扩展与特性谓词，并求解四个队列族。
+ * @details create 是模板函数，特性谓词由调用方以 concept 约束传入，本类只负责枚举、过滤与打分。
+ *          每个候选设备在 graphics/compute/transfer/present 四个需求上做笛卡尔积，取去重族数最多
+ *          且优先纯传输族的组合。选中结果缓存在 graphic/compute/transfer_index 与 create 的返回值里。
+ */
 #pragma once
 
 #include <algorithm>
@@ -14,16 +21,40 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
+/**
+ * @brief 物理设备及其 graphics/compute/transfer 队列族下标。
+ * @details 队列族在 create 里一次选定，之后 get_queue_index 只查缓存，不再向驱动发查询。
+ *          四个需求（graphics/compute/transfer/present）按候选设备做笛卡尔积，取去重族数最多的组合，
+ *          并优先把只支持传输的族用作 transfer 队列。
+ * @note present 队列族下标不存成员，由 create 的返回值交给 vulkan_application。
+ */
 class vulkan_physical_device
 {
 public:
+    /** @brief 构造空对象，三个队列族下标均为 vk::QueueFamilyIgnored。 */
     vulkan_physical_device()                                         = default;
+    /** @brief 默认析构：物理设备句柄由实例管理，本对象无需显式销毁。 */
     ~vulkan_physical_device()                                        = default;
+    /** @brief 禁止拷贝：物理设备句柄唯一。 */
     vulkan_physical_device(const vulkan_physical_device&)            = delete;
+    /** @brief 禁止拷贝赋值。 */
     vulkan_physical_device& operator=(const vulkan_physical_device&) = delete;
+    /** @brief 移动构造：句柄与三个队列族下标一起转移，源对象下标复位为 QueueFamilyIgnored。 */
     vulkan_physical_device(vulkan_physical_device&& _other) noexcept;
+    /** @brief 移动赋值：逐成员与源对象交换。 */
     vulkan_physical_device& operator=(vulkan_physical_device&& _other) noexcept;
 
+    /**
+     * @brief 枚举物理设备，按 Vulkan 1.4、必需扩展与调用方谓词过滤，再为每个候选求解四个队列族。
+     * @param _instance   已创建的实例，用于 enumeratePhysicalDevices。
+     * @param _extensions 设备必须全部支持的扩展名。
+     * @param _features   额外过滤谓词，签名等价于 bool(const vk::raii::PhysicalDevice&)，通常检查特性链。
+     * @param _surface    用于查询 present 支持的 surface。
+     * @return 选中设备的 present 队列族下标。
+     * @throws std::runtime_error 没有任何设备同时满足 1.4、扩展、谓词与四个队列需求时抛出。
+     * @note 四个需求都用 getQueueFamilyProperties2 与 getSurfaceSupportKHR 逐候选设备各查一次；
+     *       成功返回时 physical_device 与三个队列族下标同时生效。
+     */
     template <typename Func>
         requires std::predicate<Func, const vk::raii::PhysicalDevice&>
     [[nodiscard]] uint32_t create(const vk::raii::Instance&          _instance,
@@ -31,14 +62,27 @@ public:
                                   Func&&                             _features,
                                   vk::SurfaceKHR                     _surface);
 
+    /**
+     * @brief 按队列能力位查对应的队列族下标。
+     * @param _queue_type 队列能力位，只识别 Graphics / Compute / Transfer。
+     * @return 对应的族下标；其他能力位或 create 未成功时返回 vk::QueueFamilyIgnored。
+     */
     [[nodiscard]] uint32_t                        get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
+    /**
+     * @brief 解引用取内部物理设备句柄。
+     * @return 内部 vk::raii::PhysicalDevice；create 之前为空句柄。
+     */
     [[nodiscard]] const vk::raii::PhysicalDevice& operator*() const noexcept;
 
 private:
+    /** @brief 选中的物理设备句柄，未创建时为 nullptr。 */
     vk::raii::PhysicalDevice physical_device = nullptr;
 
+    /** @brief graphics 队列族下标，默认 QueueFamilyIgnored。 */
     uint32_t graphic_index  = vk::QueueFamilyIgnored;
+    /** @brief compute 队列族下标；当前没有提交走 compute 队列。 */
     uint32_t compute_index  = vk::QueueFamilyIgnored;
+    /** @brief transfer 队列族下标，上传与回读走它。 */
     uint32_t transfer_index = vk::QueueFamilyIgnored;
 };
 

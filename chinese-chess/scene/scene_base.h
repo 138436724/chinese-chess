@@ -17,7 +17,7 @@ PRO_DEF_MEM_DISPATCH(mem_render_reset_accumulation, reset_accumulation);
 struct manager_render : pro::facade_builder
     ::add_convention<mem_render_resize, void(uint32_t, uint32_t)>
     ::add_convention<mem_render_update, void()>
-    ::add_convention<mem_render_render, void(const scene_camera&, const vk::raii::CommandBuffer&, const vulkan_environment_data&)>
+    ::add_convention<mem_render_render, void(const scene_camera&, const vk::raii::CommandBuffer&, const vulkan_environment_data&, uint32_t)>
     ::add_convention<mem_render_recreate, void()>
     ::add_convention<mem_render_reset_accumulation, void()>
     ::add_skill<pro::skills::as_view>

@@ -1,3 +1,12 @@
+/**
+ * @file vulkan_image.cpp
+ * @brief 图像/视图创建、布局转换与拷贝命令录制的实现。
+ * @details create 校验格式与层数一致后分配 VMA 图像，再用同一个 allocator 的 callbacks 建
+ *          imageview（按值传入的 _imageview_info 在函数内被补上 image 句柄）。transition_state
+ *          用追踪的旧 layout/stage/access 作 src、入参作 dst，并在返回前更新这几个字段。
+ *          Debug 下给 image 与 imageview 各设一个带后缀的对象名。
+ */
+
 #include "vulkan_image.h"
 
 #include <bit>
@@ -8,6 +17,9 @@
 #include <string>
 #include <utility>
 
+/**
+ * @brief 逐成员 std::exchange：句柄、格式、extent 与追踪状态一起移交，源对象留下空值。
+ */
 vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
     : format(std::exchange(_other.format, {}))
     , extent(std::exchange(_other.extent, {}))
@@ -21,6 +33,9 @@ vulkan_image::vulkan_image(vulkan_image&& _other) noexcept
 {
 }
 
+/**
+ * @brief 自赋值提前返回，否则逐成员 std::ranges::swap，两边都可安全析构。
+ */
 vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
 {
     if (this != &_other)
@@ -38,6 +53,11 @@ vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
     return *this;
 }
 
+/**
+ * @brief 校验 image/imageview 的格式与层数，分配图像与视图并缓存格式、extent、clear value。
+ * @note _imageview_info 按值传递，函数内把它的 image 成员指向新图像，调用方不必预先填句柄。
+ * @note 只接受单 queue family 的 Exclusive 图像；_flags 原样交给 VMA，不映射也不补位。
+ */
 void vulkan_image::create(const vma::raii::Allocator&         _allocator,
                           const vk::raii::Device&             _device,
                           const vk::ImageCreateInfo&          _image_info,
@@ -76,6 +96,11 @@ void vulkan_image::create(const vma::raii::Allocator&         _allocator,
 #endif  // !NDEBUG
 }
 
+/**
+ * @brief 生成 image barrier 并把追踪的 layout/stage/access/queue 更新为目标值。
+ * @note 默认 _range 只覆盖 1 个 mip、1 个 array 层与 eColor 方面；深度图和多 mip 图必须显式传范围。
+ * @note 返回的 barrier 必须被录制，否则追踪布局会领先于 GPU 实际布局，后续 oldLayout 就错了。
+ */
 vk::ImageMemoryBarrier2 vulkan_image::transition_state(vk::PipelineStageFlags2 _stage,
                                                        vk::AccessFlags2        _access,
                                                        vk::ImageLayout         _layout,
@@ -119,6 +144,7 @@ vk::AccessFlags2 vulkan_image::get_access() const noexcept
     return access;
 }
 
+/** @brief 返回追踪到的当前布局，下一条 barrier 的 oldLayout 就是它。 */
 vk::ImageLayout vulkan_image::get_layout() const noexcept
 {
     return layout;
@@ -144,6 +170,10 @@ const vk::raii::ImageView& vulkan_image::get_imageview() const noexcept
     return imageview;
 }
 
+/**
+ * @brief 录一条 vkCmdCopyImageToBuffer2，源布局由 _layout 显式给出（回读时通常是 eTransferSrcOptimal）。
+ * @note 不插 barrier：调用前要保证图像已转好布局、目标缓冲已可写。
+ */
 void vulkan_image::copy_image_to_buffer(const vk::raii::CommandBuffer& _commandbuffer,
                                         const vk::Image&               _image,
                                         const vk::Buffer&              _buffer,
@@ -153,6 +183,10 @@ void vulkan_image::copy_image_to_buffer(const vk::raii::CommandBuffer& _commandb
     _commandbuffer.copyImageToBuffer2(vk::CopyImageToBufferInfo2(_image, _layout, _buffer, _copy_info));
 }
 
+/**
+ * @brief 录一条 vkCmdCopyImage2，两端布局都由参数显式给出。
+ * @note 不插 barrier；调用前两端都必须已转到入参给出的布局。
+ */
 void vulkan_image::copy_image_to_image(const vk::raii::CommandBuffer& _commandbuffer,
                                        const vk::Image&               _image_src,
                                        const vk::Image&               _image_dst,

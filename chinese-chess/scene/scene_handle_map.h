@@ -40,7 +40,18 @@ public:
             return handle_type{.index = index, .generation = slot.generation};
         }
 
-        slots.push_back(slot{.value = std::optional<T>(std::move(_value)), .generation = 0});
+        // Grow storage before consuming a resource that may already be in use
+        // by the GPU. A failed allocation leaves ownership with the caller.
+        // Reserve the free list here too: erase() must never allocate after
+        // retiring a GPU resource, while callers rely on its noexcept contract.
+        if (free_slots.capacity() <= slots.size())
+        {
+            const auto capacity = free_slots.capacity() * 2;
+            free_slots.reserve(capacity > slots.size() ? capacity : slots.size() + 1);
+        }
+        slots.emplace_back();
+        try { slots.back().value.emplace(std::move(_value)); }
+        catch (...) { slots.pop_back(); throw; }
         ++live_count;
 
         return handle_type{.index = static_cast<uint32_t>(slots.size() - 1), .generation = 0};

@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include <array>
 #include <cstdint>
+#include <exception>
 #include <memory>
 
 class scene_manager;
@@ -30,6 +31,8 @@ private:
 
 private:
     bool need_capture = false;
+    std::exception_ptr callback_error;
+    bool resize_requested = false;
 
     float                 title_timer  = 0.f;
     uint32_t              title_frames = 0;

@@ -6,6 +6,7 @@
 #include "tools/image_helper.h"
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_sampler.h"
+#include "vulkan_core/vulkan_submission_token.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +21,6 @@
 #include <vector>
 
 class vulkan_recycle_bin;
-class vulkan_semaphore;
 class vulkan_queue;
 
 class scene_texture_manager
@@ -30,25 +30,24 @@ public:
                           const vk::raii::PhysicalDevice& _physical_device,
                           const vk::raii::Device&         _device,
                           vulkan_recycle_bin&             _recycle_bin,
-                          vulkan_semaphore&               _semaphore,
                           const vulkan_queue&             _graphic_queue,
                           const vulkan_queue&             _transfer_queue);
     ~scene_texture_manager() = default;
 
     [[nodiscard]] texture_handle      create(const std::filesystem::path&          _image_path,
                                              texture_usage                         _usage,
-                                             std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+                                             std::vector<vulkan_submission_token>& _waited_infos);
     [[nodiscard]] texture_handle      create(const std::filesystem::path&          _font_path,
                                              uint32_t                              _font_size,
                                              std::wstring_view                     _characters,
                                              uint32_t                              _padding,
                                              const glm::vec3&                      _foreground_color,
                                              const glm::vec3&                      _background_color,
-                                             std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+                                             std::vector<vulkan_submission_token>& _waited_infos);
     [[nodiscard]] scene_texture_data* get(texture_handle _handle) noexcept;
 
-    [[nodiscard]] bool reload_texture(texture_handle _handle, std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
-    [[nodiscard]] bool reload_all_textures(std::vector<vk::SemaphoreSubmitInfo>& _waited_infos);
+    [[nodiscard]] bool reload_texture(texture_handle _handle, std::vector<vulkan_submission_token>& _waited_infos);
+    [[nodiscard]] bool reload_all_textures(std::vector<vulkan_submission_token>& _waited_infos);
 
     void retain(texture_handle _handle) noexcept;
     void release(texture_handle _handle);
@@ -78,16 +77,16 @@ private:
 
     using texture_key = std::pair<texture_usage, std::filesystem::path>;
 
-    [[nodiscard]] bool destroy(texture_handle _handle) noexcept;
+    [[nodiscard]] bool destroy(texture_handle _handle);
 
     [[nodiscard]] std::expected<void, std::string> upload_texture_data(const std::filesystem::path& _source,
                                                                        texture_usage                _usage,
                                                                        vulkan_image&                _image,
-                                                                       std::vector<vk::SemaphoreSubmitInfo>& _waited_infos) const;
+                                                                       std::vector<vulkan_submission_token>& _waited_infos) const;
     [[nodiscard]] std::expected<void, std::string> upload_ktx2(const ktx2_texture_ptr&               _ktx2,
                                                                vk::Format                            _target_format,
                                                                vulkan_image&                         _image,
-                                                               std::vector<vk::SemaphoreSubmitInfo>& _waited_infos,
+                                                               std::vector<vulkan_submission_token>& _waited_infos,
                                                                const std::string&                    _name) const;
 
     void                      ensure_sampler(texture_usage _usage);
@@ -97,7 +96,6 @@ private:
     const vk::raii::PhysicalDevice& physical_device;
     const vk::raii::Device&         device;
     vulkan_recycle_bin&             recycle_bin;
-    vulkan_semaphore&               semaphore;
     const vulkan_queue&             graphic_queue;
     const vulkan_queue&             transfer_queue;
 

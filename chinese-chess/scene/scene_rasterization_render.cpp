@@ -50,7 +50,6 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
                                                        const vk::raii::Device&         _device,
                                                        const vk::raii::PipelineCache&  _pipeline_cache,
                                                        vulkan_recycle_bin&             _recycle_bin,
-                                                       vulkan_semaphore&               _semaphore,
                                                        const vulkan_queue&             _graphic_queue,
                                                        const vulkan_queue&             _transfer_queue,
                                                        const scene_model_manager&      _model_manager,
@@ -64,7 +63,6 @@ scene_rasterization_render::scene_rasterization_render(const vma::raii::Allocato
     , device(_device)
     , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
     , model_manager(_model_manager)
@@ -99,7 +97,7 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
     const std::array queue_array = {graphic_queue.get_index()};
 
     // msaa color
-    recycle_bin.retire(std::move(color_image), "rasterization old color image.");
+    recycle_bin.retire_after_submitted(std::move(color_image), "rasterization old color image.");
     const vk::ImageCreateInfo color_image_info({}, vk::ImageType::e2D, render_output.get_format(),
                                                vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT,
                                                vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment,
@@ -110,7 +108,7 @@ void scene_rasterization_render::resize(uint32_t _width, uint32_t _height)
                        vk::ClearColorValue(0.f, 0.f, 0.f, 1.f), "rasterization_color");
 
     // depth
-    recycle_bin.retire(std::move(depth_image), "rasterization old depth image.");
+    recycle_bin.retire_after_submitted(std::move(depth_image), "rasterization old depth image.");
     const vk::ImageCreateInfo depth_image_info({}, vk::ImageType::e2D, vulkan_common::DEPTH_FORMAT,
                                                vk::Extent3D(width, height, 1), 1, 1, vulkan_common::MSAA_SAMPLE_COUNT,
                                                vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment,
@@ -128,7 +126,7 @@ void scene_rasterization_render::update()
 
 void scene_rasterization_render::render(const scene_camera&            _camera,
                                         const vk::raii::CommandBuffer& _commandbuffer,
-                                        const vulkan_environment_data& _environment)
+                                        const vulkan_environment_data& _environment, uint32_t _frame_slot)
 {
     // update ubo
     const vulkan_raster_scene_data ubo_data{
@@ -149,7 +147,7 @@ void scene_rasterization_render::render(const scene_camera&            _camera,
         .environment_intensity = _environment.environment_intensity,
     };
 
-    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
+    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(_frame_slot) * ubo_offset;
     //std::memset(ubo_ptr, 0, ubo_offset);
     std::memcpy(ubo_ptr, &ubo_data, sizeof(ubo_data));
     ubo.flush();
@@ -192,12 +190,12 @@ void scene_rasterization_render::render(const scene_camera&            _camera,
 
     _commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, environment_pipeline.get_pipeline());
     _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, environment_pipeline.get_pipeline_layout(), 0,
-                                      *(descriptor_sets.at(current_frame)), nullptr);
+                                      *(descriptor_sets.at(_frame_slot)), nullptr);
     _commandbuffer.draw(3, 1, 0, 0);
 
     _commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline());
     _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.get_pipeline_layout(), 0,
-                                      *(descriptor_sets.at(current_frame)), nullptr);
+                                      *(descriptor_sets.at(_frame_slot)), nullptr);
 
     if (model_manager.get_models_size() > 0) [[likely]]
     {
@@ -209,8 +207,6 @@ void scene_rasterization_render::render(const scene_camera&            _camera,
     }
 
     _commandbuffer.endRendering();
-
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 void scene_rasterization_render::recreate()
@@ -218,8 +214,8 @@ void scene_rasterization_render::recreate()
     vulkan_pipeline new_environment_pipeline = create_environment_pipeline(color_format);
     vulkan_pipeline new_pipeline             = create_pipeline(color_format);
 
-    recycle_bin.retire(std::move(environment_pipeline), "old rasterization environment pipeline on reload.");
-    recycle_bin.retire(std::move(pipeline), "old rasterization pipeline on reload.");
+    recycle_bin.retire_after_submitted(std::move(environment_pipeline), "old rasterization environment pipeline on reload.");
+    recycle_bin.retire_after_submitted(std::move(pipeline), "old rasterization pipeline on reload.");
 
     environment_pipeline = std::move(new_environment_pipeline);
     pipeline             = std::move(new_pipeline);
@@ -281,8 +277,8 @@ vulkan_pipeline scene_rasterization_render::create_pipeline(vk::Format _color_fo
 void scene_rasterization_render::update_descriptor()
 {
     // update descriptor pool
-    recycle_bin.retire(std::move(descriptor_sets), "rasterization descriptor sets.");
-    recycle_bin.retire(std::move(descriptor_pool), "rasterization descriptor pool.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_sets), "rasterization descriptor sets.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_pool), "rasterization descriptor pool.");
 
     constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, vulkan_common::MAX_FRAMES_IN_FLIGHT),

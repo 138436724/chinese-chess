@@ -1,5 +1,9 @@
 #include "scene_camera.h"
 
+#include "vulkan_core/vulkan_common.h"
+
+#include <cmath>
+
 void scene_camera::set_orthographic_projection(float _left, float _right, float _bottom, float _top, float _near, float _far) noexcept
 {
     active_type       = projection_type::orthographic;
@@ -41,13 +45,13 @@ void scene_camera::set_position(const glm::vec3& _position) noexcept
 
 void scene_camera::set_direction(const glm::vec3& _direction) noexcept
 {
-    direction = glm::normalize(_direction);
+    direction = vulkan_common::safe_normalize(_direction, direction);  // 零向量：保留上一条有效方向，不写 NaN
     update_camera_axis();
 }
 
 void scene_camera::set_world_up(const glm::vec3& _world_up) noexcept
 {
-    world_up = glm::normalize(_world_up);
+    world_up = vulkan_common::safe_normalize(_world_up, world_up);  // 同上，退化输入保留旧值
     update_camera_axis();
 }
 
@@ -93,8 +97,17 @@ const glm::mat4& scene_camera::get_inv_view_matrix() const noexcept
 
 void scene_camera::update_camera_axis() noexcept
 {
-    right_axis = glm::normalize(glm::cross(direction, world_up));
-    up_axis    = glm::normalize(glm::cross(right_axis, direction));
+    direction = vulkan_common::safe_normalize(direction, glm::vec3(0.f, 0.f, -1.f));
+    world_up  = vulkan_common::safe_normalize(world_up, glm::vec3(0.f, 1.f, 0.f));
+
+    // direction 与 world_up 平行时 cross 归零 ⇒ right / up 会双双变成 NaN（lookAt 也跟着坏）。
+    // 这种情况换一个不平行的参考 up 来重建基，非退化路径与原来逐位一致。
+    const glm::vec3 cross_result = glm::cross(direction, world_up);
+    const glm::vec3 reference_up = std::abs(direction.y) < 0.999f ? glm::vec3(0.f, 1.f, 0.f) : glm::vec3(0.f, 0.f, 1.f);
+    const glm::vec3 effective_up = glm::dot(cross_result, cross_result) > 1e-12f ? world_up : reference_up;
+
+    right_axis = vulkan_common::safe_normalize(glm::cross(direction, effective_up), glm::vec3(1.f, 0.f, 0.f));
+    up_axis    = vulkan_common::safe_normalize(glm::cross(right_axis, direction), effective_up);
     update_camera_matrix();
 }
 

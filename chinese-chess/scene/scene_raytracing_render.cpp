@@ -49,7 +49,6 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
                                                  const vk::raii::Device&         _device,
                                                  const vk::raii::PipelineCache&  _pipeline_cache,
                                                  vulkan_recycle_bin&             _recycle_bin,
-                                                 vulkan_semaphore&               _semaphore,
                                                  const vulkan_queue&             _graphic_queue,
                                                  const vulkan_queue&             _transfer_queue,
                                                  const scene_model_manager&      _model_manager,
@@ -62,7 +61,6 @@ scene_raytracing_render::scene_raytracing_render(const vma::raii::Allocator&    
     , device(_device)
     , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
     , model_manager(_model_manager)
@@ -105,8 +103,8 @@ void scene_raytracing_render::update()
 void scene_raytracing_render::recreate()
 {
     auto [new_pipeline, new_sbt] = create_pipeline_and_sbt();
-    recycle_bin.retire(std::move(pipeline), "old ray tracing pipeline on reload.");
-    recycle_bin.retire(std::move(sbt), "old ray tracing sbt on reload.");
+    recycle_bin.retire_after_submitted(std::move(pipeline), "old ray tracing pipeline on reload.");
+    recycle_bin.retire_after_submitted(std::move(sbt), "old ray tracing sbt on reload.");
     pipeline = std::move(new_pipeline);
     sbt      = std::move(new_sbt);
 }
@@ -118,7 +116,7 @@ void scene_raytracing_render::reset_accumulation() noexcept
 
 void scene_raytracing_render::render(const scene_camera&            _camera,
                                      const vk::raii::CommandBuffer& _commandbuffer,
-                                     const vulkan_environment_data& _environment)
+                                     const vulkan_environment_data& _environment, uint32_t _frame_slot)
 {
     // update ubo
     const vulkan_rt_scene_data ubo_data{
@@ -137,7 +135,7 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
         .environment_intensity = _environment.environment_intensity,
     };
 
-    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
+    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(_frame_slot) * ubo_offset;
     //std::memset(ubo_ptr, 0, ubo_offset);
     std::memcpy(ubo_ptr, &ubo_data, sizeof(ubo_data));
     ubo.flush();
@@ -153,7 +151,7 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
 
     _commandbuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline());
     _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, pipeline.get_pipeline_layout(), 0,
-                                      *(descriptor_sets.at(current_frame)), nullptr);
+                                      *(descriptor_sets.at(_frame_slot)), nullptr);
 
     _commandbuffer.traceRaysKHR(sbt.get_raygen_region(), sbt.get_miss_region(), sbt.get_hit_region(),
                                 sbt.get_callable_region(), width, height, 1);
@@ -166,7 +164,6 @@ void scene_raytracing_render::render(const scene_camera&            _camera,
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
     frame_index++;
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render::create_pipeline_and_sbt()
@@ -219,7 +216,7 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
     vulkan_commandbuffer commandbuffer = std::move(
         vulkan_commandbuffer::create(
             device, vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(), vk::CommandBufferLevel::ePrimary, 1),
-            &graphic_queue, &semaphore)
+            &graphic_queue)
             .front());
     commandbuffer.begin_record(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
@@ -228,10 +225,10 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
                                          static_cast<uint32_t>(shader_stages.size()), graphic_queue.get_index());
 
     commandbuffer.end_record();
-    commandbuffer.submit();
+    const auto build_token = commandbuffer.submit();
 
-    recycle_bin.retire(std::move(staging_buffer), "ray tracing staging buffer to create sbt.");
-    recycle_bin.retire(std::move(commandbuffer), "ray tracing commandbuffer to create sbt.");
+    recycle_bin.retire(std::move(staging_buffer), build_token, "ray tracing staging buffer to create sbt.");
+    recycle_bin.retire(std::move(commandbuffer), build_token, "ray tracing commandbuffer to create sbt.");
 
     return std::make_pair(std::move(new_pipeline), std::move(new_sbt));
 }
@@ -239,8 +236,8 @@ std::pair<vulkan_pipeline, vulkan_shader_binding_table> scene_raytracing_render:
 void scene_raytracing_render::update_descriptor()
 {
     // update descriptor pool
-    recycle_bin.retire(std::move(descriptor_sets), "ray tracing descriptor sets.");
-    recycle_bin.retire(std::move(descriptor_pool), "ray tracing descriptor pool.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_sets), "ray tracing descriptor sets.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_pool), "ray tracing descriptor pool.");
 
     constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),

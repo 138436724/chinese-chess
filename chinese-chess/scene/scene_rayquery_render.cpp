@@ -35,7 +35,6 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
                                              const vk::raii::Device&         _device,
                                              const vk::raii::PipelineCache&  _pipeline_cache,
                                              vulkan_recycle_bin&             _recycle_bin,
-                                             vulkan_semaphore&               _semaphore,
                                              const vulkan_queue&             _graphic_queue,
                                              const vulkan_queue&             _transfer_queue,
                                              const scene_model_manager&      _model_manager,
@@ -48,7 +47,6 @@ scene_rayquery_render::scene_rayquery_render(const vma::raii::Allocator&     _al
     , device(_device)
     , pipeline_cache(_pipeline_cache)
     , recycle_bin(_recycle_bin)
-    , semaphore(_semaphore)
     , graphic_queue(_graphic_queue)
     , transfer_queue(_transfer_queue)
     , model_manager(_model_manager)
@@ -89,7 +87,7 @@ void scene_rayquery_render::update()
 void scene_rayquery_render::recreate()
 {
     vulkan_pipeline new_pipeline = create_pipeline();
-    recycle_bin.retire(std::move(pipeline), "old ray query compute pipeline on reload.");
+    recycle_bin.retire_after_submitted(std::move(pipeline), "old ray query compute pipeline on reload.");
     pipeline = std::move(new_pipeline);
 }
 
@@ -100,7 +98,7 @@ void scene_rayquery_render::reset_accumulation() noexcept
 
 void scene_rayquery_render::render(const scene_camera&            _camera,
                                    const vk::raii::CommandBuffer& _commandbuffer,
-                                   const vulkan_environment_data& _environment)
+                                   const vulkan_environment_data& _environment, uint32_t _frame_slot)
 {
     // update ubo
     const vulkan_rt_scene_data ubo_data{
@@ -119,7 +117,7 @@ void scene_rayquery_render::render(const scene_camera&            _camera,
         .environment_intensity = _environment.environment_intensity,
     };
 
-    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(current_frame) * ubo_offset;
+    auto* ubo_ptr = static_cast<uint8_t*>(ubo.get_buffer_address().hostAddress) + static_cast<size_t>(_frame_slot) * ubo_offset;
     //std::memset(ubo_ptr, 0, ubo_offset);
     std::memcpy(ubo_ptr, &ubo_data, sizeof(ubo_data));
     ubo.flush();
@@ -135,7 +133,7 @@ void scene_rayquery_render::render(const scene_camera&            _camera,
 
     _commandbuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.get_pipeline());
     _commandbuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.get_pipeline_layout(), 0,
-                                      *descriptor_sets.at(current_frame), nullptr);
+                                      *descriptor_sets.at(_frame_slot), nullptr);
 
     const uint32_t group_x = (width + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
     const uint32_t group_y = (height + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
@@ -149,7 +147,6 @@ void scene_rayquery_render::render(const scene_camera&            _camera,
     _commandbuffer.pipelineBarrier2(vk::DependencyInfo({}, {}, {}, end_barrier));
 
     frame_index++;
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
 }
 
 vulkan_pipeline scene_rayquery_render::create_pipeline()
@@ -174,8 +171,8 @@ vulkan_pipeline scene_rayquery_render::create_pipeline()
 
 void scene_rayquery_render::update_descriptor()
 {
-    recycle_bin.retire(std::move(descriptor_sets), "ray query descriptor sets.");
-    recycle_bin.retire(std::move(descriptor_pool), "ray query descriptor pool.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_sets), "ray query descriptor sets.");
+    recycle_bin.retire_after_submitted(std::move(descriptor_pool), "ray query descriptor pool.");
 
     constexpr std::array pool_size = {
         vk::DescriptorPoolSize(vk::DescriptorType::eAccelerationStructureKHR, vulkan_common::MAX_FRAMES_IN_FLIGHT),

@@ -13,8 +13,11 @@
 #include "vulkan_core/vulkan_image.h"
 #include "vulkan_core/vulkan_queue.h"
 #include "vulkan_core/vulkan_recycle_bin.h"
+#include "vulkan_core/vulkan_submission_token.h"
 
 #include <cstdint>
+#include <exception>
+#include <mutex>
 #include <filesystem>
 #include <glm/glm.hpp>
 #include <string_view>
@@ -39,7 +42,7 @@ public:
 
     void                                  resize(uint32_t _width, uint32_t _height);
     void                                  update();
-    [[nodiscard]] vk::SemaphoreSubmitInfo render(bool _need_capture);
+    [[nodiscard]] vulkan_submission_token        render(uint32_t frame_slot, bool _need_capture);
     void                                  handle(int _key, int _scancode, int _action, int _mods);
 
     void need_update() noexcept;
@@ -82,7 +85,7 @@ public:
 
 
 private:
-    [[nodiscard]] vk::SemaphoreSubmitInfo capture_frame(const vk::SemaphoreSubmitInfo& _waited_info);
+    [[nodiscard]] vulkan_submission_token capture_frame(vulkan_submission_token _waited_info);
 
 private:
     bool is_dirty               = true;
@@ -92,18 +95,15 @@ private:
 
     scene_environment_data environment;
 
-    vulkan_queue graphic_queue;
-    vulkan_queue compute_queue;
-    vulkan_queue transfer_queue;
+    vulkan_queue& graphic_queue;
+    vulkan_queue& transfer_queue;
 
-    vulkan_semaphore                  semaphore;
     vulkan_recycle_bin                recycle_bin;
     std::vector<vulkan_commandbuffer> commandbuffers;
 
     uint32_t                             width         = 0;
     uint32_t                             height        = 0;
-    uint32_t                             current_frame = 0;
-    std::vector<vk::SemaphoreSubmitInfo> waited_infos;
+    std::vector<vulkan_submission_token>        waited_infos;
 
     scene_light_manager    light_manager;
     scene_texture_manager  texture_manager;   // must before material
@@ -118,5 +118,7 @@ private:
     std::unordered_map<render_mode, pro::proxy<manager_render>> scene_renders;
     pro::proxy_view<manager_render>                             active_render = nullptr;
 
-    std::jthread save_thread;
+    std::mutex save_error_mutex;
+    std::exception_ptr save_error;
+    std::jthread save_thread; // joins before error state and GPU resources die
 };

@@ -9,16 +9,20 @@
 #include "vulkan_core/vulkan_application.h"
 #include "vulkan_core/vulkan_common.h"
 #include "vulkan_core/vulkan_data_type.h"
+#include "vulkan_core/vulkan_submission_scope.h"
 
 #include <GLFW/glfw3.h>
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <print>
 #include <span>
 #include <stdexcept>
@@ -33,19 +37,20 @@ namespace {
 struct image_save_info
 {
     vulkan_buffer         staging_buffer;
-    vulkan_semaphore*     semaphore  = nullptr;
-    uint64_t              wait_value = 0;
+    vulkan_submission_token      token;
     std::filesystem::path save_path;
     std::filesystem::path ocio_config_path;
     uint32_t              width       = 0;
     uint32_t              height      = 0;
     size_t                pixel_count = 0;
+
+    ~image_save_info() { token.wait_for_cleanup(); }
 };
 
 template <typename T>
-void save_frame(image_save_info _info)
+void save_frame(image_save_info& _info)
 {
-    _info.semaphore->wait(_info.wait_value);
+    _info.token.semaphore->wait(_info.token.value);
     _info.staging_buffer.invalidate();
 
     const std::span<T> pixels(static_cast<T*>(_info.staging_buffer.get_buffer_address().hostAddress), _info.pixel_count);
@@ -68,22 +73,23 @@ void save_frame(image_save_info _info)
 
 scene_manager::~scene_manager()
 {
-    app.wait_idle();
+    app.wait_idle_for_cleanup();
 }
 
 scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t _height)
     : app(_app)
-    , light_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
-    , texture_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue)
-    , material_manager(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue, texture_manager)
-    , model_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, semaphore, graphic_queue, transfer_queue, material_manager)
+    , graphic_queue(app.get_graphic_queue())
+    , transfer_queue(app.get_transfer_queue())
+    , light_manager(app.get_allocator(), *app.get_device(), recycle_bin, graphic_queue, transfer_queue)
+    , texture_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, graphic_queue, transfer_queue)
+    , material_manager(app.get_allocator(), *app.get_device(), recycle_bin, graphic_queue, transfer_queue, texture_manager)
+    , model_manager(app.get_allocator(), *app.get_physical_device(), *app.get_device(), recycle_bin, graphic_queue, transfer_queue, material_manager)
 {
-    semaphore.create(*app.get_device());
-    recycle_bin.create(&semaphore);
-
-    graphic_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eGraphics));
-    compute_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eCompute));
-    transfer_queue.create(*app.get_device(), app.get_physical_device().get_queue_index(vk::QueueFlagBits::eTransfer));
+    const vulkan_submission_scope failure_scope(graphic_queue, transfer_queue);
+    // The application owns the actual VkQueue objects; scene work shares their
+    // completion timeline so tokens from both owners are directly comparable.
+    recycle_bin.add_queue(graphic_queue);
+    recycle_bin.add_queue(transfer_queue);
 
     active_camera.set_position(glm::vec3(0.f, 0.f, 0.f));
     active_camera.set_direction(glm::vec3(0.f, 0.f, -1.f));
@@ -94,25 +100,25 @@ scene_manager::scene_manager(vulkan_application& _app, uint32_t _width, uint32_t
                                                   vk::CommandBufferAllocateInfo(graphic_queue.get_command_pool(),
                                                                                 vk::CommandBufferLevel::ePrimary,
                                                                                 vulkan_common::MAX_FRAMES_IN_FLIGHT),
-                                                  &graphic_queue, &semaphore);
+                                                  &graphic_queue);
 
 
     scene_renders.insert_or_assign(render_mode::rasterization,
                                    pro::make_proxy<manager_render, scene_rasterization_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue, model_manager,
+                                       *app.get_pipeline_cache(), recycle_bin, graphic_queue, transfer_queue, model_manager,
                                        material_manager, light_manager, texture_manager, render_output, color_format));
 
     scene_renders.insert_or_assign(render_mode::ray_tracing,
                                    pro::make_proxy<manager_render, scene_raytracing_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
+                                       *app.get_pipeline_cache(), recycle_bin, graphic_queue, transfer_queue,
                                        model_manager, material_manager, light_manager, texture_manager, render_output));
 
     scene_renders.insert_or_assign(render_mode::ray_query,
                                    pro::make_proxy<manager_render, scene_rayquery_render>(
                                        app.get_allocator(), *app.get_physical_device(), *app.get_device(),
-                                       *app.get_pipeline_cache(), recycle_bin, semaphore, graphic_queue, transfer_queue,
+                                       *app.get_pipeline_cache(), recycle_bin, graphic_queue, transfer_queue,
                                        model_manager, material_manager, light_manager, texture_manager, render_output));
 
     // default use raytracing pipeline
@@ -129,7 +135,7 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
     const std::array queue_array = {graphic_queue.get_index()};
 
     // recreate render_output
-    recycle_bin.retire(std::move(render_output), "scene manager old render output.");
+    recycle_bin.retire_after_submitted(std::move(render_output), "scene manager old render output.");
     const vk::ImageCreateInfo render_image_info({}, vk::ImageType::e2D, color_format, vk::Extent3D(width, height, 1), 1,
                                                 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                                                 vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
@@ -147,6 +153,10 @@ void scene_manager::resize(uint32_t _width, uint32_t _height)
 
 void scene_manager::update()
 {
+    {
+        const std::lock_guard lock(save_error_mutex);
+        if (save_error) std::rethrow_exception(save_error);
+    }
     if (!is_dirty)
     {
         return;
@@ -189,33 +199,31 @@ void scene_manager::update()
     need_descriptor_update = false;
 }
 
-vk::SemaphoreSubmitInfo scene_manager::render(bool _need_capture)
+vulkan_submission_token scene_manager::render(uint32_t frame_slot, bool _need_capture)
 {
+    // Also prepares a mode selected after an earlier update in this frame.
+    update();
     recycle_bin.release();
 
-    vulkan_commandbuffer& commandbuffer = commandbuffers.at(current_frame);
+    vulkan_commandbuffer& commandbuffer = commandbuffers.at(frame_slot);
     commandbuffer.begin_record({});
 
-    commandbuffer.add_waited_info(waited_infos);
+    commandbuffer.add_dependency(waited_infos);
     waited_infos.clear();
 
     const vulkan_environment_data environment_data{.environment_index = texture_manager.get_texture_binding(environment.image),
                                                    .environment_intensity = environment.intensity};
-    active_render->render(active_camera, *commandbuffer, environment_data);
+    active_render->render(active_camera, *commandbuffer, environment_data, frame_slot);
 
     commandbuffer.end_record();
-    commandbuffer.submit();
-
-    auto submit_info = commandbuffer.get_submit_info();
+    auto token = commandbuffer.submit();
 
     if (_need_capture)
     {
-        submit_info = capture_frame(submit_info);
+        token = capture_frame(token);
     }
 
-    current_frame = (current_frame + 1) % vulkan_common::MAX_FRAMES_IN_FLIGHT;
-
-    return submit_info;
+    return token;
 }
 
 void scene_manager::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/)
@@ -427,7 +435,7 @@ scene_environment_data& scene_manager::get_environment() noexcept
     return environment;
 }
 
-vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitInfo& _waited_info)
+vulkan_submission_token scene_manager::capture_frame(vulkan_submission_token _waited_info)
 {
     const auto [image_width, image_height] = render_output.get_extent();
     const VkFormat image_format            = static_cast<VkFormat>(render_output.get_format());
@@ -439,9 +447,12 @@ vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitIn
         throw std::runtime_error("Unsupported format!");
     }
 
-    vulkan_buffer staging_buffer;
-    const auto wait_value = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, semaphore, graphic_queue,
-                                                          transfer_queue, _waited_info, render_output, staging_buffer);
+    // Allocate ownership before submitting. A failing path/thread construction
+    // still retains the readback buffer until its published token completes.
+    auto info = std::make_shared<image_save_info>();
+    info->token = vulkan_common::download_image(app.get_allocator(), *app.get_device(), recycle_bin, graphic_queue,
+                                               transfer_queue, _waited_info, render_output, info->staging_buffer);
+    const auto token = info->token;
 
     const auto now        = std::chrono::system_clock::now();
     const auto now_second = std::chrono::current_zone()->to_local(std::chrono::floor<std::chrono::seconds>(now));
@@ -453,23 +464,27 @@ vk::SemaphoreSubmitInfo scene_manager::capture_frame(const vk::SemaphoreSubmitIn
 
     const size_t pixel_count = static_cast<size_t>(image_width) * image_height * vkuFormatComponentCount(image_format);
 
-    image_save_info info{.staging_buffer   = std::move(staging_buffer),
-                         .semaphore        = &semaphore,
-                         .wait_value       = wait_value.value,
-                         .save_path        = save_path,
-                         .ocio_config_path = ocio_config_path,
-                         .width            = image_width,
-                         .height           = image_height,
-                         .pixel_count      = pixel_count};
+    info->save_path = std::move(save_path);
+    info->ocio_config_path = ocio_config_path;
+    info->width = image_width;
+    info->height = image_height;
+    info->pixel_count = pixel_count;
 
-    if (is_float_half)
-    {
-        save_thread = std::jthread([info = std::move(info)]() mutable { save_frame<half>(std::move(info)); });
-    }
-    else
-    {
-        save_thread = std::jthread([info = std::move(info)]() mutable { save_frame<uint8_t>(std::move(info)); });
-    }
 
-    return wait_value;
+    save_thread = std::jthread([this, info = std::move(info), is_float_half]() {
+        try
+        {
+            if (is_float_half) save_frame<half>(*info);
+            else save_frame<uint8_t>(*info);
+        }
+        catch (...)
+        {
+            std::fputs("Screenshot readback failed; rendering will stop.\n", stderr);
+            const std::lock_guard lock(save_error_mutex);
+            save_error = std::current_exception();
+        }
+    });
+
+
+    return token;
 }
