@@ -32,12 +32,9 @@ enum class vulkan_frame_status
  */
 struct vulkan_frame_context
 {
-    /** @brief frame slot 下标，索引命令缓冲与描述符集。 */
-    uint32_t slot = 0;
-    /** @brief 本次 acquire 到的交换链 image 下标。 */
-    uint32_t image = 0;
-    /** @brief 交换链 generation，用于拒绝重建前取得的上下文。 */
-    uint64_t generation = 0;
+    uint32_t slot = 0;  ///< @brief frame slot 下标，索引命令缓冲与描述符集
+    uint32_t image = 0;  ///< @brief 本次 acquire 到的交换链 image 下标
+    uint64_t generation = 0;  ///< @brief 交换链 generation，用于拒绝重建前取得的上下文
 };
 
 /**
@@ -46,12 +43,9 @@ struct vulkan_frame_context
  */
 struct vulkan_frame_result
 {
-    /** @brief 本步结果分类，默认 skip。 */
-    vulkan_frame_status status = vulkan_frame_status::skip;
-    /** @brief acquire 成功时为活动帧；present 结果保留本次呈现帧的身份，其状态可能已结束。 */
-    vulkan_frame_context frame;
-    /** @brief 驱动返回的原始结果，成功时为 eSuccess。 */
-    vk::Result reason = vk::Result::eSuccess;
+    vulkan_frame_status status = vulkan_frame_status::skip;  ///< @brief 本步结果分类，默认 skip
+    vulkan_frame_context frame;  ///< @brief acquire 成功时为活动帧；present 结果保留本次呈现帧的身份，其状态可能已结束
+    vk::Result reason = vk::Result::eSuccess;  ///< @brief 驱动返回的原始结果，成功时为 eSuccess
 };
 
 // The only frame-slot cursor. Scene/UI/renderers receive its context and never
@@ -164,21 +158,13 @@ private:
      */
     struct frame_slot
     {
-        /** @brief 供 vkAcquireNextImageKHR 信号、帧提交等待的 acquire semaphore。 */
-        vk::raii::Semaphore acquired = nullptr;
-        /** @brief 证明 acquire 信号操作已完成的 fence。 */
-        vk::raii::Fence acquire_done = nullptr;
-        /** @brief 该 slot 上次成功提交的 token，prepare 与 drain 等待它。 */
-        vulkan_submission_token completion;
-        /** @brief 最近一次成功 acquire 的 fence 需要被等待；不表示它此刻仍未信号。 */
-        bool acquire_pending = false;
+        vk::raii::Semaphore acquired = nullptr;  ///< @brief 供 vkAcquireNextImageKHR 信号、帧提交等待的 acquire semaphore
+        vk::raii::Fence acquire_done = nullptr;  ///< @brief 证明 acquire 信号操作已完成的 fence
+        vulkan_submission_token completion;  ///< @brief 该 slot 上次成功提交的 token，prepare 与 drain 等待它
+        bool acquire_pending = false;  ///< @brief 最近一次成功 acquire 的 fence 需要被等待；不表示它此刻仍未信号
     };
-    /** @brief 全部 frame slot，create 时一次性建满。 */
-    std::vector<frame_slot> slots;
-    /** @brief 当前 slot 下标。 */
-    uint32_t current = 0;
-    /** @brief 当前帧状态。 */
-    state phase = state::idle;
-    /** @brief acquired 时记录的帧身份，供 context() 返回。 */
-    vulkan_frame_context frame;
+    std::vector<frame_slot> slots;  ///< @brief 全部 frame slot，create 时一次性建满
+    uint32_t current = 0;  ///< @brief 当前 slot 下标
+    state phase = state::idle;  ///< @brief 当前帧状态
+    vulkan_frame_context frame;  ///< @brief acquired 时记录的帧身份，供 context() 返回
 };

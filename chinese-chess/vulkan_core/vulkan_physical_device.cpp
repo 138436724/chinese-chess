@@ -37,7 +37,7 @@ vulkan_physical_device& vulkan_physical_device::operator=(vulkan_physical_device
 }
 
 /**
- * @brief 按能力位返回 create 时缓存的队列族下标。
+ * @brief 按能力位返回 create 时记录的队列族下标。
  * @note 只识别 Graphics / Compute / Transfer；OpticalFlow、Video、Protected、SparseBinding 等一律
  *       返回 vk::QueueFamilyIgnored，调用方需自行判断下标是否有效。
  */

@@ -6,7 +6,6 @@
  *          句柄先写 host 可见 staging 再拷到设备缓冲，所以 staging 必须在拷贝提交完成前保持存活。
  *          本类不提交、不同步：录制与提交由调用方完成（见 scene_raytracing_render::create_pipeline_and_sbt）。
  */
-
 #pragma once
 
 #include "vulkan_buffer.h"
@@ -29,12 +28,10 @@ public:
     ~vulkan_shader_binding_table()                                             = default;
     /** @brief 禁用拷贝：缓冲与设备地址都是独占资源。 */
     vulkan_shader_binding_table(const vulkan_shader_binding_table&)            = delete;
-    /** @brief 禁用拷贝赋值：同上。 */
-    vulkan_shader_binding_table& operator=(const vulkan_shader_binding_table&) = delete;
+    vulkan_shader_binding_table& operator=(const vulkan_shader_binding_table&) = delete;  ///< @brief 禁用拷贝赋值：同上
     /** @brief 移动构造：对齐值、四个 region 与缓冲一律 std::exchange 搬走，源对象被置空。 */
     vulkan_shader_binding_table(vulkan_shader_binding_table&& _other) noexcept;
-    /** @brief 移动赋值：逐成员 std::ranges::swap，旧缓冲被换给源对象并随其析构释放。 */
-    vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&& _other) noexcept;
+    vulkan_shader_binding_table& operator=(vulkan_shader_binding_table&& _other) noexcept;  ///< @brief 移动赋值：逐成员 std::ranges::swap，旧缓冲被换给源对象并随其析构释放
 
     /**
      * @brief 为给定光追管线构建 SBT：查对齐、算布局、写 staging、录拷贝、填四个 region。
@@ -47,7 +44,7 @@ public:
      * @param _queue 缓冲的 queue family index，必须与录制 / 提交该命令缓冲的队列一致。
      * @return staging buffer（transfer src + host 可见）；调用方必须保留到拷贝提交完成，否则设备会读已释放内存。
      * @throws vk::SystemError 缓冲创建、staging 映射或组句柄查询失败时由 vk::raii 抛出。
-     * @note 三个对齐值在首次查询后缓存，即使后续分配失败也保留，因此同一对象不能跨物理设备复用。
+     * @note 三个对齐值在首次查询后记录，即使后续分配失败也保留，因此同一对象不能跨物理设备复用。
      *       miss/hit stride 取本实现按 base_alignment 排布后的实际间距；raygen stride 取 handle_alignment 对齐后的大小。
      *       Vulkan 要求 region 起始地址满足 base alignment、stride 满足 handle alignment；本实现未显式校验缓冲基地址。
      */
@@ -87,22 +84,14 @@ public:
     [[nodiscard]] const vulkan_buffer&                     get_shader_binding_table_buffer() const noexcept;
 
 private:
-    /** @brief 一个 shader group handle 的字节数（shaderGroupHandleSize）。 */
-    uint32_t handle_size      = 0;
-    /** @brief handle 在 SBT 内的最小对齐（shaderGroupHandleAlignment），用于算单个 entry 的跨度。 */
-    uint32_t handle_alignment = 0;
-    /** @brief region 起始地址要求的对齐（shaderGroupBaseAlignment）；本实现也用它对齐每个组的相对偏移。 */
-    uint32_t base_alignment   = 0;
+    uint32_t handle_size      = 0;  ///< @brief 一个 shader group handle 的字节数（shaderGroupHandleSize）
+    uint32_t handle_alignment = 0;  ///< @brief handle 在 SBT 内的最小对齐（shaderGroupHandleAlignment），用于算单个 entry 的跨度
+    uint32_t base_alignment   = 0;  ///< @brief region 起始地址要求的对齐（shaderGroupBaseAlignment）；本实现也用它对齐每个组的相对偏移
 
-    /** @brief raygen region：1 项，stride = 该 entry 对齐后的大小。 */
-    vk::StridedDeviceAddressRegionKHR raygen_region;
-    /** @brief miss region：从主 miss 起，stride = base_alignment 对齐后的组间距。 */
-    vk::StridedDeviceAddressRegionKHR miss_region;
-    /** @brief hit region：从主 hit 起，stride = base_alignment 对齐后的组间距。 */
-    vk::StridedDeviceAddressRegionKHR hit_region;
-    /** @brief callable region：保持全 0（无 callable 着色器）。 */
-    vk::StridedDeviceAddressRegionKHR callable_region;
+    vk::StridedDeviceAddressRegionKHR raygen_region;  ///< @brief raygen region：1 项，stride = 该 entry 对齐后的大小
+    vk::StridedDeviceAddressRegionKHR miss_region;  ///< @brief miss region：从主 miss 起，stride = base_alignment 对齐后的组间距
+    vk::StridedDeviceAddressRegionKHR hit_region;  ///< @brief hit region：从主 hit 起，stride = base_alignment 对齐后的组间距
+    vk::StridedDeviceAddressRegionKHR callable_region;  ///< @brief callable region：保持全 0（无 callable 着色器）
 
-    /** @brief SBT 设备缓冲：eShaderBindingTableKHR + transfer dst + device address，句柄由 staging 拷入。 */
-    vulkan_buffer sbt_buffer;
+    vulkan_buffer sbt_buffer;  ///< @brief SBT 设备缓冲：eShaderBindingTableKHR + transfer dst + device address，句柄由 staging 拷入
 };

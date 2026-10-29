@@ -153,7 +153,7 @@ ui_record::ui_record(scene_manager& _manager)
 
 /**
  * @brief 高度变化时按新字号重建棋盘与棋子的字形图集材质，并保持当前回放局面。
- * @note 宽度只更新缓存；字号 = floor(height / 9.0 * 2)，图集 padding 固定 2 texel。
+ * @note 宽度只更新记录值；字号 = floor(height / 9.0 * 2)，图集 padding 固定 2 texel。
  */
 void ui_record::resize(uint32_t _width, uint32_t _height)
 {
@@ -237,7 +237,7 @@ void ui_record::rebuild_piece_materials(std::unordered_map<PIECE_TYPE, material_
 
 /**
  * @brief 构建棋局区：加载棋谱按钮、局面列表与上一步/下一步按钮。
- * @note 文件对话框只在 Win32 下弹；load_records 返回 expected 错误时保留旧缓存，但随后仍会摆到旧缓存第 0 项；异常会传播。
+ * @note 文件对话框只在 Win32 下弹；load_records 返回 expected 错误时保留旧记录，但随后仍会摆到旧记录第 0 项；异常会传播。
  */
 void ui_record::update()
 {
@@ -318,8 +318,8 @@ void ui_record::handle(int _key, int /*_scancode*/, int _action, int /*_mods*/) 
 }
 
 /**
- * @brief 读取棋谱文本与全部局面，成功后整体替换缓存并把回放位置归零。
- * @note 解析器返回 expected 错误或空局面时打印并保留旧缓存；异常会传播，缓存替换不保证回滚。
+ * @brief 读取棋谱文本与全部局面，成功后整体替换记录并把回放位置归零。
+ * @note 解析器返回 expected 错误或空局面时打印并保留旧记录；异常会传播，记录替换不保证回滚。
  */
 void ui_record::load_records(const std::filesystem::path& _record_path)
 {
@@ -354,7 +354,7 @@ void ui_record::load_records(const std::filesystem::path& _record_path)
 
 /**
  * @brief 先隐藏全部棋子，再按局面里的红黑棋子重新设置材质、可见性与矩阵。
- * @note noexcept：进入循环前先校验棋子总数不超过 32，材质缓存没有该类型或模型句柄失效时跳过；不验证缓存中的材质句柄是否仍存活。
+ * @note noexcept：进入循环前先校验棋子总数不超过 32，材质记录表没有该类型或模型句柄失效时跳过；不验证记录中的材质句柄是否仍存活。
  */
 void ui_record::restore_board_state(uint32_t _index) noexcept
 {

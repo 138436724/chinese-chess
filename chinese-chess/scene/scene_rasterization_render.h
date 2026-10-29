@@ -7,7 +7,6 @@
  *          与两条光追路径共用 BRDF 与光源采样，但没有可见性项，因此没有阴影与 AO。
  *          描述符只在 update() 重建，render() 只写每帧 UBO 槽并录制命令。
  */
-
 #pragma once
 
 #include "vulkan_core/vulkan_buffer.h"
@@ -137,54 +136,31 @@ private:
     void                          update_descriptor();
 
 private:
-    /** @brief VMA 分配器，UBO 与两张附件图都由它分配。 */
-    const vma::raii::Allocator&     allocator;
-    /** @brief 物理设备，构造时读 minUniformBufferOffsetAlignment 算 UBO 槽跨度。 */
-    const vk::raii::PhysicalDevice& physical_device;
-    /** @brief 逻辑设备，创建缓冲、图像、描述符与管线。 */
-    const vk::raii::Device&         device;
-    /** @brief 管线缓存，透传给 create_from_shader。 */
-    const vk::raii::PipelineCache&  pipeline_cache;
-    /** @brief 延迟回收站，旧图像、旧管线与旧描述符按提交令牌销毁。 */
-    vulkan_recycle_bin&             recycle_bin;
-    /** @brief 图形队列，附件图与缓冲的 queue family 取自它。 */
-    const vulkan_queue&             graphic_queue;
-    /** @brief 传输队列引用，当前实现只保存，未用于提交。 */
-    const vulkan_queue&             transfer_queue;
+    const vma::raii::Allocator&     allocator;  ///< @brief VMA 分配器，UBO 与两张附件图都由它分配
+    const vk::raii::PhysicalDevice& physical_device;  ///< @brief 物理设备，构造时读 minUniformBufferOffsetAlignment 算 UBO 槽跨度
+    const vk::raii::Device&         device;  ///< @brief 逻辑设备，创建缓冲、图像、描述符与管线
+    const vk::raii::PipelineCache&  pipeline_cache;  ///< @brief 管线缓存，透传给 create_from_shader
+    vulkan_recycle_bin&             recycle_bin;  ///< @brief 延迟回收站，旧图像、旧管线与旧描述符按提交令牌销毁
+    const vulkan_queue&             graphic_queue;  ///< @brief 图形队列，附件图与缓冲的 queue family 取自它
+    const vulkan_queue&             transfer_queue;  ///< @brief 传输队列引用，当前实现只保存，未用于提交
 
-    /** @brief 模型管理器（只读引用），提供顶点 / 索引 / 间接命令缓冲与模型数。 */
-    const scene_model_manager&    model_manager;
-    /** @brief 材质管理器（只读引用），提供材质 SSBO 地址与材质数。 */
-    const scene_material_manager& material_manager;
-    /** @brief 灯光管理器（只读引用），提供灯光 SSBO 地址与灯光数。 */
-    const scene_light_manager&    light_manager;
-    /** @brief 贴图管理器（只读引用），提供 bindless 描述符数组。 */
-    const scene_texture_manager&  texture_manager;
-    /** @brief 外部持有的渲染输出图，作为 resolve 目标；本类不拥有它。 */
-    vulkan_image&                 render_output;
+    const scene_model_manager&    model_manager;  ///< @brief 模型管理器（只读引用），提供顶点 / 索引 / 间接命令缓冲与模型数
+    const scene_material_manager& material_manager;  ///< @brief 材质管理器（只读引用），提供材质 SSBO 地址与材质数
+    const scene_light_manager&    light_manager;  ///< @brief 灯光管理器（只读引用），提供灯光 SSBO 地址与灯光数
+    const scene_texture_manager&  texture_manager;  ///< @brief 贴图管理器（只读引用），提供 bindless 描述符数组
+    vulkan_image&                 render_output;  ///< @brief 外部持有的渲染输出图，作为 resolve 目标；本类不拥有它
 
-    /** @brief 当前渲染宽度，resize 后与附件图一致；0 表示尚未 resize。 */
-    uint32_t         width         = 0;
-    /** @brief 当前渲染高度，resize 后与附件图一致；0 表示尚未 resize。 */
-    uint32_t         height        = 0;
-    /** @brief 构造时给定的输出格式，两条图形管线都按它建。 */
-    const vk::Format color_format  = vk::Format::eUndefined;
+    uint32_t         width         = 0;  ///< @brief 当前渲染宽度，resize 后与附件图一致；0 表示尚未 resize
+    uint32_t         height        = 0;  ///< @brief 当前渲染高度，resize 后与附件图一致；0 表示尚未 resize
+    const vk::Format color_format  = vk::Format::eUndefined;  ///< @brief 构造时给定的输出格式，两条图形管线都按它建
 
-    /** @brief 每帧 UBO 槽跨度 = sizeof(vulkan_raster_scene_data) 按 minUniformBufferOffsetAlignment 向上取整。 */
-    vk::DeviceSize ubo_offset = 0;
-    /** @brief host 可见的每帧 UBO，容量 MAX_FRAMES_IN_FLIGHT 个槽，render 里写入后 flush。 */
-    vulkan_buffer  ubo;
+    vk::DeviceSize ubo_offset = 0;  ///< @brief 每帧 UBO 槽跨度 = sizeof(vulkan_raster_scene_data) 按 minUniformBufferOffsetAlignment 向上取整
+    vulkan_buffer  ubo;  ///< @brief host 可见的每帧 UBO，容量 MAX_FRAMES_IN_FLIGHT 个槽，render 里写入后 flush
 
-    /** @brief MSAA 颜色附件图，resize 重建，采样数 MSAA_SAMPLE_COUNT。 */
-    vulkan_image                         color_image;
-    /** @brief 深度附件图，resize 重建，格式 DEPTH_FORMAT。 */
-    vulkan_image                         depth_image;
-    /** @brief 天空盒图形管线：全屏三角形，无顶点输入，深度测试关闭。 */
-    vulkan_pipeline                      environment_pipeline;
-    /** @brief 几何图形管线：vulkan_model_vertex 顶点输入，eBack 剔除并写深度。 */
-    vulkan_pipeline                      pipeline;
-    /** @brief 描述符池，容量为 MAX_FRAMES_IN_FLIGHT 个描述符集。 */
-    vk::raii::DescriptorPool             descriptor_pool = nullptr;
-    /** @brief 每帧一个描述符集，绑定 UBO 窗口与 bindless 贴图数组。 */
-    std::vector<vk::raii::DescriptorSet> descriptor_sets;
+    vulkan_image                         color_image;  ///< @brief MSAA 颜色附件图，resize 重建，采样数 MSAA_SAMPLE_COUNT
+    vulkan_image                         depth_image;  ///< @brief 深度附件图，resize 重建，格式 DEPTH_FORMAT
+    vulkan_pipeline                      environment_pipeline;  ///< @brief 天空盒图形管线：全屏三角形，无顶点输入，深度测试关闭
+    vulkan_pipeline                      pipeline;  ///< @brief 几何图形管线：vulkan_model_vertex 顶点输入，eBack 剔除并写深度
+    vk::raii::DescriptorPool             descriptor_pool = nullptr;  ///< @brief 描述符池，容量为 MAX_FRAMES_IN_FLIGHT 个描述符集
+    std::vector<vk::raii::DescriptorSet> descriptor_sets;  ///< @brief 每帧一个描述符集，绑定 UBO 窗口与 bindless 贴图数组
 };

@@ -7,7 +7,6 @@
  *          个 workgroup，末尾保留输出图的计算读写屏障；后续合成 / 回读仍须按各自阶段另做转换。frame_index 每帧递增，update() 与
  *          reset_accumulation() 都把它清零。
  */
-
 #pragma once
 
 #include "vulkan_core/vulkan_buffer.h"
@@ -124,50 +123,29 @@ private:
     void                          update_descriptor();
 
 private:
-    /** @brief VMA 分配器，每帧 UBO 由它分配。 */
-    const vma::raii::Allocator&     allocator;
-    /** @brief 物理设备，构造时读 minUniformBufferOffsetAlignment 算 UBO 槽跨度。 */
-    const vk::raii::PhysicalDevice& physical_device;
-    /** @brief 逻辑设备，创建缓冲、描述符与管线。 */
-    const vk::raii::Device&         device;
-    /** @brief 管线缓存，透传给 create_from_shader。 */
-    const vk::raii::PipelineCache&  pipeline_cache;
-    /** @brief 延迟回收站，旧管线与旧描述符按提交令牌销毁。 */
-    vulkan_recycle_bin&             recycle_bin;
-    /** @brief 图形队列，UBO 的 queue family 取自它；计算 dispatch 也录在图形队列的命令缓冲上。 */
-    const vulkan_queue&             graphic_queue;
-    /** @brief 传输队列引用，当前实现只保存，未用于提交。 */
-    const vulkan_queue&             transfer_queue;
+    const vma::raii::Allocator&     allocator;  ///< @brief VMA 分配器，每帧 UBO 由它分配
+    const vk::raii::PhysicalDevice& physical_device;  ///< @brief 物理设备，构造时读 minUniformBufferOffsetAlignment 算 UBO 槽跨度
+    const vk::raii::Device&         device;  ///< @brief 逻辑设备，创建缓冲、描述符与管线
+    const vk::raii::PipelineCache&  pipeline_cache;  ///< @brief 管线缓存，透传给 create_from_shader
+    vulkan_recycle_bin&             recycle_bin;  ///< @brief 延迟回收站，旧管线与旧描述符按提交令牌销毁
+    const vulkan_queue&             graphic_queue;  ///< @brief 图形队列，UBO 的 queue family 取自它；计算 dispatch 也录在图形队列的命令缓冲上
+    const vulkan_queue&             transfer_queue;  ///< @brief 传输队列引用，当前实现只保存，未用于提交
 
-    /** @brief 模型管理器（只读引用），提供 TLAS 与模型 SSBO 地址。 */
-    const scene_model_manager&    model_manager;
-    /** @brief 材质管理器（只读引用），提供材质 SSBO 地址与材质数。 */
-    const scene_material_manager& material_manager;
-    /** @brief 灯光管理器（只读引用），提供灯光 SSBO 地址与灯光数。 */
-    const scene_light_manager&    light_manager;
-    /** @brief 贴图管理器（只读引用），提供 bindless 描述符数组。 */
-    const scene_texture_manager&  texture_manager;
-    /** @brief 外部持有的渲染输出图，以 storage image 形式绑定；本类不拥有它。 */
-    vulkan_image&                 render_output;
-    /** @brief 外部持有的 RGBA32F 线性累积图，不包含曝光。 */
-    vulkan_image&                 accumulation;
+    const scene_model_manager&    model_manager;  ///< @brief 模型管理器（只读引用），提供 TLAS 与模型 SSBO 地址
+    const scene_material_manager& material_manager;  ///< @brief 材质管理器（只读引用），提供材质 SSBO 地址与材质数
+    const scene_light_manager&    light_manager;  ///< @brief 灯光管理器（只读引用），提供灯光 SSBO 地址与灯光数
+    const scene_texture_manager&  texture_manager;  ///< @brief 贴图管理器（只读引用），提供 bindless 描述符数组
+    vulkan_image&                 render_output;  ///< @brief 外部持有的渲染输出图，以 storage image 形式绑定；本类不拥有它
+    vulkan_image&                 accumulation;  ///< @brief 外部持有的 RGBA32F 线性累积图，不包含曝光
 
-    /** @brief 当前渲染宽度，resize 记录；0 表示尚未 resize。 */
-    uint32_t width         = 0;
-    /** @brief 当前渲染高度，resize 记录；0 表示尚未 resize。 */
-    uint32_t height        = 0;
-    /** @brief 64 位样本序号，render 先将当前值写入 UBO，再在录制末尾自增；update / reset_accumulation 清零。 */
-    uint64_t frame_index   = 0;
+    uint32_t width         = 0;  ///< @brief 当前渲染宽度，resize 记录；0 表示尚未 resize
+    uint32_t height        = 0;  ///< @brief 当前渲染高度，resize 记录；0 表示尚未 resize
+    uint64_t frame_index   = 0;  ///< @brief 64 位样本序号，render 先将当前值写入 UBO，再在录制末尾自增；update / reset_accumulation 清零
 
-    /** @brief 每帧 UBO 槽跨度 = sizeof(vulkan_rt_scene_data) 按 minUniformBufferOffsetAlignment 向上取整。 */
-    vk::DeviceSize ubo_offset = 0;
-    /** @brief host 可见的每帧 UBO，容量 MAX_FRAMES_IN_FLIGHT 个槽。 */
-    vulkan_buffer  ubo;
+    vk::DeviceSize ubo_offset = 0;  ///< @brief 每帧 UBO 槽跨度 = sizeof(vulkan_rt_scene_data) 按 minUniformBufferOffsetAlignment 向上取整
+    vulkan_buffer  ubo;  ///< @brief host 可见的每帧 UBO，容量 MAX_FRAMES_IN_FLIGHT 个槽
 
-    /** @brief Ray Query 计算管线，入口 rayQueryComputeMain。 */
-    vulkan_pipeline                      pipeline;
-    /** @brief 描述符池，容量为 MAX_FRAMES_IN_FLIGHT 个描述符集。 */
-    vk::raii::DescriptorPool             descriptor_pool = nullptr;
-    /** @brief 每帧一个描述符集，绑定 TLAS、输出图、UBO 窗口、贴图数组与独立累积图。 */
-    std::vector<vk::raii::DescriptorSet> descriptor_sets;
+    vulkan_pipeline                      pipeline;  ///< @brief Ray Query 计算管线，入口 rayQueryComputeMain
+    vk::raii::DescriptorPool             descriptor_pool = nullptr;  ///< @brief 描述符池，容量为 MAX_FRAMES_IN_FLIGHT 个描述符集
+    std::vector<vk::raii::DescriptorSet> descriptor_sets;  ///< @brief 每帧一个描述符集，绑定 TLAS、输出图、UBO 窗口、贴图数组与独立累积图
 };

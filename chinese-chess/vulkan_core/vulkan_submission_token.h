@@ -18,10 +18,8 @@
  */
 struct vulkan_submission_token
 {
-    /** @brief 指向队列共享的时间线信号量；nullptr 表示无效 token。 */
-    const vulkan_semaphore* semaphore = nullptr;
-    /** @brief 要等待的时间线值；成功提交从 1 开始，0 表示尚无提交的已完成前沿。 */
-    uint64_t                value     = 0;
+    const vulkan_semaphore* semaphore = nullptr;  ///< @brief 指向队列共享的时间线信号量；nullptr 表示无效 token
+    uint64_t                value     = 0;  ///< @brief 要等待的时间线值；成功提交从 1 开始，0 表示尚无提交的已完成前沿
 
     /**
      * @brief 判断 token 是否关联了信号量。

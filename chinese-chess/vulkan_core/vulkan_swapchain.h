@@ -31,8 +31,7 @@ public:
     ~vulkan_swapchain();
     /** @brief 禁止拷贝：交换链与信号量不可复制。 */
     vulkan_swapchain(const vulkan_swapchain&) = delete;
-    /** @brief 禁止拷贝赋值。 */
-    vulkan_swapchain& operator=(const vulkan_swapchain&) = delete;
+    vulkan_swapchain& operator=(const vulkan_swapchain&) = delete;  ///< @brief 禁止拷贝赋值
 
     /**
      * @brief 接管 surface、选格式与呈现模式、建 present 队列与帧调度器，并尝试创建第一版交换链。
@@ -175,16 +174,11 @@ private:
      */
     struct image_state
     {
-        /** @brief 交换链分配的 VkImage，不拥有。 */
-        vk::Image image;
-        /** @brief 该 image 的 2D color view。 */
-        vk::raii::ImageView view = nullptr;
-        /** @brief 提交时信号、present 时等待的 render-finished semaphore。 */
-        vk::raii::Semaphore render_finished = nullptr;
-        /** @brief 呈现资源达到可回收条件时由驱动信号；不表示像素已显示或 image 可直接再次使用。 */
-        vk::raii::Fence present_done = nullptr;
-        /** @brief 该 image 的 present 已入队但 fence 尚未确认。 */
-        bool present_pending = false;
+        vk::Image image;  ///< @brief 交换链分配的 VkImage，不拥有
+        vk::raii::ImageView view = nullptr;  ///< @brief 该 image 的 2D color view
+        vk::raii::Semaphore render_finished = nullptr;  ///< @brief 提交时信号、present 时等待的 render-finished semaphore
+        vk::raii::Fence present_done = nullptr;  ///< @brief 呈现资源达到可回收条件时由驱动信号；不表示像素已显示或 image 可直接再次使用
+        bool present_pending = false;  ///< @brief 该 image 的 present 已入队但 fence 尚未确认
     };
     /** @brief 排空所有 slot 的提交与 acquire fence，再逐个等 present fence。 */
     void drain();
@@ -201,36 +195,20 @@ private:
      */
     void log(const char* action, vk::Result result = vk::Result::eSuccess, uint32_t image = UINT32_MAX) const;
 
-    /** @brief 逻辑设备，create 时记录，用于交换链、视图与同步对象；surface 归实例管理。 */
-    const vk::raii::Device* device = nullptr;
-    /** @brief 物理设备，仅用于 surface 能力、格式与呈现模式查询。 */
-    const vk::raii::PhysicalDevice* physical = nullptr;
-    /** @brief 图形队列指针；用于查询族下标，并在取消时等待部分 UI/scene 提交的最新 token。 */
-    const vulkan_queue* graphics = nullptr;
-    /** @brief 选中的颜色格式。 */
-    vk::Format format = vk::Format::eUndefined;
-    /** @brief 选中的颜色空间。 */
-    vk::ColorSpaceKHR color_space = vk::ColorSpaceKHR::eSrgbNonlinear;
-    /** @brief 当前交换链尺寸。 */
-    vk::Extent2D extent{0, 0};
-    /** @brief 选中的呈现模式；surface 支持时用 eMailbox，否则 eFifo。 */
-    vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo;
-    /** @brief 接管 native surface 所有权的 RAII 包装，持有到对象销毁；调用方不得重复销毁该句柄。 */
-    vk::raii::SurfaceKHR surface = nullptr;
-    /** @brief 当前交换链；创建捕获 OutOfDate 后为空，直到后续重建成功。 */
-    vk::raii::SwapchainKHR swapchain = nullptr;
-    /** @brief present 队列包装，可能与其他队列共享提交状态。 */
-    vulkan_queue present_queue;
-    /** @brief 唯一的帧槽游标与逐槽同步对象。 */
-    vulkan_frame_scheduler frames;
-    /** @brief 每个交换链 image 对应的 view 与呈现资源。 */
-    std::vector<image_state> images;
-    /** @brief 交换链 generation，每次 recreate 成功自增，用于拒绝过期帧上下文。 */
-    uint64_t generation = 0;
-    /** @brief 当前是否有已 acquire 尚未归还的 image。 */
-    bool image_acquired = false;
-    /** @brief 本次 acquire 返回 SUBOPTIMAL，呈现后需要重建。 */
-    bool recreate_after_present = false;
-    /** @brief 是否打印 WSI 日志。 */
-    bool trace = false;
+    const vk::raii::Device* device = nullptr;  ///< @brief 逻辑设备，create 时记录，用于交换链、视图与同步对象；surface 归实例管理
+    const vk::raii::PhysicalDevice* physical = nullptr;  ///< @brief 物理设备，仅用于 surface 能力、格式与呈现模式查询
+    const vulkan_queue* graphics = nullptr;  ///< @brief 图形队列指针；用于查询族下标，并在取消时等待部分 UI/scene 提交的最新 token
+    vk::Format format = vk::Format::eUndefined;  ///< @brief 选中的颜色格式
+    vk::ColorSpaceKHR color_space = vk::ColorSpaceKHR::eSrgbNonlinear;  ///< @brief 选中的颜色空间
+    vk::Extent2D extent{0, 0};  ///< @brief 当前交换链尺寸
+    vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo;  ///< @brief 选中的呈现模式；surface 支持时用 eMailbox，否则 eFifo
+    vk::raii::SurfaceKHR surface = nullptr;  ///< @brief 接管 native surface 所有权的 RAII 包装，持有到对象销毁；调用方不得重复销毁该句柄
+    vk::raii::SwapchainKHR swapchain = nullptr;  ///< @brief 当前交换链；创建捕获 OutOfDate 后为空，直到后续重建成功
+    vulkan_queue present_queue;  ///< @brief present 队列包装，可能与其他队列共享提交状态
+    vulkan_frame_scheduler frames;  ///< @brief 唯一的帧槽游标与逐槽同步对象
+    std::vector<image_state> images;  ///< @brief 每个交换链 image 对应的 view 与呈现资源
+    uint64_t generation = 0;  ///< @brief 交换链 generation，每次 recreate 成功自增，用于拒绝过期帧上下文
+    bool image_acquired = false;  ///< @brief 当前是否有已 acquire 尚未归还的 image
+    bool recreate_after_present = false;  ///< @brief 本次 acquire 返回 SUBOPTIMAL，呈现后需要重建
+    bool trace = false;  ///< @brief 是否打印 WSI 日志
 };

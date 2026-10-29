@@ -7,7 +7,6 @@
  *          创建空缓存本身的异常仍可能传播，不能视为完整的容错边界。
  *          进程内单实例（vulkan_application 持有），只在 ~glfw_window() 里 wait_idle 之后 save 一次，F5 不写盘。
  */
-
 #pragma once
 
 #include <vulkan/vulkan_raii.hpp>
@@ -26,12 +25,10 @@ public:
     ~vulkan_pipeline_cache()                                           = default;
     /** @brief 禁用拷贝：缓存句柄是独占的。 */
     vulkan_pipeline_cache(const vulkan_pipeline_cache&)                = delete;
-    /** @brief 禁用拷贝赋值：同上。 */
-    vulkan_pipeline_cache& operator=(const vulkan_pipeline_cache&)     = delete;
+    vulkan_pipeline_cache& operator=(const vulkan_pipeline_cache&)     = delete;  ///< @brief 禁用拷贝赋值：同上
     /** @brief 禁用移动：单实例且被 vulkan_application 长期持有，地址必须稳定。 */
     vulkan_pipeline_cache(vulkan_pipeline_cache&&) noexcept            = delete;
-    /** @brief 禁用移动赋值：同上。 */
-    vulkan_pipeline_cache& operator=(vulkan_pipeline_cache&&) noexcept = delete;
+    vulkan_pipeline_cache& operator=(vulkan_pipeline_cache&&) noexcept = delete;  ///< @brief 禁用移动赋值：同上
 
     /**
      * @brief 读取磁盘缓存（若有效）或建一份空缓存。
@@ -55,6 +52,5 @@ public:
     [[nodiscard]] const vk::raii::PipelineCache& operator*() const noexcept;
 
 private:
-    /** @brief 底层 VkPipelineCache；create 之前为空，加载失败回退时也是新建的空缓存。 */
-    vk::raii::PipelineCache pipeline_cache = nullptr;
+    vk::raii::PipelineCache pipeline_cache = nullptr;  ///< @brief 底层 VkPipelineCache；create 之前为空，加载失败回退时也是新建的空缓存
 };

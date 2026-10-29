@@ -6,7 +6,6 @@
  *          命中条件还包括缓存所记录依赖的 SHA-256 指纹一致；文件解析规则未变时通常能检测依赖修改。
  *          缓存文件头里带编译选项指纹与 Slang 构建串，换选项或换 Slang 版本都会整份失效。
  */
-
 #pragma once
 
 #include <array>
@@ -74,18 +73,12 @@ private:
      * @brief 禁止拷贝构造：全局 session 与缓存都必须唯一。
      */
     shader_compiler(const shader_compiler&)            = delete;
-    /**
-     * @brief 禁止拷贝赋值：全局 session 与缓存都必须唯一。
-     */
-    shader_compiler& operator=(const shader_compiler&) = delete;
+    shader_compiler& operator=(const shader_compiler&) = delete;  ///< @brief 禁止拷贝赋值：全局 session 与缓存都必须唯一
     /**
      * @brief 禁止移动构造：实例是静态对象，地址必须稳定。
      */
     shader_compiler(shader_compiler&&)                 = delete;
-    /**
-     * @brief 禁止移动赋值：实例是静态对象，地址必须稳定。
-     */
-    shader_compiler& operator=(shader_compiler&&)      = delete;
+    shader_compiler& operator=(shader_compiler&&)      = delete;  ///< @brief 禁止移动赋值：实例是静态对象，地址必须稳定
 
     /**
      * @brief 读 resources/cache/shader_cache.cache，文件头与当前构建不一致就整份丢弃。
@@ -96,20 +89,14 @@ private:
      */
     void save_cache() const;
 
-    /** @brief 进程内唯一实例，静态存储期；构造即完成 Slang 初始化与缓存读入。 */
-    static shader_compiler               compiler;
-    /** @brief Slang 全局会话，只建一次；每个文件 / 每段源码的 session 都由它派生。 */
-    Slang::ComPtr<slang::IGlobalSession> global_session;
+    static shader_compiler               compiler;  ///< @brief 进程内唯一实例，静态存储期；构造即完成 Slang 初始化与缓存读入
+    Slang::ComPtr<slang::IGlobalSession> global_session;  ///< @brief Slang 全局会话，只建一次；每个文件 / 每段源码的 session 都由它派生
 
-    /** @brief 编译选项表：直接出 SPIR-V、保留入口名、优化与调试等级、列主序、RayQuery 与非一致索引能力、C 布局。 */
-    std::vector<slang::CompilerOptionEntry> options;
-    /** @brief 目标描述：SPIR-V 目标与 spirv_1_6 profile。 */
-    slang::TargetDesc                       target_desc;
-    /** @brief session 描述，指向上面两个成员；文件版会拷贝它再改 search path。 */
-    slang::SessionDesc                      session_desc;
+    std::vector<slang::CompilerOptionEntry> options;  ///< @brief 编译选项表：直接出 SPIR-V、保留入口名、优化与调试等级、列主序、RayQuery 与非一致索引能力、C 布局
+    slang::TargetDesc                       target_desc;  ///< @brief 目标描述：SPIR-V 目标与 spirv_1_6 profile
+    slang::SessionDesc                      session_desc;  ///< @brief session 描述，指向上面两个成员；文件版会拷贝它再改 search path
 
-    /** @brief 当前构建的缓存文件头，读入时逐字节比对，不一致就整份丢弃。 */
-    std::string shader_cache_header;
+    std::string shader_cache_header;  ///< @brief 当前构建的缓存文件头，读入时逐字节比对，不一致就整份丢弃
 
     /**
      * @brief 一条着色器缓存记录：依赖路径列表、依赖哈希指纹与编译产物。
@@ -118,13 +105,9 @@ private:
      */
     struct shader_cache_info
     {
-        /** @brief 依赖文件的路径列表，每行一个，顺序与收集时一致。 */
-        std::string       dependence;
-        /** @brief 依赖哈希指纹，排序后拼接，用于快速判断依赖是否变过。 */
-        std::string       fingerprint;
-        /** @brief 该缓存键对应的 SPIR-V 字节。 */
-        std::vector<char> spirv;
+        std::string       dependence;  ///< @brief 依赖文件的路径列表，每行一个，顺序与收集时一致
+        std::string       fingerprint;  ///< @brief 依赖哈希指纹，排序后拼接，用于快速判断依赖是否变过
+        std::vector<char> spirv;  ///< @brief 该缓存键对应的 SPIR-V 字节
     };
-    /** @brief 缓存键（路径 + 入口集合）到缓存记录的映射；mutable 让 const 编译入口也能填缓存。 */
-    mutable std::unordered_map<std::string, shader_cache_info> shader_cache;
+    mutable std::unordered_map<std::string, shader_cache_info> shader_cache;  ///< @brief 缓存键（路径 + 入口集合）到缓存记录的映射；mutable 让 const 编译入口也能填缓存
 };

@@ -3,7 +3,7 @@
  * @brief ui_camera 的实现：摄像机控件、参数回写与 resize 时的投影重置。
  * @details 每个控件的返回值就是“是否被编辑”，被编辑时立刻写回 scene_manager 的活动相机并调用
  *          need_camera_update()；resize 先按新宽高重算正交范围与 aspect，再统一回写两套投影。
- *          面板只持有可编辑副本，不缓存任何 GPU 状态。
+ *          面板只持有可编辑副本，不记录任何 GPU 状态。
  */
 #include "ui_camera.h"
 

@@ -69,14 +69,10 @@ private:
      */
     [[nodiscard]] std::optional<int> material_index_of(material_handle _material) const noexcept;
 
-    /** @brief 场景管理器引用；材质、模型、贴图与脏标记都经它转发。 */
-    scene_manager& manager;
+    scene_manager& manager;  ///< @brief 场景管理器引用；材质、模型、贴图与脏标记都经它转发
 
-    /** @brief 面板展示的材质句柄列表；只是视图，不拥有材质实体。 */
-    std::vector<material_handle> materials;
-    /** @brief 面板展示的模型句柄列表；只是视图，不拥有模型实体。 */
-    std::vector<model_handle>    models;
+    std::vector<material_handle> materials;  ///< @brief 面板展示的材质句柄列表；只是视图，不拥有材质实体
+    std::vector<model_handle>    models;  ///< @brief 面板展示的模型句柄列表；只是视图，不拥有模型实体
 
-    /** @brief 已加载贴图的路径到句柄映射，用于文件监视重载与按钮旁显示路径。 */
-    std::unordered_map<std::filesystem::path, texture_handle> textures;
+    std::unordered_map<std::filesystem::path, texture_handle> textures;  ///< @brief 已加载贴图的路径到句柄映射，用于文件监视重载与按钮旁显示路径
 };

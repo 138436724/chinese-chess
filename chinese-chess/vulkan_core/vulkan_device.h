@@ -25,12 +25,10 @@ public:
     ~vulkan_device()                               = default;
     /** @brief 禁止拷贝：VkDevice 句柄唯一。 */
     vulkan_device(const vulkan_device&)            = delete;
-    /** @brief 禁止拷贝赋值。 */
-    vulkan_device& operator=(const vulkan_device&) = delete;
+    vulkan_device& operator=(const vulkan_device&) = delete;  ///< @brief 禁止拷贝赋值
     /** @brief 移动构造：用 exchange 把源设备句柄搬到新对象，源对象变为 nullptr。 */
     vulkan_device(vulkan_device&& _other) noexcept;
-    /** @brief 移动赋值：与源对象交换句柄，源对象拿到本对象原来的设备。 */
-    vulkan_device& operator=(vulkan_device&& _other) noexcept;
+    vulkan_device& operator=(vulkan_device&& _other) noexcept;  ///< @brief 移动赋值：与源对象交换句柄，源对象拿到本对象原来的设备
 
     /**
      * @brief 用给定的队列族下标与特性链创建逻辑设备。
@@ -58,6 +56,5 @@ public:
     [[nodiscard]] explicit                operator bool() const noexcept;
 
 private:
-    /** @brief 逻辑设备句柄，未创建时为 nullptr。 */
-    vk::raii::Device device = nullptr;
+    vk::raii::Device device = nullptr;  ///< @brief 逻辑设备句柄，未创建时为 nullptr
 };

@@ -7,7 +7,6 @@
  *          模型本身只由 destroy 移除。所有 GPU 数据都在 update() 里上传，令牌追加到调用方
  *          给出的 waited_infos，scene_manager 在 render 提交时接入 GPU 等待依赖，回收站按 token 完成情况释放资源。
  */
-
 #pragma once
 
 #include "scene_data_type.h"
@@ -108,13 +107,13 @@ public:
     /**
      * @brief 取所有网格顶点拼成的共享顶点缓冲。
      * @return 缓冲引用；首次 update() 之前是空缓冲。
-     * @note 引用指向成员包装对象，本 manager 存活期间有效；重建会替换底层 VkBuffer 与设备地址，不能缓存旧值。
+     * @note 引用指向成员包装对象，本 manager 存活期间有效；重建会替换底层 VkBuffer 与设备地址，不能沿用旧值。
      */
     [[nodiscard]] const vulkan_buffer&                 get_vertices_buffer() const noexcept;
     /**
      * @brief 取所有网格索引拼成的共享索引缓冲。
      * @return 缓冲引用；首次 update() 之前是空缓冲。
-     * @note 引用指向成员包装对象，本 manager 存活期间有效；重建会替换底层 VkBuffer 与设备地址，不能缓存旧值。
+     * @note 引用指向成员包装对象，本 manager 存活期间有效；重建会替换底层 VkBuffer 与设备地址，不能沿用旧值。
      */
     [[nodiscard]] const vulkan_buffer&                 get_indices_buffer() const noexcept;
     /**
@@ -143,18 +142,12 @@ private:
      */
     struct scene_mesh_data
     {
-        /** @brief CPU 侧顶点数据，元素是 vulkan_model_vertex（位置 / 法线 / uv）。 */
-        std::vector<vulkan_model_vertex> vertices;
-        /** @brief CPU 侧 32 位索引，指向本网格的 vertices。 */
-        std::vector<uint32_t>            indices;
-        /** @brief 本网格顶点在共享顶点缓冲中的字节偏移。 */
-        size_t                           vertex_offset   = 0;
-        /** @brief 本网格索引在共享索引缓冲中的字节偏移。 */
-        size_t                           index_offset    = 0;
-        /** @brief 引用本网格的存活模型数，update() 每轮重算，0 表示可回收。 */
-        uint32_t                         reference_count = 0;
-        /** @brief 本网格的 BLAS，顶点 / 索引缓冲重建时整条重建。 */
-        vulkan_acceleration_structure    blas;
+        std::vector<vulkan_model_vertex> vertices;  ///< @brief CPU 侧顶点数据，元素是 vulkan_model_vertex（位置 / 法线 / uv）
+        std::vector<uint32_t>            indices;  ///< @brief CPU 侧 32 位索引，指向本网格的 vertices
+        size_t                           vertex_offset   = 0;  ///< @brief 本网格顶点在共享顶点缓冲中的字节偏移
+        size_t                           index_offset    = 0;  ///< @brief 本网格索引在共享索引缓冲中的字节偏移
+        uint32_t                         reference_count = 0;  ///< @brief 引用本网格的存活模型数，update() 每轮重算，0 表示可回收
+        vulkan_acceleration_structure    blas;  ///< @brief 本网格的 BLAS，顶点 / 索引缓冲重建时整条重建
     };
 
     /**
@@ -183,48 +176,29 @@ private:
      */
     void update_ssbo(std::vector<vulkan_submission_token>& _waited_infos);
 
-    /** @brief VMA 分配器，网格缓冲、TLAS 与 SSBO 都由它分配。 */
-    const vma::raii::Allocator&     allocator;
-    /** @brief 物理设备，BLAS/TLAS 构建时查询属性与 scratch 对齐。 */
-    const vk::raii::PhysicalDevice& physical_device;
-    /** @brief 逻辑设备，创建缓冲、加速结构与一次性命令缓冲。 */
-    const vk::raii::Device&         device;
-    /** @brief 延迟回收站，所有被替换的 GPU 资源都推迟到对应提交完成之后销毁。 */
-    vulkan_recycle_bin&             recycle_bin;
-    /** @brief 图形队列，网格上传与加速结构构建提交到它。 */
-    const vulkan_queue&             graphic_queue;
-    /** @brief 传输队列，upload_buffer 的 staging 拷贝与队列族转移走它。 */
-    const vulkan_queue&             transfer_queue;
-    /** @brief 材质管理器，update_ssbo 用它把 material_handle 翻成紧凑绑定下标。 */
-    scene_material_manager&         material_manager;
+    const vma::raii::Allocator&     allocator;  ///< @brief VMA 分配器，网格缓冲、TLAS 与 SSBO 都由它分配
+    const vk::raii::PhysicalDevice& physical_device;  ///< @brief 物理设备，BLAS/TLAS 构建时查询属性与 scratch 对齐
+    const vk::raii::Device&         device;  ///< @brief 逻辑设备，创建缓冲、加速结构与一次性命令缓冲
+    vulkan_recycle_bin&             recycle_bin;  ///< @brief 延迟回收站，所有被替换的 GPU 资源都推迟到对应提交完成之后销毁
+    const vulkan_queue&             graphic_queue;  ///< @brief 图形队列，网格上传与加速结构构建提交到它
+    const vulkan_queue&             transfer_queue;  ///< @brief 传输队列，upload_buffer 的 staging 拷贝与队列族转移走它
+    scene_material_manager&         material_manager;  ///< @brief 材质管理器，update_ssbo 用它把 material_handle 翻成紧凑绑定下标
 
-    /** @brief 模型 / 网格数据需要重传 GPU（模型增删、矩阵或可见性变化）。 */
-    bool is_dirty     = true;
-    /** @brief 网格集合发生变化，需要重建顶点 / 索引缓冲与全部 BLAS。 */
-    bool meshes_dirty = true;
+    bool is_dirty     = true;  ///< @brief 模型 / 网格数据需要重传 GPU（模型增删、矩阵或可见性变化）
+    bool meshes_dirty = true;  ///< @brief 网格集合发生变化，需要重建顶点 / 索引缓冲与全部 BLAS
 
-    /** @brief 网格槽表，按槽序拼进共享顶点 / 索引缓冲。 */
-    scene_handle_map<scene_mesh_data, mesh_tag>            meshes;  // submit to gpu in slot order
-    /** @brief 模型槽表，draw 命令与 SSBO 按存活模型槽序排列；TLAS 另过滤无效网格，正常路径需保证模型引用有效网格。 */
-    scene_handle_map<scene_model_data, model_tag>          models;
-    /** @brief 路径 → 网格槽的去重缓存；网格回收时同步清掉对应项。 */
-    std::unordered_map<std::filesystem::path, mesh_handle> mesh_cache;
+    scene_handle_map<scene_mesh_data, mesh_tag>            meshes;  ///< @brief 网格槽表，按槽序拼进共享顶点 / 索引缓冲。
+    scene_handle_map<scene_model_data, model_tag>          models;  ///< @brief 模型槽表，draw 命令与 SSBO 按存活模型槽序排列；TLAS 另过滤无效网格，正常路径需保证模型引用有效网格
+    std::unordered_map<std::filesystem::path, mesh_handle> mesh_cache;  ///< @brief 路径 → 网格槽的去重缓存；网格回收时同步清掉对应项
 
-    /** @brief 所有网格顶点拼成的共享顶点缓冲，同时用作 BLAS 顶点输入与光追的 BDA 顶点地址。 */
-    vulkan_buffer vertices_buffer;
-    /** @brief 所有网格索引拼成的共享索引缓冲，同时用作 BLAS 索引输入与光追的 BDA 索引地址。 */
-    vulkan_buffer indices_buffer;
+    vulkan_buffer vertices_buffer;  ///< @brief 所有网格顶点拼成的共享顶点缓冲，同时用作 BLAS 顶点输入与光追的 BDA 顶点地址
+    vulkan_buffer indices_buffer;  ///< @brief 所有网格索引拼成的共享索引缓冲，同时用作 BLAS 索引输入与光追的 BDA 索引地址
 
-    /** @brief 上一次 TLAS 构建 / refit 使用的实例数，用于判断能否就地 refit。 */
-    size_t                        tlas_instance_count = 0;
-    /** @brief TLAS 构建 / refit 复用的 scratch 缓冲，尺寸按 build 与 update 取较大者。 */
-    vulkan_buffer                 tlas_scratch_buffer;
-    /** @brief 顶层加速结构，覆盖所有网格有效的模型实例。 */
-    vulkan_acceleration_structure tlas;
+    size_t                        tlas_instance_count = 0;  ///< @brief 上一次 TLAS 构建 / refit 使用的实例数，用于判断能否就地 refit
+    vulkan_buffer                 tlas_scratch_buffer;  ///< @brief TLAS 构建 / refit 复用的 scratch 缓冲，尺寸按 build 与 update 取较大者
+    vulkan_acceleration_structure tlas;  ///< @brief 顶层加速结构，覆盖所有网格有效的模型实例
 
-    /** @brief 按模型槽序排列的 vk::DrawIndexedIndirectCommand 缓冲。 */
-    vulkan_buffer draw_commands;
+    vulkan_buffer draw_commands;  ///< @brief 按模型槽序排列的 vk::DrawIndexedIndirectCommand 缓冲
 
-    /** @brief 模型 SSBO，元素是 vulkan_model_data（模型矩阵、材质绑定、顶点 / 索引设备地址）。 */
-    vulkan_buffer ssbo;
+    vulkan_buffer ssbo;  ///< @brief 模型 SSBO，元素是 vulkan_model_data（模型矩阵、材质绑定、顶点 / 索引设备地址）
 };

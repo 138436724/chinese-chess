@@ -2,11 +2,10 @@
  * @file vulkan_image.h
  * @brief VMA 图像 + ImageView 的 RAII 包装，附带 layout/stage/access/queue 状态跟踪。
  * @details create 要求 image 与 imageview 的格式、层数一致，且只接受单 queue family 的
- *          Exclusive 图像；成功后缓存格式、extent、clear value 与归属 queue family。
+ *          Exclusive 图像；成功后记录格式、extent、clear value 与归属 queue family。
  *          transition_state 用追踪的旧状态作 src、入参作 dst 生成 barrier，并在返回前把
  *          layout/stage/access 更新为目标值。类不等待 GPU，也不替调用方做首次布局转换。
  */
-
 #pragma once
 
 #include <cstdint>
@@ -30,22 +29,16 @@ public:
     ~vulkan_image()                              = default;
     /** @brief 禁止拷贝：图像与视图句柄必须有唯一持有者。 */
     vulkan_image(const vulkan_image&)            = delete;
-    /** @brief 禁止拷贝赋值：所有权只能经移动转移。 */
-    vulkan_image& operator=(const vulkan_image&) = delete;
+    vulkan_image& operator=(const vulkan_image&) = delete;  ///< @brief 禁止拷贝赋值：所有权只能经移动转移
     /**
      * @brief 移动构造：逐成员 std::exchange 接管，源对象回到未创建状态。
      * @param _other 被移动的源图像，构造后其句柄与追踪状态都为空。
      */
     vulkan_image(vulkan_image&& _other) noexcept;
-    /**
-     * @brief 移动赋值：自赋值直接返回，否则逐成员 std::ranges::swap。
-     * @param _other 被交换的源图像，交换后两边各自持有对方原来的图像与追踪状态。
-     * @return *this。
-     */
-    vulkan_image& operator=(vulkan_image&& _other) noexcept;
+    vulkan_image& operator=(vulkan_image&& _other) noexcept;  ///< @brief 移动赋值：自赋值直接返回，否则逐成员 std::ranges::swap
 
     /**
-     * @brief 按 _image_info 分配图像与视图，并缓存格式、extent、clear value 与 queue family。
+     * @brief 按 _image_info 分配图像与视图，并记录格式、extent、clear value 与 queue family。
      * @param _allocator VMA 分配器，图像与视图都通过它（含 callbacks）创建。
      * @param _device 创建 imageview，Debug 下还用来设置对象名。
      * @param _image_info 图像创建信息；只接受 queueFamilyIndexCount == 1 且 eExclusive。
@@ -91,12 +84,12 @@ public:
 
     /**
      * @brief 取图像格式。
-     * @return 创建时缓存的 vk::Format；未创建时是 eUndefined。
+     * @return 创建时记录的 vk::Format；未创建时是 eUndefined。
      */
     [[nodiscard]] vk::Format                 get_format() const noexcept;
     /**
      * @brief 取图像宽高。
-     * @return 创建时缓存的 extent；未创建时是 0 x 0。
+     * @return 创建时记录的 extent；未创建时是 0 x 0。
      */
     [[nodiscard]] vk::Extent2D               get_extent() const noexcept;
     /**
@@ -167,24 +160,15 @@ public:
                                     const vk::ImageCopy2&          _copy_info) noexcept;
 
 private:
-    /** @brief 创建时缓存的图像格式，get_format() 直接返回它。 */
-    vk::Format     format      = vk::Format::eUndefined;
-    /** @brief 创建时缓存的宽高，get_extent() 直接返回它。 */
-    vk::Extent2D   extent      = vk::Extent2D{0, 0};
-    /** @brief 创建时保存的清除值，只作为元数据保留。 */
-    vk::ClearValue clear_value = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+    vk::Format     format      = vk::Format::eUndefined;  ///< @brief 创建时记录的图像格式，get_format() 直接返回它
+    vk::Extent2D   extent      = vk::Extent2D{0, 0};  ///< @brief 创建时记录的宽高，get_extent() 直接返回它
+    vk::ClearValue clear_value = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);  ///< @brief 创建时保存的清除值，只作为元数据保留
 
-    /** @brief 下一条 barrier 的 srcStageMask，最近一次过渡的目标阶段。 */
-    vk::PipelineStageFlags2 stage  = vk::PipelineStageFlagBits2::eNone;
-    /** @brief 下一条 barrier 的 srcAccessMask，最近一次过渡的目标访问。 */
-    vk::AccessFlags2        access = vk::AccessFlagBits2::eNone;
-    /** @brief 下一条 barrier 的 oldLayout，最近一次过渡的目标布局。 */
-    vk::ImageLayout         layout = vk::ImageLayout::eUndefined;
-    /** @brief 当前归属的 queue family，跨 family 转移时作为 barrier 的 srcQueueFamilyIndex。 */
-    uint32_t                queue  = vk::QueueFamilyIgnored;
+    vk::PipelineStageFlags2 stage  = vk::PipelineStageFlagBits2::eNone;  ///< @brief 下一条 barrier 的 srcStageMask，最近一次过渡的目标阶段
+    vk::AccessFlags2        access = vk::AccessFlagBits2::eNone;  ///< @brief 下一条 barrier 的 srcAccessMask，最近一次过渡的目标访问
+    vk::ImageLayout         layout = vk::ImageLayout::eUndefined;  ///< @brief 下一条 barrier 的 oldLayout，最近一次过渡的目标布局
+    uint32_t                queue  = vk::QueueFamilyIgnored;  ///< @brief 当前归属的 queue family，跨 family 转移时作为 barrier 的 srcQueueFamilyIndex
 
-    /** @brief VMA 图像句柄，析构即归还内存；未 create 时为 nullptr。 */
-    vma::raii::Image    image     = nullptr;
-    /** @brief 与图像成对创建的视图句柄，按声明序先于 image 销毁；未 create 时为 nullptr。 */
-    vk::raii::ImageView imageview = nullptr;
+    vma::raii::Image    image     = nullptr;  ///< @brief VMA 图像句柄，析构即归还内存；未 create 时为 nullptr
+    vk::raii::ImageView imageview = nullptr;  ///< @brief 与图像成对创建的视图句柄，按声明序先于 image 销毁；未 create 时为 nullptr
 };

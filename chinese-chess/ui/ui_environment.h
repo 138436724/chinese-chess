@@ -52,6 +52,5 @@ public:
     void handle(int _key, int _scancode, int _action, int _mods) noexcept;
 
 private:
-    /** @brief 场景管理器引用，环境图与强度都经它读写。 */
-    scene_manager& manager;
+    scene_manager& manager;  ///< @brief 场景管理器引用，环境图与强度都经它读写
 };

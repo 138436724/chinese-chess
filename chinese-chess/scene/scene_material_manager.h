@@ -144,10 +144,8 @@ private:
      */
     struct material_entry
     {
-        /** @brief 材质的 CPU 侧参数，字段语义见 scene_material_data。 */
-        scene_material_data data;
-        /** @brief GPU 材质数组下标；update_ssbo 按 live() 顺序重新赋值。 */
-        uint32_t            binding = scene_handle<material_tag>::npos;
+        scene_material_data data;  ///< @brief 材质的 CPU 侧参数，字段语义见 scene_material_data
+        uint32_t            binding = scene_handle<material_tag>::npos;  ///< @brief GPU 材质数组下标；update_ssbo 按 live() 顺序重新赋值
     };
 
     /**
@@ -158,24 +156,15 @@ private:
      */
     void update_ssbo(std::vector<vulkan_submission_token>& _waited_infos);
 
-    /** @brief VMA 分配器引用，创建与重建 SSBO 时使用。 */
-    const vma::raii::Allocator& allocator;
-    /** @brief 逻辑设备引用，创建缓冲与一次性命令缓冲时使用。 */
-    const vk::raii::Device&     device;
-    /** @brief 回收站引用，旧 SSBO 与中间资源按 token 延迟销毁。 */
-    vulkan_recycle_bin&         recycle_bin;
-    /** @brief SSBO 的所有者队列，也是着色器读取的消费者队列。 */
-    const vulkan_queue&         graphic_queue;
-    /** @brief 上传复制使用的队列，可与 graphic_queue 是同一个 VkQueue。 */
-    const vulkan_queue&         transfer_queue;
-    /** @brief 贴图管理器引用：set_texture / destroy 在此 retain/release，SSBO 在此查紧凑 binding。 */
-    scene_texture_manager&      texture_manager;
+    const vma::raii::Allocator& allocator;  ///< @brief VMA 分配器引用，创建与重建 SSBO 时使用
+    const vk::raii::Device&     device;  ///< @brief 逻辑设备引用，创建缓冲与一次性命令缓冲时使用
+    vulkan_recycle_bin&         recycle_bin;  ///< @brief 回收站引用，旧 SSBO 与中间资源按 token 延迟销毁
+    const vulkan_queue&         graphic_queue;  ///< @brief SSBO 的所有者队列，也是着色器读取的消费者队列
+    const vulkan_queue&         transfer_queue;  ///< @brief 上传复制使用的队列，可与 graphic_queue 是同一个 VkQueue
+    scene_texture_manager&      texture_manager;  ///< @brief 贴图管理器引用：set_texture / destroy 在此 retain/release，SSBO 在此查紧凑 binding
 
-    /** @brief 脏标志：材质增删或贴图通道改动后置位，update 成功后清除；初值 true 保证首次处理（空表不上传）。 */
-    bool is_dirty = true;
+    bool is_dirty = true;  ///< @brief 脏标志：材质增删或贴图通道改动后置位，update 成功后清除；初值 true 保证首次处理（空表不上传）
 
-    /** @brief 材质槽表，遍历顺序决定 GPU 数组下标（binding）。 */
-    scene_handle_map<material_entry, material_tag> materials;
-    /** @brief 存放 vulkan_material_data 数组的共享 SSBO，同时提供设备地址给渲染器。 */
-    vulkan_buffer                                  ssbo;
+    scene_handle_map<material_entry, material_tag> materials;  ///< @brief 材质槽表，遍历顺序决定 GPU 数组下标（binding）
+    vulkan_buffer                                  ssbo;  ///< @brief 存放 vulkan_material_data 数组的共享 SSBO，同时提供设备地址给渲染器
 };

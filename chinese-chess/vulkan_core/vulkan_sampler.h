@@ -6,7 +6,6 @@
  *          翻成 vk::SamplerCreateInfo，各向异性开启时取设备上限 maxSamplerAnisotropy，关闭时写 1；
  *          borderColor 恒为不透明黑、compareOp 恒为 eAlways，比较采样不在本类范围内。
  */
-
 #pragma once
 
 #include <compare>
@@ -23,37 +22,20 @@
  */
 struct sampler_create_info
 {
-    /** @brief 放大过滤，默认 eLinear。 */
-    vk::Filter            mag_filter  = vk::Filter::eLinear;
-    /** @brief 缩小过滤，默认 eLinear。 */
-    vk::Filter            min_filter  = vk::Filter::eLinear;
-    /** @brief mip 之间过滤方式，默认 eLinear；字形图集用 eNearest 配 max_lod = 0。 */
-    vk::SamplerMipmapMode mipmap_mode = vk::SamplerMipmapMode::eLinear;
+    vk::Filter            mag_filter  = vk::Filter::eLinear;  ///< @brief 放大过滤，默认 eLinear
+    vk::Filter            min_filter  = vk::Filter::eLinear;  ///< @brief 缩小过滤，默认 eLinear
+    vk::SamplerMipmapMode mipmap_mode = vk::SamplerMipmapMode::eLinear;  ///< @brief mip 之间过滤方式，默认 eLinear；字形图集用 eNearest 配 max_lod = 0
 
-    /** @brief U 方向寻址模式，默认 eRepeat；eClampToEdge 将越界采样钳制到边缘 texel。 */
-    vk::SamplerAddressMode address_mode_u = vk::SamplerAddressMode::eRepeat;
-    /** @brief V 方向寻址模式，默认 eRepeat。 */
-    vk::SamplerAddressMode address_mode_v = vk::SamplerAddressMode::eRepeat;
-    /** @brief W 方向寻址模式，默认 eRepeat（2D 采样用不到）。 */
-    vk::SamplerAddressMode address_mode_w = vk::SamplerAddressMode::eRepeat;
+    vk::SamplerAddressMode address_mode_u = vk::SamplerAddressMode::eRepeat;  ///< @brief U 方向寻址模式，默认 eRepeat；eClampToEdge 将越界采样钳制到边缘 texel
+    vk::SamplerAddressMode address_mode_v = vk::SamplerAddressMode::eRepeat;  ///< @brief V 方向寻址模式，默认 eRepeat
+    vk::SamplerAddressMode address_mode_w = vk::SamplerAddressMode::eRepeat;  ///< @brief W 方向寻址模式，默认 eRepeat（2D 采样用不到）
 
-    /** @brief 是否开启各向异性过滤；开启时 create 取设备上限 maxSamplerAnisotropy。 */
-    bool  enable_anisotropy = false;
-    /** @brief 最小 LOD 钳制，默认 0。 */
-    float min_lod           = 0.f;
-    /** @brief 最大 LOD 钳制，默认 vk::LodClampNone 表示不限制。 */
-    float max_lod           = vk::LodClampNone;
+    bool  enable_anisotropy = false;  ///< @brief 是否开启各向异性过滤；开启时 create 取设备上限 maxSamplerAnisotropy
+    float min_lod           = 0.f;  ///< @brief 最小 LOD 钳制，默认 0
+    float max_lod           = vk::LodClampNone;  ///< @brief 最大 LOD 钳制，默认 vk::LodClampNone 表示不限制
 
-    /**
-     * @brief 默认逐字段相等比较，用于去重与容器查找。
-     * @return 所有字段依次相等时为 true。
-     */
-    bool operator==(const sampler_create_info&) const  = default;
-    /**
-     * @brief 默认三路比较，字段声明序即比较顺序。
-     * @return 各字段的公共比较类别；含 float 字段，因此是 std::partial_ordering。
-     */
-    auto operator<=>(const sampler_create_info&) const = default;
+    bool operator==(const sampler_create_info&) const  = default;  ///< @brief 默认逐字段相等比较，用于去重与容器查找
+    auto operator<=>(const sampler_create_info&) const = default;  ///< @brief 默认三路比较，字段声明序即比较顺序
 };
 
 /**
@@ -71,19 +53,13 @@ public:
     ~vulkan_sampler()                                = default;
     /** @brief 禁止拷贝：采样器句柄必须有唯一持有者。 */
     vulkan_sampler(const vulkan_sampler&)            = delete;
-    /** @brief 禁止拷贝赋值：所有权只能经移动转移。 */
-    vulkan_sampler& operator=(const vulkan_sampler&) = delete;
+    vulkan_sampler& operator=(const vulkan_sampler&) = delete;  ///< @brief 禁止拷贝赋值：所有权只能经移动转移
     /**
      * @brief 移动构造：std::exchange 接管句柄，源对象回到 nullptr。
      * @param _other 被移动的源包装，构造后其句柄为 nullptr。
      */
     vulkan_sampler(vulkan_sampler&& _other) noexcept;
-    /**
-     * @brief 移动赋值：自赋值直接返回，否则 std::ranges::swap 两个句柄。
-     * @param _other 被交换的源包装，交换后两边的句柄互换。
-     * @return *this。
-     */
-    vulkan_sampler& operator=(vulkan_sampler&& _other) noexcept;
+    vulkan_sampler& operator=(vulkan_sampler&& _other) noexcept;  ///< @brief 移动赋值：自赋值直接返回，否则 std::ranges::swap 两个句柄
 
     /**
      * @brief 按 _info 组装 vk::SamplerCreateInfo 并创建采样器句柄。
@@ -108,6 +84,5 @@ public:
     [[nodiscard]] const vk::raii::Sampler& operator*() const noexcept;
 
 private:
-    /** @brief 采样器句柄；未 create 时为 nullptr。 */
-    vk::raii::Sampler sampler = nullptr;
+    vk::raii::Sampler sampler = nullptr;  ///< @brief 采样器句柄；未 create 时为 nullptr
 };

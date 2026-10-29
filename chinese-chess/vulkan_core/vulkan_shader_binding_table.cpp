@@ -52,7 +52,7 @@ vulkan_shader_binding_table& vulkan_shader_binding_table::operator=(vulkan_shade
 
 /**
  * @brief 按对齐规则把 _group_count 个组句柄排进 SBT 缓冲，并填好四个 region。
- * @note 只有第一次调用才查 PhysicalDeviceRayTracingPipelinePropertiesKHR，之后复用缓存的三个对齐值；
+ * @note 只有第一次调用才查 PhysicalDeviceRayTracingPipelinePropertiesKHR，之后复用记录的三个对齐值；
  *       offsets 数组固定 5 项，实际只拷贝 min(_group_count, 5) 项；少组时也不重排，不能据此当作通用 SBT 布局生成器。
  *       callable region 恒为 (0,0,0)；copy 录在调用方已 begin_record 的命令缓冲上，本函数不提交。
  */

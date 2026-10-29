@@ -186,7 +186,7 @@ void ui_manager::resize(uint32_t _width, uint32_t _height)
 }
 
 /**
- * @brief 起一帧 ImGui、构建“场景设置”窗口与全部面板，最后缓存 draw data。
+ * @brief 起一帧 ImGui、构建“场景设置”窗口与全部面板，最后记录 draw data。
  * @note 面板顺序固定为摄像机、灯光、物体、棋局、环境；draw_data 由本轮 render 消费，下一次 ImGui::NewFrame 会使其失效。
  */
 void ui_manager::update()

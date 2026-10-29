@@ -5,7 +5,6 @@
  *          成功结果与输入 wchar_t 码元等长同序，重复码元不去重；Windows 上不合并 UTF-16 代理对。FONTS_PATH 是运行时的
  *          字体目录常量，相对运行目录 chinese-chess/。
  */
-
 #pragma once
 
 #include <cstdint>
@@ -25,18 +24,12 @@ constexpr std::string_view FONTS_PATH = "resources\\fonts\\";
  */
 struct character_info
 {
-    /** @brief 位图宽度（像素），即 FreeType 的 bitmap.width。 */
-    uint32_t             width          = 0;
-    /** @brief 位图高度（像素），即 FreeType 的 bitmap.rows。 */
-    uint32_t             height         = 0;
-    /** @brief bitmap_left 转成 uint32_t 的水平偏移；原值为负时会回绕。 */
-    uint32_t             bearing_width  = 0;
-    /** @brief bitmap_top 转成 uint32_t 的垂直偏移，向上为正；原值为负时会回绕。 */
-    uint32_t             bearing_height = 0;
-    /** @brief 水平步进（像素），由 advance.x 的 26.6 定点数加 32 后整除 64 得到。 */
-    uint32_t             advance        = 0;
-    /** @brief 连续复制的 width * height 字节，按紧密灰度像素使用。 */
-    std::vector<uint8_t> buffer;
+    uint32_t             width          = 0;  ///< @brief 位图宽度（像素），即 FreeType 的 bitmap.width
+    uint32_t             height         = 0;  ///< @brief 位图高度（像素），即 FreeType 的 bitmap.rows
+    uint32_t             bearing_width  = 0;  ///< @brief bitmap_left 转成 uint32_t 的水平偏移；原值为负时会回绕
+    uint32_t             bearing_height = 0;  ///< @brief bitmap_top 转成 uint32_t 的垂直偏移，向上为正；原值为负时会回绕
+    uint32_t             advance        = 0;  ///< @brief 水平步进（像素），由 advance.x 的 26.6 定点数加 32 后整除 64 得到
+    std::vector<uint8_t> buffer;  ///< @brief 连续复制的 width * height 字节，按紧密灰度像素使用
 };
 
 namespace font_loader {

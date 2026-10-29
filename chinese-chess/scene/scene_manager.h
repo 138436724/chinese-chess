@@ -314,62 +314,38 @@ private:
     [[nodiscard]] vulkan_submission_token capture_frame(vulkan_submission_token _waited_info);
 
 private:
-    /** @brief 场景脏标志：任一 manager 可能变化或需要重建渲染器描述符时置位，update 成功后清除。 */
-    bool is_dirty               = true;
-    /** @brief 渲染器自身图像被换掉或切换后端时置位：即使四个 manager 都没变也必须重写描述符。 */
-    bool need_descriptor_update = true;
+    bool is_dirty               = true;  ///< @brief 场景脏标志：任一 manager 可能变化或需要重建渲染器描述符时置位，update 成功后清除
+    bool need_descriptor_update = true;  ///< @brief 渲染器自身图像被换掉或切换后端时置位：即使四个 manager 都没变也必须重写描述符
 
-    /** @brief 应用对象引用，提供 Vulkan 对象、队列、分配器与 wait_idle。 */
-    vulkan_application& app;
+    vulkan_application& app;  ///< @brief 应用对象引用，提供 Vulkan 对象、队列、分配器与 wait_idle
 
-    /** @brief 场景环境状态；image 是引用边，强度每帧直接进入 render 的 GPU 数据。 */
-    scene_environment_data environment;
+    scene_environment_data environment;  ///< @brief 场景环境状态；image 是引用边，强度每帧直接进入 render 的 GPU 数据
 
-    /** @brief 场景命令与资源的所有者队列，命令池与 SSBO 都挂在它上面。 */
-    vulkan_queue& graphic_queue;
-    /** @brief 上传专用队列；与 graphic_queue 可能是同一个 VkQueue 的别名。 */
-    vulkan_queue& transfer_queue;
+    vulkan_queue& graphic_queue;  ///< @brief 场景命令与资源的所有者队列，命令池与 SSBO 都挂在它上面
+    vulkan_queue& transfer_queue;  ///< @brief 上传专用队列；与 graphic_queue 可能是同一个 VkQueue 的别名
 
-    /** @brief 场景侧延迟回收站，已登记两条队列，按 token 判定释放。 */
-    vulkan_recycle_bin                recycle_bin;
-    /** @brief 每帧槽一条主命令缓冲，构造时按 MAX_FRAMES_IN_FLIGHT 分配。 */
-    std::vector<vulkan_commandbuffer> commandbuffers;
+    vulkan_recycle_bin                recycle_bin;  ///< @brief 场景侧延迟回收站，已登记两条队列，按 token 判定释放
+    std::vector<vulkan_commandbuffer> commandbuffers;  ///< @brief 每帧槽一条主命令缓冲，构造时按 MAX_FRAMES_IN_FLIGHT 分配
 
-    /** @brief 当前输出宽度，resize 与切渲染模式时传给渲染器。 */
-    uint32_t                             width         = 0;
-    /** @brief 当前输出高度，resize 与切渲染模式时传给渲染器。 */
-    uint32_t                             height        = 0;
-    /** @brief 本帧待等待的提交 token（各 manager 的上传），render 时转成命令缓冲依赖并清空。 */
-    std::vector<vulkan_submission_token>        waited_infos;
+    uint32_t                             width         = 0;  ///< @brief 当前输出宽度，resize 与切渲染模式时传给渲染器
+    uint32_t                             height        = 0;  ///< @brief 当前输出高度，resize 与切渲染模式时传给渲染器
+    std::vector<vulkan_submission_token>        waited_infos;  ///< @brief 本帧待等待的提交 token（各 manager 的上传），render 时转成命令缓冲依赖并清空
 
-    /** @brief 灯光管理器：句柄表 + 灯光 SSBO。 */
-    scene_light_manager    light_manager;
-    /** @brief 贴图管理器；声明早于材质与模型，因此构造更早、析构更晚。 */
-    scene_texture_manager  texture_manager;   // must before material
-    /** @brief 材质管理器；声明早于模型，因此构造更早、析构更晚，模型管理器持有其引用。 */
-    scene_material_manager material_manager;  // must before model
-    /** @brief 模型管理器：网格/模型句柄表、实例缓冲与 TLAS。 */
-    scene_model_manager    model_manager;
+    scene_light_manager    light_manager;  ///< @brief 灯光管理器：句柄表 + 灯光 SSBO
+    scene_texture_manager  texture_manager;   ///< @brief 贴图管理器；声明早于材质与模型，构造更早、析构更晚。
+    scene_material_manager material_manager;  ///< @brief 材质管理器；声明早于模型，构造更早、析构更晚，模型管理器持有其引用。
+    scene_model_manager    model_manager;  ///< @brief 模型管理器：网格/模型句柄表、实例缓冲与 TLAS
 
-    /** @brief 当前相机，渲染时整体交给活跃渲染器。 */
-    scene_camera active_camera;
+    scene_camera active_camera;  ///< @brief 当前相机，渲染时整体交给活跃渲染器
 
-    /** @brief 场景输出格式：固定 RGBA32F，截图据此选择 EXR；改成 8 位无符号整数格式则走 PNG。 */
-    static constexpr vk::Format color_format = vk::Format::eR32G32B32A32Sfloat;
-    /** @brief 场景渲染输出图像，同时是 UI 合成与截图回读的来源。 */
-    vulkan_image                render_output;
-    /** @brief RT / RQ 共用的线性 FP32 均值，切模式时首样本覆盖。 */
-    vulkan_image                accumulation;
+    static constexpr vk::Format color_format = vk::Format::eR32G32B32A32Sfloat;  ///< @brief 场景输出格式：固定 RGBA32F，截图据此选择 EXR；改成 8 位无符号整数格式则走 PNG
+    vulkan_image                render_output;  ///< @brief 场景渲染输出图像，同时是 UI 合成与截图回读的来源
+    vulkan_image                accumulation;  ///< @brief RT / RQ 共用的线性 FP32 均值，切模式时首样本覆盖
 
-    /** @brief 三种渲染模式各一个 proxy，按值持有；F5 只重建活跃者，其余保持原状。 */
-    std::unordered_map<render_mode, pro::proxy<manager_render>> scene_renders;
-    /** @brief 指向 scene_renders 中当前模式的视图；切模式还会 resize 并要求重建描述符。 */
-    pro::proxy_view<manager_render>                             active_render = nullptr;
+    std::unordered_map<render_mode, pro::proxy<manager_render>> scene_renders;  ///< @brief 三种渲染模式各一个 proxy，按值持有；F5 只重建活跃者，其余保持原状
+    pro::proxy_view<manager_render>                             active_render = nullptr;  ///< @brief 指向 scene_renders 中当前模式的视图；切模式还会 resize 并要求重建描述符
 
-    /** @brief 保护 save_error 的互斥量：后台线程写、主线程在 update 开头读。 */
-    std::mutex save_error_mutex;
-    /** @brief 后台截图失败时保存的异常，由下一次 update 在主线程重抛。 */
-    std::exception_ptr save_error;
-    /** @brief 截图保存线程；移动赋值时 join 旧作业，成员析构时 join 当前作业，新线程可能已提前开始。 */
-    std::jthread save_thread; // joins before error state and GPU resources die
+    std::mutex save_error_mutex;  ///< @brief 保护 save_error 的互斥量：后台线程写、主线程在 update 开头读
+    std::exception_ptr save_error;  ///< @brief 后台截图失败时保存的异常，由下一次 update 在主线程重抛
+    std::jthread save_thread; ///< @brief 截图保存线程；移动赋值时 join 旧作业，成员析构时 join 当前作业，新线程可能已提前开始。
 };

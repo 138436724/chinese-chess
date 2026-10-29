@@ -5,7 +5,6 @@
  *          否则 renderdoc_capture.cpp 里的空实现让调用点一行都不用改。抓帧文件模板固定为
  *          resources/captures/，在取到 API 时设进 RenderDoc。
  */
-
 #pragma once
 
 #ifdef _WIN32
@@ -78,24 +77,15 @@ private:
      * @brief 禁止拷贝构造：单例与 API 指针都必须唯一。
      */
     renderdoc_capture(const renderdoc_capture&)            = delete;
-    /**
-     * @brief 禁止拷贝赋值：单例与 API 指针都必须唯一。
-     */
-    renderdoc_capture& operator=(const renderdoc_capture&) = delete;
+    renderdoc_capture& operator=(const renderdoc_capture&) = delete;  ///< @brief 禁止拷贝赋值：单例与 API 指针都必须唯一
     /**
      * @brief 禁止移动构造：实例是静态对象，地址必须稳定。
      */
     renderdoc_capture(renderdoc_capture&&)                 = delete;
-    /**
-     * @brief 禁止移动赋值：实例是静态对象，地址必须稳定。
-     */
-    renderdoc_capture& operator=(renderdoc_capture&&)      = delete;
+    renderdoc_capture& operator=(renderdoc_capture&&)      = delete;  ///< @brief 禁止移动赋值：实例是静态对象，地址必须稳定
 
-    /** @brief 抓帧单例，静态存储期；构造时完成 DLL 探测与 API 获取。 */
-    static renderdoc_capture capture;
+    static renderdoc_capture capture;  ///< @brief 抓帧单例，静态存储期；构造时完成 DLL 探测与 API 获取
 
-    /** @brief 1.7.0 版 RenderDoc API 表；未注入时为 nullptr，所有接口据此判空。 */
-    RENDERDOC_API_1_7_0* m_api  = nullptr;
-    /** @brief set_window_handle 记下的窗口句柄，作为 begin / end 未传参时的默认值。 */
-    HWND                 m_hwnd = nullptr;
+    RENDERDOC_API_1_7_0* m_api  = nullptr;  ///< @brief 1.7.0 版 RenderDoc API 表；未注入时为 nullptr，所有接口据此判空
+    HWND                 m_hwnd = nullptr;  ///< @brief set_window_handle 记下的窗口句柄，作为 begin / end 未传参时的默认值
 };

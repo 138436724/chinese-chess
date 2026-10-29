@@ -6,7 +6,6 @@
  *          提交成功后才发布 vulkan_submission_token；失败会把共享状态置 stopped 并拒绝后续提交。
  *          present 直接走 dispatcher 返回原始 vk::Result，由 swapchain 分类成 ready / recreate / fatal。
  */
-
 #pragma once
 
 #include "vulkan_semaphore.h"
@@ -33,16 +32,11 @@ public:
      */
     struct submission_state
     {
-        /** @brief 该队列的完成时间线；value 由 submit 在锁内 reserve，只有提交成功才对外发布。 */
-        vulkan_semaphore      semaphore;
-        /** @brief 提交互斥：submit 与 present 共用，保证同一 VkQueue 上的调用串行。 */
-        std::mutex            mutex;
-        /** @brief 已成功提交的最大时间线 value，供 get_latest_token() 取「已提交前沿」。 */
-        std::atomic<uint64_t> latest      = 0;
-        /** @brief 单向失败标志：置位后该共享状态拒绝新的提交与呈现。 */
-        std::atomic<bool>     stopped     = false;
-        /** @brief 创建时记录的 queue family index，别名队列必须与它相同。 */
-        uint32_t              queue_index = vk::QueueFamilyIgnored;
+        vulkan_semaphore      semaphore;  ///< @brief 该队列的完成时间线；value 由 submit 在锁内 reserve，只有提交成功才对外发布
+        std::mutex            mutex;  ///< @brief 提交互斥：submit 与 present 共用，保证同一 VkQueue 上的调用串行
+        std::atomic<uint64_t> latest      = 0;  ///< @brief 已成功提交的最大时间线 value，供 get_latest_token() 取「已提交前沿」
+        std::atomic<bool>     stopped     = false;  ///< @brief 单向失败标志：置位后该共享状态拒绝新的提交与呈现
+        uint32_t              queue_index = vk::QueueFamilyIgnored;  ///< @brief 创建时记录的 queue family index，别名队列必须与它相同
     };
 
     /** @brief 空对象：family index 为 Ignored、队列 / 命令池 / 共享状态均为空。 */
@@ -51,12 +45,10 @@ public:
     ~vulkan_queue()                              = default;
     /** @brief 禁用拷贝：此包装独占命令池，VkQueue 可以有别名，但别名必须共享 submission_state。 */
     vulkan_queue(const vulkan_queue&)            = delete;
-    /** @brief 禁用拷贝赋值：同上。 */
-    vulkan_queue& operator=(const vulkan_queue&) = delete;
+    vulkan_queue& operator=(const vulkan_queue&) = delete;  ///< @brief 禁用拷贝赋值：同上
     /** @brief 移动构造：搬走句柄与共享状态；源对象句柄为空，但 index 被置为 0，不是 QueueFamilyIgnored。 */
     vulkan_queue(vulkan_queue&& _other) noexcept;
-    /** @brief 移动赋值：逐成员 std::ranges::swap，旧队列与命令池被换给源对象并随其析构释放。 */
-    vulkan_queue& operator=(vulkan_queue&& _other) noexcept;
+    vulkan_queue& operator=(vulkan_queue&& _other) noexcept;  ///< @brief 移动赋值：逐成员 std::ranges::swap，旧队列与命令池被换给源对象并随其析构释放
 
     /**
      * @brief 建独立队列：自己造一份 submission_state（含 timeline 信号量）与命令池。
@@ -136,12 +128,8 @@ public:
     [[nodiscard]] vk::Result present(const vk::PresentInfoKHR& info) const;
 
 private:
-    /** @brief queue family index，同时作为 vk::raii::Queue 的 family 参数。 */
-    uint32_t                           index        = vk::QueueFamilyIgnored;
-    /** @brief 底层队列句柄；未初始化时为空。 */
-    vk::raii::Queue                    queue        = nullptr;
-    /** @brief 专用命令池；未初始化时为空。 */
-    vk::raii::CommandPool              command_pool = nullptr;
-    /** @brief 共享提交状态：别名队列指向同一对象，独立队列各有一份。 */
-    std::shared_ptr<submission_state>  submission;
+    uint32_t                           index        = vk::QueueFamilyIgnored;  ///< @brief queue family index，同时作为 vk::raii::Queue 的 family 参数
+    vk::raii::Queue                    queue        = nullptr;  ///< @brief 底层队列句柄；未初始化时为空
+    vk::raii::CommandPool              command_pool = nullptr;  ///< @brief 专用命令池；未初始化时为空
+    std::shared_ptr<submission_state>  submission;  ///< @brief 共享提交状态：别名队列指向同一对象，独立队列各有一份
 };

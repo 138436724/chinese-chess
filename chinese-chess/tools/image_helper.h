@@ -6,7 +6,6 @@
  *          图压成 UASTC 的 KTX2（HDR 走 UASTC HDR 4x4），只在贴图与字形图集合成之后使用；真正的
  *          BC6H / BC7 转码发生在读取或上传时。两个路径常量相对运行目录 chinese-chess/。
  */
-
 #pragma once
 
 #include <Imath/half.h>
@@ -41,14 +40,10 @@ template <typename T>
     requires(OIIO::TypeDescFromC<T>().value() != OIIO::TypeDesc::UNKNOWN)
 struct image_info
 {
-    /** @brief 图像宽度（像素）。 */
-    uint32_t       width    = 0;
-    /** @brief 图像高度（像素）。 */
-    uint32_t       height   = 0;
-    /** @brief 每像素的通道数，buffer 的长度由它和宽高共同决定。 */
-    uint32_t       channels = 0;
-    /** @brief 行紧密排列的像素数据，长度为 width * height * channels。 */
-    std::vector<T> buffer;
+    uint32_t       width    = 0;  ///< @brief 图像宽度（像素）
+    uint32_t       height   = 0;  ///< @brief 图像高度（像素）
+    uint32_t       channels = 0;  ///< @brief 每像素的通道数，buffer 的长度由它和宽高共同决定
+    std::vector<T> buffer;  ///< @brief 行紧密排列的像素数据，长度为 width * height * channels
 };
 
 /** @brief 带 KTX 销毁器的 ktxTexture2 智能指针，所有失败路径都不会漏释放。 */

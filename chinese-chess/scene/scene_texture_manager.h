@@ -7,7 +7,6 @@
  *          压缩格式在构造时探测：环境图优先 BC6H（UASTC HDR 转码），LDR 图优先 BC7；
  *          不支持时回退未压缩 RGBA16F / RGBA8。上传令牌追加到调用方给的 waited_infos。
  */
-
 #pragma once
 
 #include "scene_data_type.h"
@@ -146,10 +145,8 @@ public:
      */
     struct update_result
     {
-        /** @brief 贴图集合或绑定发生变化，需要重写描述符。 */
-        bool needs_redraw = false;
-        /** @brief 绑定下标可能移动，材质 SSBO 里的 texture_index 需要重算。 */
-        bool layout_moved = false;
+        bool needs_redraw = false;  ///< @brief 贴图集合或绑定发生变化，需要重写描述符
+        bool layout_moved = false;  ///< @brief 绑定下标可能移动，材质 SSBO 里的 texture_index 需要重算
     };
 
     /**
@@ -194,14 +191,10 @@ private:
      */
     struct texture_slot
     {
-        /** @brief 上传后的 Vulkan 图像与视图。 */
-        vulkan_image       image;
-        /** @brief 对外暴露的描述（源路径 + 用途），调用方不应直接改写去重键。 */
-        scene_texture_data data;
-        /** @brief bindless 数组下标；npos 表示尚未绑定或超出上限。 */
-        uint32_t           binding         = scene_handle<texture_tag>::npos;
-        /** @brief 引用计数：材质通道与环境图各算一次。 */
-        uint32_t           reference_count = 0;
+        vulkan_image       image;  ///< @brief 上传后的 Vulkan 图像与视图
+        scene_texture_data data;  ///< @brief 对外暴露的描述（源路径 + 用途），调用方不应直接改写去重键
+        uint32_t           binding         = scene_handle<texture_tag>::npos;  ///< @brief bindless 数组下标；npos 表示尚未绑定或超出上限
+        uint32_t           reference_count = 0;  ///< @brief 引用计数：材质通道与环境图各算一次
     };
 
     /** @brief 去重键：用途 + 源路径。 */
@@ -260,35 +253,21 @@ private:
      */
     [[nodiscard]] vk::Sampler get_sampler(texture_usage _usage) const;
 
-    /** @brief VMA 分配器，所有贴图图像都由它分配。 */
-    const vma::raii::Allocator&     allocator;
-    /** @brief 物理设备，创建采样器时读取各向异性上限。 */
-    const vk::raii::PhysicalDevice& physical_device;
-    /** @brief 逻辑设备，创建图像、视图与采样器。 */
-    const vk::raii::Device&         device;
-    /** @brief 延迟回收站，被替换或回收的图像按提交令牌销毁。 */
-    vulkan_recycle_bin&             recycle_bin;
-    /** @brief 图形队列，上传的 acquire 与 queue family 取自它。 */
-    const vulkan_queue&             graphic_queue;
-    /** @brief 传输队列，staging 拷贝与跨队列族转移走它。 */
-    const vulkan_queue&             transfer_queue;
+    const vma::raii::Allocator&     allocator;  ///< @brief VMA 分配器，所有贴图图像都由它分配
+    const vk::raii::PhysicalDevice& physical_device;  ///< @brief 物理设备，创建采样器时读取各向异性上限
+    const vk::raii::Device&         device;  ///< @brief 逻辑设备，创建图像、视图与采样器
+    vulkan_recycle_bin&             recycle_bin;  ///< @brief 延迟回收站，被替换或回收的图像按提交令牌销毁
+    const vulkan_queue&             graphic_queue;  ///< @brief 图形队列，上传的 acquire 与 queue family 取自它
+    const vulkan_queue&             transfer_queue;  ///< @brief 传输队列，staging 拷贝与跨队列族转移走它
 
-    /** @brief 贴图集合 / 绑定需要重排并重写描述符。 */
-    bool is_dirty     = true;
-    /** @brief 槽被插入或擦除，紧凑绑定可能改变；用于判定材质 SSBO 是否必须重传。 */
-    bool layout_dirty = false;
+    bool is_dirty     = true;  ///< @brief 贴图集合 / 绑定需要重排并重写描述符
+    bool layout_dirty = false;  ///< @brief 槽被插入或擦除，紧凑绑定可能改变；用于判定材质 SSBO 是否必须重传
 
-    /** @brief 上一次 update() 排出的绑定数，也是 shader 的 texture_count。 */
-    size_t                                            texture_binding_count = 0;
-    /** @brief 贴图槽表，槽序就是绑定顺序。 */
-    scene_handle_map<texture_slot, texture_tag>       textures;
-    /** @brief (usage, source) → 句柄的去重表；槽回收时同步清理。 */
-    std::map<texture_key, texture_handle>             texture_cache;
-    /** @brief 每种用途一个采样器，最多三个。 */
-    std::unordered_map<texture_usage, vulkan_sampler> samplers;
+    size_t                                            texture_binding_count = 0;  ///< @brief 上一次 update() 排出的绑定数，也是 shader 的 texture_count
+    scene_handle_map<texture_slot, texture_tag>       textures;  ///< @brief 贴图槽表，槽序就是绑定顺序
+    std::map<texture_key, texture_handle>             texture_cache;  ///< @brief (usage, source) → 句柄的去重表；槽回收时同步清理
+    std::unordered_map<texture_usage, vulkan_sampler> samplers;  ///< @brief 每种用途一个采样器，最多三个
 
-    /** @brief 环境图压缩格式，构造时探测 BC6H；不支持时为 eUndefined。 */
-    vk::Format compressed_hdr_format = vk::Format::eBc6HUfloatBlock;
-    /** @brief LDR 图压缩格式，构造时探测 BC7；不支持时为 eUndefined。 */
-    vk::Format compressed_ldr_format = vk::Format::eBc7UnormBlock;
+    vk::Format compressed_hdr_format = vk::Format::eBc6HUfloatBlock;  ///< @brief 环境图压缩格式，构造时探测 BC6H；不支持时为 eUndefined
+    vk::Format compressed_ldr_format = vk::Format::eBc7UnormBlock;  ///< @brief LDR 图压缩格式，构造时探测 BC7；不支持时为 eUndefined
 };

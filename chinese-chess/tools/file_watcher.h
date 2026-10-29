@@ -5,7 +5,6 @@
  *          析构时把磁盘上仍存在的条目写回去，供下次启动时比较；每次 is_file_modified 仍会重算内容哈希。
  *          is_file_modified 只比内容哈希、不看 mtime：内容没变就不算修改。
  */
-
 #pragma once
 
 #include <expected>
@@ -60,21 +59,13 @@ private:
      * @brief 禁止拷贝构造：缓存表与静态实例都必须唯一。
      */
     file_watcher(const file_watcher&)            = delete;
-    /**
-     * @brief 禁止拷贝赋值：缓存表与静态实例都必须唯一。
-     */
-    file_watcher& operator=(const file_watcher&) = delete;
+    file_watcher& operator=(const file_watcher&) = delete;  ///< @brief 禁止拷贝赋值：缓存表与静态实例都必须唯一
     /**
      * @brief 禁止移动构造：实例是静态对象，地址必须稳定。
      */
     file_watcher(file_watcher&&)                 = delete;
-    /**
-     * @brief 禁止移动赋值：实例是静态对象，地址必须稳定。
-     */
-    file_watcher& operator=(file_watcher&&)      = delete;
+    file_watcher& operator=(file_watcher&&)      = delete;  ///< @brief 禁止移动赋值：实例是静态对象，地址必须稳定
 
-    /** @brief 进程内唯一实例，静态存储期：构造即读缓存，析构即回写缓存。 */
-    static file_watcher                                  watcher;
-    /** @brief 路径（generic_string）到 SHA-256 十六进制串的 memo；mutable 让 const 查询也能更新。 */
-    mutable std::unordered_map<std::string, std::string> file_watch_cache;
+    static file_watcher                                  watcher;  ///< @brief 进程内唯一实例，静态存储期：构造即读缓存，析构即回写缓存
+    mutable std::unordered_map<std::string, std::string> file_watch_cache;  ///< @brief 路径（generic_string）到 SHA-256 十六进制串的 memo；mutable 让 const 查询也能更新
 };

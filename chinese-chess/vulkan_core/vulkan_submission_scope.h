@@ -37,8 +37,7 @@ public:
     }
     /** @brief 禁止拷贝构造：守卫绑定两个队列，不可复制。 */
     vulkan_submission_scope(const vulkan_submission_scope&) = delete;
-    /** @brief 禁止拷贝赋值：守卫绑定两个队列，不可复制。 */
-    vulkan_submission_scope& operator=(const vulkan_submission_scope&) = delete;
+    vulkan_submission_scope& operator=(const vulkan_submission_scope&) = delete;  ///< @brief 禁止拷贝赋值：守卫绑定两个队列，不可复制
     /**
      * @brief 异常展开时停提交并排空 token，正常退出无操作。
      * @note 以构造时记录的 uncaught_exceptions 为基线，只有计数增加才清理；析构不抛异常。
@@ -55,10 +54,7 @@ public:
     }
 
 private:
-    /** @brief 拥有资源的队列引用，异常时先停它的提交。 */
-    const vulkan_queue& owner;
-    /** @brief 传输队列引用，与 owner 可能指向同一个 VkQueue。 */
-    const vulkan_queue& transfer;
-    /** @brief 构造时的 std::uncaught_exceptions() 计数，用于区分正常退出与异常展开。 */
-    int exceptions;
+    const vulkan_queue& owner;  ///< @brief 拥有资源的队列引用，异常时先停它的提交
+    const vulkan_queue& transfer;  ///< @brief 传输队列引用，与 owner 可能指向同一个 VkQueue
+    int exceptions;  ///< @brief 构造时的 std::uncaught_exceptions() 计数，用于区分正常退出与异常展开
 };

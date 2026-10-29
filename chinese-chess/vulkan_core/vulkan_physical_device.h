@@ -23,7 +23,7 @@
 
 /**
  * @brief 物理设备及其 graphics/compute/transfer 队列族下标。
- * @details 队列族在 create 里一次选定，之后 get_queue_index 只查缓存，不再向驱动发查询。
+ * @details 队列族在 create 里一次选定，之后 get_queue_index 只读已记录的队列族下标，不再向驱动发查询。
  *          四个需求（graphics/compute/transfer/present）做笛卡尔积；传输族不支持另外三项时加 10 分，
  *          再加组合中的不同族数，因此专用传输族的优先级高于增加不同族数。
  * @note present 队列族下标不存成员，由 create 的返回值交给 vulkan_application。
@@ -37,12 +37,10 @@ public:
     ~vulkan_physical_device()                                        = default;
     /** @brief 此包装禁止拷贝；VkPhysicalDevice 本身由实例管理，并非独占资源。 */
     vulkan_physical_device(const vulkan_physical_device&)            = delete;
-    /** @brief 禁止拷贝赋值。 */
-    vulkan_physical_device& operator=(const vulkan_physical_device&) = delete;
+    vulkan_physical_device& operator=(const vulkan_physical_device&) = delete;  ///< @brief 禁止拷贝赋值
     /** @brief 移动构造：句柄与三个队列族下标一起转移，源对象下标复位为 QueueFamilyIgnored。 */
     vulkan_physical_device(vulkan_physical_device&& _other) noexcept;
-    /** @brief 移动赋值：逐成员与源对象交换。 */
-    vulkan_physical_device& operator=(vulkan_physical_device&& _other) noexcept;
+    vulkan_physical_device& operator=(vulkan_physical_device&& _other) noexcept;  ///< @brief 移动赋值：逐成员与源对象交换
 
     /**
      * @brief 枚举物理设备，按 Vulkan 1.4、必需扩展与调用方谓词过滤，再为每个候选求解四个队列族。
@@ -65,7 +63,7 @@ public:
     /**
      * @brief 按队列能力位查对应的队列族下标。
      * @param _queue_type 队列能力位，只识别 Graphics / Compute / Transfer。
-     * @return 对应的缓存族下标；其他能力位返回 vk::QueueFamilyIgnored。新对象初值为 Ignored，重复 create 失败不清空旧值。
+     * @return 对应的队列族下标；其他能力位返回 vk::QueueFamilyIgnored。新对象初值为 Ignored，重复 create 失败不清空旧值。
      */
     [[nodiscard]] uint32_t                        get_queue_index(vk::QueueFlagBits _queue_type) const noexcept;
     /**
@@ -75,15 +73,11 @@ public:
     [[nodiscard]] const vk::raii::PhysicalDevice& operator*() const noexcept;
 
 private:
-    /** @brief 选中的物理设备句柄，未创建时为 nullptr。 */
-    vk::raii::PhysicalDevice physical_device = nullptr;
+    vk::raii::PhysicalDevice physical_device = nullptr;  ///< @brief 选中的物理设备句柄，未创建时为 nullptr
 
-    /** @brief graphics 队列族下标，默认 QueueFamilyIgnored。 */
-    uint32_t graphic_index  = vk::QueueFamilyIgnored;
-    /** @brief compute 队列族下标；当前没有提交走 compute 队列。 */
-    uint32_t compute_index  = vk::QueueFamilyIgnored;
-    /** @brief transfer 队列族下标，上传与回读走它。 */
-    uint32_t transfer_index = vk::QueueFamilyIgnored;
+    uint32_t graphic_index  = vk::QueueFamilyIgnored;  ///< @brief graphics 队列族下标，默认 QueueFamilyIgnored
+    uint32_t compute_index  = vk::QueueFamilyIgnored;  ///< @brief compute 队列族下标；当前没有提交走 compute 队列
+    uint32_t transfer_index = vk::QueueFamilyIgnored;  ///< @brief transfer 队列族下标，上传与回读走它
 };
 
 template <typename Func>

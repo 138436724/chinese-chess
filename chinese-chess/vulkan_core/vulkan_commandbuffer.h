@@ -7,7 +7,6 @@
  *          等待项分两类：二进制 semaphore（swapchain acquire/present）与其它提交的 timeline
  *          token（提交时合并进 vkQueueSubmit2 的等待项）。
  */
-
 #pragma once
 
 #include "vulkan_submission_token.h"
@@ -38,19 +37,13 @@ public:
     ~vulkan_commandbuffer();
     /** @brief 禁止拷贝：命令缓冲句柄与提交状态必须有唯一持有者。 */
     vulkan_commandbuffer(const vulkan_commandbuffer&)            = delete;
-    /** @brief 禁止拷贝赋值：提交状态只能随对象一起移动。 */
-    vulkan_commandbuffer& operator=(const vulkan_commandbuffer&) = delete;
+    vulkan_commandbuffer& operator=(const vulkan_commandbuffer&) = delete;  ///< @brief 禁止拷贝赋值：提交状态只能随对象一起移动
     /**
      * @brief 移动构造：接管句柄、owner queue、token 与待提交列表，源对象留下空状态。
      * @param _other 被移动的源包装，构造后其句柄为 nullptr、owner queue 为空指针。
      */
     vulkan_commandbuffer(vulkan_commandbuffer&& _other) noexcept;
-    /**
-     * @brief 移动赋值：自赋值直接返回，否则逐成员 std::ranges::swap。
-     * @param _other 被交换的源包装，交换后两边的句柄与待提交列表互换。
-     * @return *this。
-     */
-    vulkan_commandbuffer& operator=(vulkan_commandbuffer&& _other) noexcept;
+    vulkan_commandbuffer& operator=(vulkan_commandbuffer&& _other) noexcept;  ///< @brief 移动赋值：自赋值直接返回，否则逐成员 std::ranges::swap
 
     /**
      * @brief 从一个命令池批量分配命令缓冲，并把每个句柄移进独立的包装对象。
@@ -142,17 +135,11 @@ private:
     void create(vk::raii::CommandBuffer&& _commandbuffer, const vulkan_queue* _queue) noexcept;
 
 private:
-    /** @brief 底层命令缓冲句柄；未分配或已被移走时为 nullptr。 */
-    vk::raii::CommandBuffer commandbuffer = nullptr;
-    /** @brief 非拥有的 owner queue，submit 与命令池校验都靠它。 */
-    const vulkan_queue*     queue         = nullptr;
-    /** @brief 最近一次成功提交的完成凭据，begin_record 与 wait 用它判断是否可复用。 */
-    vulkan_submission_token        token;
+    vk::raii::CommandBuffer commandbuffer = nullptr;  ///< @brief 底层命令缓冲句柄；未分配或已被移走时为 nullptr
+    const vulkan_queue*     queue         = nullptr;  ///< @brief 非拥有的 owner queue，submit 与命令池校验都靠它
+    vulkan_submission_token        token;  ///< @brief 最近一次成功提交的完成凭据，begin_record 与 wait 用它判断是否可复用
 
-    /** @brief 待提交的二进制 semaphore 等待项，成功提交后清空。 */
-    std::vector<vk::SemaphoreSubmitInfo> waited_info;
-    /** @brief 待提交的二进制 semaphore 信号项，成功提交后清空。 */
-    std::vector<vk::SemaphoreSubmitInfo> signal_info;
-    /** @brief 待提交的 timeline 依赖 token，submit 时合并进等待项后清空。 */
-    std::vector<vulkan_submission_token>        dependencies;
+    std::vector<vk::SemaphoreSubmitInfo> waited_info;  ///< @brief 待提交的二进制 semaphore 等待项，成功提交后清空
+    std::vector<vk::SemaphoreSubmitInfo> signal_info;  ///< @brief 待提交的二进制 semaphore 信号项，成功提交后清空
+    std::vector<vulkan_submission_token>        dependencies;  ///< @brief 待提交的 timeline 依赖 token，submit 时合并进等待项后清空
 };

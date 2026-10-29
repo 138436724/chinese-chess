@@ -143,52 +143,31 @@ private:
      */
     void update_camera_matrix() noexcept;
 
-    /** @brief 当前生效的投影类型，默认正交。 */
-    projection_type active_type = projection_type::orthographic;
-    /** @brief 曝光倍数，默认 1.0；只供渲染器读取，不参与矩阵。 */
-    float           exposure    = 1.0f;
+    projection_type active_type = projection_type::orthographic;  ///< @brief 当前生效的投影类型，默认正交
+    float           exposure    = 1.0f;  ///< @brief 曝光倍数，默认 1.0；只供渲染器读取，不参与矩阵
 
     // orthographic parameters
-    /** @brief 正交投影左边界，默认 -10。 */
-    float left              = -10.f;
-    /** @brief 正交投影右边界，默认 10。 */
-    float right             = 10.f;
-    /** @brief 正交投影下边界，默认 -10。 */
-    float bottom            = -10.f;
-    /** @brief 正交投影上边界，默认 10。 */
-    float top               = 10.f;
-    /** @brief 正交投影近平面，默认 0.1。 */
-    float orthographic_near = 0.1f;
-    /** @brief 正交投影远平面，默认 100。 */
-    float orthographic_far  = 100.f;
+    float left              = -10.f;  ///< @brief 正交投影左边界，默认 -10
+    float right             = 10.f;  ///< @brief 正交投影右边界，默认 10
+    float bottom            = -10.f;  ///< @brief 正交投影下边界，默认 -10
+    float top               = 10.f;  ///< @brief 正交投影上边界，默认 10
+    float orthographic_near = 0.1f;  ///< @brief 正交投影近平面，默认 0.1
+    float orthographic_far  = 100.f;  ///< @brief 正交投影远平面，默认 100
 
     // perspective parameters
-    /** @brief 透视投影垂直视场角，弧度，默认 90 度。 */
-    float fov_y            = glm::radians(90.f);
-    /** @brief 透视投影宽高比，默认 16:9。 */
-    float aspect           = 16.f / 9.f;
-    /** @brief 透视投影近平面，默认 0.1。 */
-    float perspective_near = 0.1f;
-    /** @brief 透视投影远平面，默认 100。 */
-    float perspective_far  = 100.f;
+    float fov_y            = glm::radians(90.f);  ///< @brief 透视投影垂直视场角，弧度，默认 90 度
+    float aspect           = 16.f / 9.f;  ///< @brief 透视投影宽高比，默认 16:9
+    float perspective_near = 0.1f;  ///< @brief 透视投影近平面，默认 0.1
+    float perspective_far  = 100.f;  ///< @brief 透视投影远平面，默认 100
 
-    /** @brief 相机世界空间位置，默认原点。 */
-    glm::vec3 position   = glm::vec3(0.f);
-    /** @brief 归一化后的观察方向，默认 -Z。 */
-    glm::vec3 direction  = glm::vec3(0.f, 0.f, -1.f);
-    /** @brief 参考上方向，默认 +Y；仅在重建基向量时使用。 */
-    glm::vec3 world_up   = glm::vec3(0.f, 1.f, 0.f);
-    /** @brief 相机右轴，由 direction 与有效 up 叉乘并归一化得到。 */
-    glm::vec3 right_axis = glm::normalize(glm::cross(direction, world_up));
-    /** @brief 相机上轴，由 right_axis 与 direction 叉乘并归一化得到。 */
-    glm::vec3 up_axis    = glm::normalize(glm::cross(right_axis, direction));
+    glm::vec3 position   = glm::vec3(0.f);  ///< @brief 相机世界空间位置，默认原点
+    glm::vec3 direction  = glm::vec3(0.f, 0.f, -1.f);  ///< @brief 归一化后的观察方向，默认 -Z
+    glm::vec3 world_up   = glm::vec3(0.f, 1.f, 0.f);  ///< @brief 参考上方向，默认 +Y；仅在重建基向量时使用
+    glm::vec3 right_axis = glm::normalize(glm::cross(direction, world_up));  ///< @brief 相机右轴，由 direction 与有效 up 叉乘并归一化得到
+    glm::vec3 up_axis    = glm::normalize(glm::cross(right_axis, direction));  ///< @brief 相机上轴，由 right_axis 与 direction 叉乘并归一化得到
 
-    /** @brief 当前投影矩阵，默认由正交初始化参数计算。 */
-    glm::mat4 projection_matrix     = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);
-    /** @brief 当前视图矩阵，默认由位置、方向与 up_axis 计算。 */
-    glm::mat4 view_matrix           = glm::lookAt(position, position + direction, up_axis);
-    /** @brief projection_matrix 的逆，与它同步更新。 */
-    glm::mat4 inv_projection_matrix = glm::inverse(projection_matrix);
-    /** @brief view_matrix 的逆，与它同步更新。 */
-    glm::mat4 inv_view_matrix       = glm::inverse(view_matrix);
+    glm::mat4 projection_matrix     = glm::ortho(left, right, bottom, top, orthographic_near, orthographic_far);  ///< @brief 当前投影矩阵，默认由正交初始化参数计算
+    glm::mat4 view_matrix           = glm::lookAt(position, position + direction, up_axis);  ///< @brief 当前视图矩阵，默认由位置、方向与 up_axis 计算
+    glm::mat4 inv_projection_matrix = glm::inverse(projection_matrix);  ///< @brief projection_matrix 的逆，与它同步更新
+    glm::mat4 inv_view_matrix       = glm::inverse(view_matrix);  ///< @brief view_matrix 的逆，与它同步更新
 };

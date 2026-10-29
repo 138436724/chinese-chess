@@ -28,18 +28,13 @@ public:
     ~vulkan_semaphore()                                    = default;
     /** @brief 禁止拷贝构造：信号量句柄不可复制。 */
     vulkan_semaphore(const vulkan_semaphore&)              = delete;
-    /** @brief 禁止拷贝赋值：信号量句柄不可复制。 */
-    vulkan_semaphore& operator=(const vulkan_semaphore&)   = delete;
+    vulkan_semaphore& operator=(const vulkan_semaphore&)   = delete;  ///< @brief 禁止拷贝赋值：信号量句柄不可复制
     /**
      * @brief 禁止移动构造：token 保存本包装的裸指针，须保持其地址稳定。
      * @param _other 被移动的源对象；该重载被删除，仅用于阻止移动。
      */
     vulkan_semaphore(vulkan_semaphore&& _other)            = delete;
-    /**
-     * @brief 禁止移动赋值：避免已有 token 指向另一条时间线。
-     * @param _other 被移动的源对象；该重载被删除，仅用于阻止移动。
-     */
-    vulkan_semaphore& operator=(vulkan_semaphore&& _other) = delete;
+    vulkan_semaphore& operator=(vulkan_semaphore&& _other) = delete;  ///< @brief 禁止移动赋值：避免已有 token 指向另一条时间线
 
     /**
      * @brief 创建时间线信号量，初始计数为 0。
@@ -90,8 +85,6 @@ public:
     [[nodiscard]] const vk::raii::Semaphore& get_semaphore() const noexcept;
 
 private:
-    /** @brief 底层时间线信号量句柄。 */
-    vk::raii::Semaphore   semaphore = nullptr;
-    /** @brief CPU 侧已分配到的最大时间线值；原子递增，初值 0。 */
-    std::atomic<uint64_t> value     = 0;
+    vk::raii::Semaphore   semaphore = nullptr;  ///< @brief 底层时间线信号量句柄
+    std::atomic<uint64_t> value     = 0;  ///< @brief CPU 侧已分配到的最大时间线值；原子递增，初值 0
 };

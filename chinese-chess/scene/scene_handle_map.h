@@ -45,10 +45,8 @@ public:
     template <typename U>
     struct live_reference
     {
-        /** @brief 该槽当前的句柄（下标 + 当前世代）。 */
-        handle_type handle;
-        /** @brief 槽内实体引用；const 性由所选 live() 重载决定。 */
-        U&          value;
+        handle_type handle;  ///< @brief 该槽当前的句柄（下标 + 当前世代）
+        U&          value;  ///< @brief 槽内实体引用；const 性由所选 live() 重载决定
     };
 
     /**
@@ -192,16 +190,11 @@ private:
      */
     struct slot
     {
-        /** @brief 槽内实体；空表示该槽未被占用。 */
-        std::optional<T> value;
-        /** @brief 当前世代，erase 时自增，用于让旧句柄失效。 */
-        uint32_t         generation = 0;
+        std::optional<T> value;  ///< @brief 槽内实体；空表示该槽未被占用
+        uint32_t         generation = 0;  ///< @brief 当前世代，erase 时自增，用于让旧句柄失效
     };
 
-    /** @brief 按分配顺序存放的槽数组，下标即句柄的 index。 */
-    std::vector<slot>     slots;
-    /** @brief 空闲槽下标栈，insert 取末尾、erase 压入；容量在 insert 时预留，保证 erase 不分配。 */
-    std::vector<uint32_t> free_slots;
-    /** @brief 存活实体数，等于 slots 中 optional 非空的槽数。 */
-    size_t                live_count = 0;
+    std::vector<slot>     slots;  ///< @brief 按分配顺序存放的槽数组，下标即句柄的 index
+    std::vector<uint32_t> free_slots;  ///< @brief 空闲槽下标栈，insert 取末尾、erase 压入；容量在 insert 时预留，保证 erase 不分配
+    size_t                live_count = 0;  ///< @brief 存活实体数，等于 slots 中 optional 非空的槽数
 };

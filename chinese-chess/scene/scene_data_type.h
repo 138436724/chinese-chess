@@ -23,26 +23,18 @@
  */
 struct scene_light_data
 {
-    /** @brief 当前光源类型，决定着色器走哪个光照分支；默认方向光。 */
-    light_type active_type = light_type::directional;
+    light_type active_type = light_type::directional;  ///< @brief 当前光源类型，决定着色器走哪个光照分支；默认方向光
 
-    /** @brief 灯光颜色，线性 RGB，未乘强度；默认白。 */
-    glm::vec3 color     = glm::vec3(1.f);
-    /** @brief 光强；方向光直接乘到 radiance，点光与聚光再乘距离衰减。 */
-    float     intensity = 1.f;
+    glm::vec3 color     = glm::vec3(1.f);  ///< @brief 灯光颜色，线性 RGB，未乘强度；默认白
+    float     intensity = 1.f;  ///< @brief 光强；方向光直接乘到 radiance，点光与聚光再乘距离衰减
 
-    /** @brief 世界空间方向：方向光解释为着色点指向光源，聚光解释为光源射出轴；默认 (0,-1,0)。 */
-    glm::vec3 direction = glm::vec3(0.f, -1.f, 0.f);
+    glm::vec3 direction = glm::vec3(0.f, -1.f, 0.f);  ///< @brief 世界空间方向：方向光解释为着色点指向光源，聚光解释为光源射出轴；默认 (0,-1,0)
 
-    /** @brief 点光与聚光的世界空间位置；方向光忽略。 */
-    glm::vec3 position = glm::vec3(0.f);
-    /** @brief 点光与聚光的最大影响距离；小于等于 0 表示不做距离截断。 */
-    float     range    = 10.f;
+    glm::vec3 position = glm::vec3(0.f);  ///< @brief 点光与聚光的世界空间位置；方向光忽略
+    float     range    = 10.f;  ///< @brief 点光与聚光的最大影响距离；小于等于 0 表示不做距离截断
 
-    /** @brief 聚光内锥半角，弧度，锥内为满强度；默认 15 度。 */
-    float inner_cone_angle = glm::radians(15.f);
-    /** @brief 聚光外锥半角，弧度，内外锥之间按归一化余弦插值的平方衰减；默认 30 度。 */
-    float outer_cone_angle = glm::radians(30.f);
+    float inner_cone_angle = glm::radians(15.f);  ///< @brief 聚光内锥半角，弧度，锥内为满强度；默认 15 度
+    float outer_cone_angle = glm::radians(30.f);  ///< @brief 聚光外锥半角，弧度，内外锥之间按归一化余弦插值的平方衰减；默认 30 度
 };
 
 /**
@@ -52,10 +44,8 @@ struct scene_light_data
  */
 struct scene_environment_data
 {
-    /** @brief 环境贴图句柄；是引用边，只能经 scene_manager::set_environment_image 写入。 */
-    texture_handle image;
-    /** @brief 环境光强度，只缩放 HDR 路径，程序化回退不受影响；默认 1。 */
-    float          intensity = 1.f;
+    texture_handle image;  ///< @brief 环境贴图句柄；是引用边，只能经 scene_manager::set_environment_image 写入
+    float          intensity = 1.f;  ///< @brief 环境光强度，只缩放 HDR 路径，程序化回退不受影响；默认 1
 };
 
 /**
@@ -65,10 +55,8 @@ struct scene_environment_data
  */
 struct scene_texture_data
 {
-    /** @brief 贴图源路径；字形图集是合成出来的虚拟路径，同一路径配不同用途会建两张图。 */
-    std::filesystem::path source;
-    /** @brief 贴图用途，决定采样器与压缩格式；默认普通颜色贴图。 */
-    texture_usage         usage = texture_usage::color;
+    std::filesystem::path source;  ///< @brief 贴图源路径；字形图集是合成出来的虚拟路径，同一路径配不同用途会建两张图
+    texture_usage         usage = texture_usage::color;  ///< @brief 贴图用途，决定采样器与压缩格式；默认普通颜色贴图
 };
 
 /**
@@ -78,29 +66,18 @@ struct scene_texture_data
  */
 struct scene_material_data
 {
-    /** @brief 五个贴图通道的句柄，下标即 texture_channel；只能经 set_texture 写入以维持引用计数。 */
-    std::array<texture_handle, MAX_CHANNEL_COUNT> textures{};
+    std::array<texture_handle, MAX_CHANNEL_COUNT> textures{};  ///< @brief 五个贴图通道的句柄，下标即 texture_channel；只能经 set_texture 写入以维持引用计数
 
-    /** @brief 基础反照率，线性 RGB，会与 albedo 贴图 RGB 相乘；默认白。 */
-    glm::vec3 albedo            = glm::vec3(1.0f);
-    /** @brief 自发光颜色，线性 RGB；乘 emission_strength 后加到出射辐亮度。 */
-    glm::vec3 emission          = glm::vec3(0.0f);
-    /** @brief 介质吸收系数，线性 RGB，每世界单位；Beer-Lambert 按段累乘。 */
-    glm::vec3 absorption        = glm::vec3(0.0f);
-    /** @brief 粗糙度，范围 0 到 1；GGX alpha 为其平方，并限制在 [ALPHA_MIN, 1]。 */
-    float     roughness         = 0.5f;
-    /** @brief 金属度，范围 0 到 1；决定 F0 在电介质反射率与 albedo 之间的插值。 */
-    float     metallic          = 0.0f;
-    /** @brief 电介质反射率，范围 0 到 1；F0 等于 0.08 乘本值。 */
-    float     reflectance       = 0.5f;
-    /** @brief 折射率，默认 1.5（玻璃）；光追用于介质界面的 Fresnel、折射方向与辐亮度缩放。 */
-    float     ior               = 1.5f;
-    /** @brief 平滑介质界面分支概率，范围 0 到 1；1 时仍按 Fresnel 选择镜面反射或折射。 */
-    float     transmission      = 0.0f;
-    /** @brief 表面覆盖率，范围 0 到 1；RT/RQ 对相机、间接和阴影光线统一随机接受交点，光栅路径未使用。 */
-    float     opacity           = 1.0f;
-    /** @brief 自发光强度倍数，默认 0 表示不发光。 */
-    float     emission_strength = 0.0f;
+    glm::vec3 albedo            = glm::vec3(1.0f);  ///< @brief 基础反照率，线性 RGB，会与 albedo 贴图 RGB 相乘；默认白
+    glm::vec3 emission          = glm::vec3(0.0f);  ///< @brief 自发光颜色，线性 RGB；乘 emission_strength 后加到出射辐亮度
+    glm::vec3 absorption        = glm::vec3(0.0f);  ///< @brief 介质吸收系数，线性 RGB，每世界单位；Beer-Lambert 按段累乘
+    float     roughness         = 0.5f;  ///< @brief 粗糙度，范围 0 到 1；GGX alpha 为其平方，并限制在 [ALPHA_MIN, 1]
+    float     metallic          = 0.0f;  ///< @brief 金属度，范围 0 到 1；决定 F0 在电介质反射率与 albedo 之间的插值
+    float     reflectance       = 0.5f;  ///< @brief 电介质反射率，范围 0 到 1；F0 等于 0.08 乘本值
+    float     ior               = 1.5f;  ///< @brief 折射率，默认 1.5（玻璃）；光追用于介质界面的 Fresnel、折射方向与辐亮度缩放
+    float     transmission      = 0.0f;  ///< @brief 平滑介质界面分支概率，范围 0 到 1；1 时仍按 Fresnel 选择镜面反射或折射
+    float     opacity           = 1.0f;  ///< @brief 表面覆盖率，范围 0 到 1；RT/RQ 对相机、间接和阴影光线统一随机接受交点，光栅路径未使用
+    float     emission_strength = 0.0f;  ///< @brief 自发光强度倍数，默认 0 表示不发光
 };
 
 /**
@@ -110,13 +87,9 @@ struct scene_material_data
  */
 struct scene_model_data
 {
-    /** @brief 网格句柄，指向 scene_model_manager 的网格槽；同路径模型共享同一个网格。 */
-    mesh_handle     mesh;
-    /** @brief 材质句柄；无效时实例仍会上传，由着色器按越界处理。 */
-    material_handle material;
+    mesh_handle     mesh;  ///< @brief 网格句柄，指向 scene_model_manager 的网格槽；同路径模型共享同一个网格
+    material_handle material;  ///< @brief 材质句柄；无效时实例仍会上传，由着色器按越界处理
 
-    /** @brief 是否参与绘制与光追：false 时隐藏该实例。 */
-    bool      is_show      = true;
-    /** @brief 模型到世界的变换矩阵，默认单位阵。 */
-    glm::mat4 model_matrix = glm::mat4(1.0f);
+    bool      is_show      = true;  ///< @brief 是否参与绘制与光追：false 时隐藏该实例
+    glm::mat4 model_matrix = glm::mat4(1.0f);  ///< @brief 模型到世界的变换矩阵，默认单位阵
 };

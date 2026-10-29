@@ -6,7 +6,6 @@
  *          池与集在 update_descriptor_sets 里整体重建，旧集先清空；调用方须保证旧集已不在飞帧使用。
  *          当前唯一使用点是 vulkan_application 的屏幕合成描述符（ImGui）；三个渲染器都自己建池与集，不走这里。
  */
-
 #pragma once
 
 #include <cstdint>
@@ -35,12 +34,10 @@ public:
     ~vulkan_descriptor()                                   = default;
     /** @brief 禁用拷贝：池与集是独占资源。 */
     vulkan_descriptor(const vulkan_descriptor&)            = delete;
-    /** @brief 禁用拷贝赋值：同上。 */
-    vulkan_descriptor& operator=(const vulkan_descriptor&) = delete;
+    vulkan_descriptor& operator=(const vulkan_descriptor&) = delete;  ///< @brief 禁用拷贝赋值：同上
     /** @brief 移动构造：五个成员一律 std::exchange 搬走，源对象变成空描述符声明。 */
     vulkan_descriptor(vulkan_descriptor&& _other) noexcept;
-    /** @brief 移动赋值：逐成员 std::ranges::swap，旧池与旧集被换到源对象、由它的析构释放。 */
-    vulkan_descriptor& operator=(vulkan_descriptor&& _other) noexcept;
+    vulkan_descriptor& operator=(vulkan_descriptor&& _other) noexcept;  ///< @brief 移动赋值：逐成员 std::ranges::swap，旧池与旧集被换到源对象、由它的析构释放
 
     /**
      * @brief 追加一个 binding 的声明：描述符类型 + 每个 set 一份的写入信息，并记下它的池大小。
@@ -81,14 +78,9 @@ public:
     [[nodiscard]] const std::vector<vk::raii::DescriptorSet>& get_descriptor_sets() const noexcept;
 
 private:
-    /** @brief set 个数 = 首次 add 时的 info 数量，同时作为池的 maxSets；也是每个 binding 的描述符个数。 */
-    uint32_t                                              max_size = 0;
-    /** @brief 按 binding 号排列的写入信息：外层下标是 binding，内层下标是 set。 */
-    std::vector<std::vector<DescriptorBufferOrImageInfo>> pool_infos;
-    /** @brief 按 binding 号排列的池大小（描述符类型 + 数量 = set 个数），直接交给池创建信息。 */
-    std::vector<vk::DescriptorPoolSize>                   pool_size;
-    /** @brief 最近一次 update 建的池；update 会整体替换，旧池随之销毁。 */
-    vk::raii::DescriptorPool                              descriptor_pool = nullptr;
-    /** @brief 最近一次 update 分配的 set 数组，供合成管线逐帧绑定。 */
-    std::vector<vk::raii::DescriptorSet>                  descriptor_sets;
+    uint32_t                                              max_size = 0;  ///< @brief set 个数 = 首次 add 时的 info 数量，同时作为池的 maxSets；也是每个 binding 的描述符个数
+    std::vector<std::vector<DescriptorBufferOrImageInfo>> pool_infos;  ///< @brief 按 binding 号排列的写入信息：外层下标是 binding，内层下标是 set
+    std::vector<vk::DescriptorPoolSize>                   pool_size;  ///< @brief 按 binding 号排列的池大小（描述符类型 + 数量 = set 个数），直接交给池创建信息
+    vk::raii::DescriptorPool                              descriptor_pool = nullptr;  ///< @brief 最近一次 update 建的池；update 会整体替换，旧池随之销毁
+    std::vector<vk::raii::DescriptorSet>                  descriptor_sets;  ///< @brief 最近一次 update 分配的 set 数组，供合成管线逐帧绑定
 };

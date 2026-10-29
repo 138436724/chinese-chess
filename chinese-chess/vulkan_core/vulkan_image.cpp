@@ -54,7 +54,7 @@ vulkan_image& vulkan_image::operator=(vulkan_image&& _other) noexcept
 }
 
 /**
- * @brief 校验 image/imageview 的格式与层数，分配图像与视图并缓存格式、extent、clear value。
+ * @brief 校验 image/imageview 的格式与层数，分配图像与视图并记录格式、extent、clear value。
  * @note _imageview_info 按值传递，函数内把它的 image 成员指向新图像，调用方不必预先填句柄。
  * @note 只接受单 queue family 的 Exclusive 图像；_flags 原样交给 VMA，本包装不额外请求映射或暴露映射地址。
  */

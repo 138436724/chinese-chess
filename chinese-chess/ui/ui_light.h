@@ -56,11 +56,8 @@ public:
     void handle(int _key, int _scancode, int _action, int _mods) noexcept;
 
 private:
-    /** @brief 场景管理器引用；灯光创建、查询与销毁都经它转发。 */
-    scene_manager& manager;
+    scene_manager& manager;  ///< @brief 场景管理器引用；灯光创建、查询与销毁都经它转发
 
-    /** @brief “添加灯光”下拉框的当前选项，取值对应 light_type 的底层值。 */
-    int                       add_light_type = 0;
-    /** @brief 面板展示的灯光句柄列表；只是视图，不拥有灯光实体。 */
-    std::vector<light_handle> lights;
+    int                       add_light_type = 0;  ///< @brief “添加灯光”下拉框的当前选项，取值对应 light_type 的底层值
+    std::vector<light_handle> lights;  ///< @brief 面板展示的灯光句柄列表；只是视图，不拥有灯光实体
 };

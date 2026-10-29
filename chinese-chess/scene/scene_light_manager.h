@@ -108,23 +108,15 @@ private:
      */
     void update_ssbo(std::vector<vulkan_submission_token>& _waited_infos);
 
-    /** @brief VMA 分配器引用，创建与重建 SSBO 时使用。 */
-    const vma::raii::Allocator& allocator;
-    /** @brief 逻辑设备引用，创建缓冲与一次性命令缓冲时使用。 */
-    const vk::raii::Device&     device;
-    /** @brief 回收站引用，旧 SSBO 与中间资源按 token 延迟销毁。 */
-    vulkan_recycle_bin&         recycle_bin;
-    /** @brief SSBO 的所有者队列，消费者阶段覆盖光追/计算/片元。 */
-    const vulkan_queue&         graphic_queue;
-    /** @brief 上传复制使用的队列，可与 graphic_queue 是同一个 VkQueue。 */
-    const vulkan_queue&         transfer_queue;
+    const vma::raii::Allocator& allocator;  ///< @brief VMA 分配器引用，创建与重建 SSBO 时使用
+    const vk::raii::Device&     device;  ///< @brief 逻辑设备引用，创建缓冲与一次性命令缓冲时使用
+    vulkan_recycle_bin&         recycle_bin;  ///< @brief 回收站引用，旧 SSBO 与中间资源按 token 延迟销毁
+    const vulkan_queue&         graphic_queue;  ///< @brief SSBO 的所有者队列，消费者阶段覆盖光追/计算/片元
+    const vulkan_queue&         transfer_queue;  ///< @brief 上传复制使用的队列，可与 graphic_queue 是同一个 VkQueue
 
-    /** @brief 脏标志：灯增删或外部修改数据后置位，update 成功后清除；初值 true 保证首次处理（空表不上传）。 */
-    bool is_dirty = true;
+    bool is_dirty = true;  ///< @brief 脏标志：灯增删或外部修改数据后置位，update 成功后清除；初值 true 保证首次处理（空表不上传）
 
-    /** @brief 灯光槽表，句柄由 create 返回，遍历顺序即 GPU 数组下标。 */
-    scene_handle_map<scene_light_data, light_tag> lights;
+    scene_handle_map<scene_light_data, light_tag> lights;  ///< @brief 灯光槽表，句柄由 create 返回，遍历顺序即 GPU 数组下标
 
-    /** @brief 存放 vulkan_light_data 数组的共享 SSBO，同时提供设备地址给渲染器。 */
-    vulkan_buffer ssbo;
+    vulkan_buffer ssbo;  ///< @brief 存放 vulkan_light_data 数组的共享 SSBO，同时提供设备地址给渲染器
 };

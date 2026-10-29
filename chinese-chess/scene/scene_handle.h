@@ -33,13 +33,10 @@ enum class texture_usage : uint32_t
 template <typename T>
 struct scene_handle
 {
-    /** @brief 无效槽位下标，默认构造的 index 就是它。 */
-    static constexpr uint32_t npos = 0xFFFFFFFFu;
+    static constexpr uint32_t npos = 0xFFFFFFFFu;  ///< @brief 无效槽位下标，默认构造的 index 就是它
 
-    /** @brief 槽位下标；等于 npos 时句柄无效。 */
-    uint32_t index      = npos;
-    /** @brief 槽位世代；必须与槽表当前世代相同，句柄才指向原来的那个对象。 */
-    uint32_t generation = 0;
+    uint32_t index      = npos;  ///< @brief 槽位下标；等于 npos 时句柄无效
+    uint32_t generation = 0;  ///< @brief 槽位世代；必须与槽表当前世代相同，句柄才指向原来的那个对象
 
     /**
      * @brief 判断句柄是否非空（只看下标，不校验槽表）。
@@ -47,11 +44,7 @@ struct scene_handle
      */
     [[nodiscard]] constexpr bool is_valid() const noexcept { return index != npos; }
 
-    /**
-     * @brief 默认三路比较：依次比较 index 与 generation。
-     * @return 强序结果；调用方据此把句柄放进有序容器或去重。
-     */
-    auto operator<=>(const scene_handle&) const noexcept = default;
+    auto operator<=>(const scene_handle&) const noexcept = default;  ///< @brief 默认三路比较：依次比较 index 与 generation
 };
 
 /**

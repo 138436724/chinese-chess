@@ -62,7 +62,7 @@ public:
      */
     void                                  resize(uint32_t _width, uint32_t _height);
     /**
-     * @brief 开始新 ImGui 帧，构建“场景设置”窗口与全部面板，最后缓存 draw data。
+     * @brief 开始新 ImGui 帧，构建“场景设置”窗口与全部面板，最后记录 draw data。
      * @note 每帧调用一次后由 render 消费；draw_data 在下一次 ImGui::NewFrame 前有效。
      */
     void                                  update();
@@ -106,35 +106,22 @@ private:
     void render_mode_ui();
 
 private:
-    /** @brief 主 UI 离屏图与交换链共用的颜色格式，构造时固定。 */
-    vk::Format color_format = vk::Format::eUndefined;
+    vk::Format color_format = vk::Format::eUndefined;  ///< @brief 主 UI 离屏图与交换链共用的颜色格式，构造时固定
 
-    /** @brief 应用对象引用；实例、设备、分配器与交换链都经它取用。 */
-    vulkan_application&      app;
-    /** @brief 主 UI 提交所用的图形队列，与 application 的图形队列是同一份。 */
-    vulkan_queue&            graphic_queue;
-    /** @brief 延迟回收离屏旧图与相关资源的回收站，登记在图形队列上。 */
-    vulkan_recycle_bin       recycle_bin;
-    /** @brief ImGui Vulkan backend 用的描述符池，两类 descriptorCount 取 backend 最小值，仅 maxSets 使用两者之和乘帧槽数。 */
-    vk::raii::DescriptorPool descriptor_pool = nullptr;
+    vulkan_application&      app;  ///< @brief 应用对象引用；实例、设备、分配器与交换链都经它取用
+    vulkan_queue&            graphic_queue;  ///< @brief 主 UI 提交所用的图形队列，与 application 的图形队列是同一份
+    vulkan_recycle_bin       recycle_bin;  ///< @brief 延迟回收离屏旧图与相关资源的回收站，登记在图形队列上
+    vk::raii::DescriptorPool descriptor_pool = nullptr;  ///< @brief ImGui Vulkan backend 用的描述符池，两类 descriptorCount 取 backend 最小值，仅 maxSets 使用两者之和乘帧槽数
 
-    /** @brief 本帧 ImGui::GetDrawData 的结果，update 时刷新、render 时消费。 */
-    ImDrawData* draw_data = nullptr;
+    ImDrawData* draw_data = nullptr;  ///< @brief 本帧 ImGui::GetDrawData 的结果，update 时刷新、render 时消费
 
-    /** @brief 单 sample 的主 UI 输出图，供 application 合成采样。 */
-    vulkan_image render_output;
-    /** @brief MSAA 颜色附件，每帧 average 解析到 render_output。 */
-    vulkan_image color_image;
-    /** @brief 副窗口 WSI 接管器；在 ImGui 平台窗口销毁之后、backend Shutdown 之前 reset。 */
-    std::unique_ptr<ui_viewport_renderer> viewport_renderer;
+    vulkan_image render_output;  ///< @brief 单 sample 的主 UI 输出图，供 application 合成采样
+    vulkan_image color_image;  ///< @brief MSAA 颜色附件，每帧 average 解析到 render_output
+    std::unique_ptr<ui_viewport_renderer> viewport_renderer;  ///< @brief 副窗口 WSI 接管器；在 ImGui 平台窗口销毁之后、backend Shutdown 之前 reset
 
-    /** @brief 场景管理器引用，面板与渲染模式切换都经它转发。 */
-    scene_manager&                   manager;
-    /** @brief 五个面板的 proxy，按固定顺序 update / handle。 */
-    std::vector<pro::proxy<ui_base>> ui_managers;
-    /** @brief 渲染模式下拉的当前下标，初值对应 render_mode::ray_tracing。 */
-    int                              current_mode = static_cast<int>(render_mode::ray_tracing);
+    scene_manager&                   manager;  ///< @brief 场景管理器引用，面板与渲染模式切换都经它转发
+    std::vector<pro::proxy<ui_base>> ui_managers;  ///< @brief 五个面板的 proxy，按固定顺序 update / handle
+    int                              current_mode = static_cast<int>(render_mode::ray_tracing);  ///< @brief 渲染模式下拉的当前下标，初值对应 render_mode::ray_tracing
 
-    /** @brief 每个 frame slot 一条主 UI 命令缓冲。 */
-    std::vector<vulkan_commandbuffer> commandbuffers;
+    std::vector<vulkan_commandbuffer> commandbuffers;  ///< @brief 每个 frame slot 一条主 UI 命令缓冲
 };

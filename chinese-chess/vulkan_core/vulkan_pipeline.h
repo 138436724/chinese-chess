@@ -6,7 +6,6 @@
  *          所有句柄由 vk::raii 持有：移动构造清空源对象，移动赋值交换双方资源。
  *          调用方通过临时对象构造新管线，再安排旧资源回收；本类不提供整个热重载流程的回滚保证。
  */
-
 #pragma once
 
 #include <cstdint>
@@ -22,10 +21,8 @@
  */
 struct shader_stage_info
 {
-    /** @brief 入口名（Slang 函数名）；须以 NUL 结尾且在创建期间存活，因为 Vulkan 直接使用 name.data()。 */
-    std::string_view        name;
-    /** @brief 该入口对应的 Vulkan stage，决定它在 vk::PipelineShaderStageCreateInfo 里的位置。 */
-    vk::ShaderStageFlagBits stage;
+    std::string_view        name;  ///< @brief 入口名（Slang 函数名）；须以 NUL 结尾且在创建期间存活，因为 Vulkan 直接使用 name.data()
+    vk::ShaderStageFlagBits stage;  ///< @brief 该入口对应的 Vulkan stage，决定它在 vk::PipelineShaderStageCreateInfo 里的位置
 };
 
 /**
@@ -44,12 +41,10 @@ public:
     ~vulkan_pipeline()                                 = default;
     /** @brief 禁用拷贝：管线与布局句柄都是独占所有权。 */
     vulkan_pipeline(const vulkan_pipeline&)            = delete;
-    /** @brief 禁用拷贝赋值：同上，句柄不可共享。 */
-    vulkan_pipeline& operator=(const vulkan_pipeline&) = delete;
+    vulkan_pipeline& operator=(const vulkan_pipeline&) = delete;  ///< @brief 禁用拷贝赋值：同上，句柄不可共享
     /** @brief 移动构造：三个 RAII 句柄用 std::exchange 搬走，源对象被置空。 */
     vulkan_pipeline(vulkan_pipeline&& _other) noexcept;
-    /** @brief 移动赋值：与源对象逐成员 std::ranges::swap，相当于接管对方句柄并把自己的旧句柄交给它。 */
-    vulkan_pipeline& operator=(vulkan_pipeline&& _other) noexcept;
+    vulkan_pipeline& operator=(vulkan_pipeline&& _other) noexcept;  ///< @brief 移动赋值：与源对象逐成员 std::ranges::swap，相当于接管对方句柄并把自己的旧句柄交给它
 
     /**
      * @brief 用已编译好的 shader stage 建图形管线，同时建描述符集布局与管线布局。
@@ -188,10 +183,7 @@ public:
     [[nodiscard]] const vk::raii::Pipeline&            get_pipeline() const noexcept;
 
 private:
-    /** @brief 描述符集布局：binding 来自 create 的 _descriptor_set_layout_bindings。 */
-    vk::raii::DescriptorSetLayout descriptor_set_layout = nullptr;
-    /** @brief 管线布局：单个 set 加调用方给的 push constant 范围。 */
-    vk::raii::PipelineLayout      pipeline_layout       = nullptr;
-    /** @brief 管线本体：图形 / 光追 / 计算三者之一，由最后一次成功的 create 决定。 */
-    vk::raii::Pipeline            pipeline              = nullptr;
+    vk::raii::DescriptorSetLayout descriptor_set_layout = nullptr;  ///< @brief 描述符集布局：binding 来自 create 的 _descriptor_set_layout_bindings
+    vk::raii::PipelineLayout      pipeline_layout       = nullptr;  ///< @brief 管线布局：单个 set 加调用方给的 push constant 范围
+    vk::raii::Pipeline            pipeline              = nullptr;  ///< @brief 管线本体：图形 / 光追 / 计算三者之一，由最后一次成功的 create 决定
 };

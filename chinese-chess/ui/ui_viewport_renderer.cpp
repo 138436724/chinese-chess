@@ -33,34 +33,21 @@ struct ui_viewport_renderer::implementation
      */
     struct window_state
     {
-        /** @brief 该副窗口独立的交换链；析构时 shutdown 会等待 present fence。 */
-        vulkan_swapchain swapchain;
-        /** @brief 每帧槽一条命令缓冲，下标来自 acquire 返回的 frame.slot。 */
-        std::vector<vulkan_commandbuffer> commands;
-        /** @brief 上游 backend 持有的副窗口管线，本类只借句柄。 */
-        VkPipeline pipeline = VK_NULL_HANDLE; // owned by the upstream backend
-        /** @brief 尺寸变化置位，下一次 render 先 recreate 交换链。 */
-        bool resize = false;
+        vulkan_swapchain swapchain;  ///< @brief 该副窗口独立的交换链；析构时 shutdown 会等待 present fence。
+        std::vector<vulkan_commandbuffer> commands;  ///< @brief 每帧槽一条命令缓冲，下标来自 acquire 返回的 frame.slot。
+        VkPipeline pipeline = VK_NULL_HANDLE;  ///< @brief 上游 backend 持有的副窗口管线，本类只借句柄。
+        bool resize = false;  ///< @brief 尺寸变化置位，下一次 render 先 recreate 交换链。
         ~window_state() { swapchain.shutdown(); }
     };
-    /** @brief 当前线程的活动实例，C 回调经它找到对象；同一线程只允许一个。 */
-    inline static thread_local implementation* active = nullptr;
-    /** @brief 提供实例、设备、队列与主交换链格式的应用对象。 */
-    vulkan_application& app;
-    /** @brief ImGuiID 到副窗口 WSI 状态的映射；窗口销毁时对应项被 erase。 */
-    std::unordered_map<ImGuiID, std::unique_ptr<window_state>> windows;
-    /** @brief 平台回调里捕获的第一个异常，由 check_errors 重抛。 */
-    std::exception_ptr error;
-    /** @brief 上游 Renderer_CreateWindow 的原实现，析构时还回。 */
-    void (*original_create)(ImGuiViewport*);
-    /** @brief 上游 Renderer_DestroyWindow 的原实现，析构时还回。 */
-    void (*original_destroy)(ImGuiViewport*);
-    /** @brief 上游 Renderer_SetWindowSize 的原实现，析构时还回。 */
-    void (*original_resize)(ImGuiViewport*, ImVec2);
-    /** @brief 上游 Renderer_RenderWindow 的原实现，析构时还回。 */
-    void (*original_render)(ImGuiViewport*, void*);
-    /** @brief 上游 Renderer_SwapBuffers 的原实现，析构时还回。 */
-    void (*original_present)(ImGuiViewport*, void*);
+    inline static thread_local implementation* active = nullptr;  ///< @brief 当前线程的活动实例，C 回调经它找到对象；同一线程只允许一个。
+    vulkan_application& app;  ///< @brief 提供实例、设备、队列与主交换链格式的应用对象。
+    std::unordered_map<ImGuiID, std::unique_ptr<window_state>> windows;  ///< @brief ImGuiID 到副窗口 WSI 状态的映射；窗口销毁时对应项被 erase。
+    std::exception_ptr error;  ///< @brief 平台回调里捕获的第一个异常，由 check_errors 重抛。
+    void (*original_create)(ImGuiViewport*);  ///< @brief 上游 Renderer_CreateWindow 的原实现，析构时还回。
+    void (*original_destroy)(ImGuiViewport*);  ///< @brief 上游 Renderer_DestroyWindow 的原实现，析构时还回。
+    void (*original_resize)(ImGuiViewport*, ImVec2);  ///< @brief 上游 Renderer_SetWindowSize 的原实现，析构时还回。
+    void (*original_render)(ImGuiViewport*, void*);  ///< @brief 上游 Renderer_RenderWindow 的原实现，析构时还回。
+    void (*original_present)(ImGuiViewport*, void*);  ///< @brief 上游 Renderer_SwapBuffers 的原实现，析构时还回。
 
     /** @brief 执行回调体并捕获第一个异常；C 回调不能向外抛，错误留给 check_errors。 */
     template<class F> void invoke(F&& operation) noexcept
@@ -226,5 +213,5 @@ struct ui_viewport_renderer::implementation
 ui_viewport_renderer::ui_viewport_renderer(vulkan_application& app) : impl(std::make_unique<implementation>(app)) {}
 /** @brief 默认析构 pimpl，implementation 析构时把 ImGui 平台回调恢复成上游实现。 */
 ui_viewport_renderer::~ui_viewport_renderer() = default;
-/** @brief 有缓存异常就重抛；ui_manager 在 UpdatePlatformWindows 与平台窗口渲染之后各调一次。 */
+/** @brief 有记录异常就重抛；ui_manager 在 UpdatePlatformWindows 与平台窗口渲染之后各调一次。 */
 void ui_viewport_renderer::check_errors() { if (impl->error) std::rethrow_exception(impl->error); }

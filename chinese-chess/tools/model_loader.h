@@ -5,7 +5,6 @@
  *          一律忽略（当前资产只需几何本身，材质由场景层另行指定）。MODELS_PATH 是运行时模型目录，
  *          相对运行目录 chinese-chess/。
  */
-
 #pragma once
 
 #include "vulkan_core/vulkan_data_type.h"
@@ -29,10 +28,8 @@ namespace model_loader {
  */
 struct gltf_model_data
 {
-    /** @brief 合并后的顶点，位置 / 法线 / uv 的排布由 vulkan_model_vertex 决定。 */
-    std::vector<vulkan_model_vertex> vertices;
-    /** @brief 合并后的原始索引，已加前序 primitive 顶点偏移；未检查或转换 primitive 拓扑。 */
-    std::vector<uint32_t>            indices;
+    std::vector<vulkan_model_vertex> vertices;  ///< @brief 合并后的顶点，位置 / 法线 / uv 的排布由 vulkan_model_vertex 决定
+    std::vector<uint32_t>            indices;  ///< @brief 合并后的原始索引，已加前序 primitive 顶点偏移；未检查或转换 primitive 拓扑
 };
 
 /**

@@ -56,30 +56,19 @@ public:
     void handle(int _key, int _scancode, int _action, int _mods) noexcept;
 
 private:
-    /** @brief 场景管理器引用，所有相机读写都经它转发。 */
-    scene_manager& manager;
+    scene_manager& manager;  ///< @brief 场景管理器引用，所有相机读写都经它转发
 
-    /** @brief 当前投影类型，存 int 供 ImGui::Combo 直接编辑，取值对应 projection_type。 */
-    int   active_type = static_cast<int>(projection_type::perspective);
-    /** @brief 曝光倍数，用对数滑块编辑，写回 scene_camera::set_exposure。 */
-    float exposure    = 1.0f;
+    int   active_type = static_cast<int>(projection_type::perspective);  ///< @brief 当前投影类型，存 int 供 ImGui::Combo 直接编辑，取值对应 projection_type
+    float exposure    = 1.0f;  ///< @brief 曝光倍数，用对数滑块编辑，写回 scene_camera::set_exposure
 
-    /** @brief 正交投影的左右下上范围，x/y/z/w 依次是 left/right/bottom/top。 */
-    glm::vec4 orthographic_range    = glm::vec4(-10.f, 10.f, -10.f, 10.f);
-    /** @brief 正交投影的近远平面。 */
-    glm::vec2 orthographic_near_far = glm::vec2(0.1f, 100.f);
+    glm::vec4 orthographic_range    = glm::vec4(-10.f, 10.f, -10.f, 10.f);  ///< @brief 正交投影的左右下上范围，x/y/z/w 依次是 left/right/bottom/top
+    glm::vec2 orthographic_near_far = glm::vec2(0.1f, 100.f);  ///< @brief 正交投影的近远平面
 
-    /** @brief 透视投影的垂直视场角，单位为度，写回相机前转成弧度。 */
-    float     fov_y                = 90.f;  // need glm::radians to function
-    /** @brief 透视投影的宽高比，resize 时按宽度/高度重算，之后可由 UI 独立编辑。 */
-    float     aspect               = 16.f / 9.f;
-    /** @brief 透视投影的近远平面。 */
-    glm::vec2 perspective_near_far = glm::vec2(0.1f, 100.f);
+    float     fov_y                = 90.f;  ///< @brief 透视投影的垂直视场角，单位为度，写回相机前需转成弧度。
+    float     aspect               = 16.f / 9.f;  ///< @brief 透视投影的宽高比，resize 时按宽度/高度重算，之后可由 UI 独立编辑
+    glm::vec2 perspective_near_far = glm::vec2(0.1f, 100.f);  ///< @brief 透视投影的近远平面
 
-    /** @brief 摄像机位置，世界空间。 */
-    glm::vec3 position  = glm::vec3(0.f);
-    /** @brief 摄像机前方向，世界空间。 */
-    glm::vec3 direction = glm::vec3(0.f, 0.f, -1.f);
-    /** @brief 摄像机上方向，世界空间。 */
-    glm::vec3 world_up  = glm::vec3(0.f, 1.f, 0.f);
+    glm::vec3 position  = glm::vec3(0.f);  ///< @brief 摄像机位置，世界空间
+    glm::vec3 direction = glm::vec3(0.f, 0.f, -1.f);  ///< @brief 摄像机前方向，世界空间
+    glm::vec3 world_up  = glm::vec3(0.f, 1.f, 0.f);  ///< @brief 摄像机上方向，世界空间
 };

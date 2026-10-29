@@ -43,7 +43,7 @@ public:
     /**
      * @brief 主帧循环：轮询事件、合并 resize、按固定顺序推进一帧。
      * @throws std::runtime_error acquire 或 present 返回 fatal 时抛出。
-     * @note 回调里缓存的异常以及 scene/ui 更新、提交失败的异常会原样传播。
+     * @note 回调里记录的异常以及 scene/ui 更新、提交失败的异常会原样传播。
      * @note 最小化或零尺寸时只等 0.05 秒，不 acquire 也不推进帧槽。
      */
     void render();
@@ -103,34 +103,22 @@ private:
     void key_callback(GLFWwindow* _window, int _key, int _scancode, int _action, int _mods);
 
 private:
-    /** @brief 按 C 键后置位，本帧 scene->render 以 need_capture 触发一次截图。 */
-    bool need_capture = false;
-    /** @brief 回调中捕获的异常，由帧循环在主线程重抛；resize/key 回调入口会检查它并提前返回。 */
-    std::exception_ptr callback_error;
-    /** @brief framebuffer 回调置位，帧循环开头重建 swapchain、scene、ui 并重新绑定图像。 */
-    bool resize_requested = false;
+    bool need_capture = false;  ///< @brief 按 C 键后置位，本帧 scene->render 以 need_capture 触发一次截图
+    std::exception_ptr callback_error;  ///< @brief 回调中捕获的异常，由帧循环在主线程重抛；resize/key 回调入口会检查它并提前返回
+    bool resize_requested = false;  ///< @brief framebuffer 回调置位，帧循环开头重建 swapchain、scene、ui 并重新绑定图像
 
-    /** @brief 累加 begin_frame 到帧末的耗时，达到 0.5 秒后重算 fps；不含事件轮询、resize 和跳过的帧。 */
-    float                 title_timer  = 0.f;
-    /** @brief 当前统计窗口内累计的帧数，与 title_timer 一起算 fps 后清零。 */
-    uint32_t              title_frames = 0;
-    /** @brief 标题字符串缓冲，format_to_n 写入后手动补 '\0' 截断。 */
-    std::array<char, 128> window_title = {};
+    float                 title_timer  = 0.f;  ///< @brief 累加 begin_frame 到帧末的耗时，达到 0.5 秒后重算 fps；不含事件轮询、resize 和跳过的帧
+    uint32_t              title_frames = 0;  ///< @brief 当前统计窗口内累计的帧数，与 title_timer 一起算 fps 后清零
+    std::array<char, 128> window_title = {};  ///< @brief 标题字符串缓冲，format_to_n 写入后手动补 '\0' 截断
 
-    /** @brief GLFW 窗口句柄；glfwCreateWindow 成功后即赋值，后续初始化仍可能失败。 */
-    GLFWwindow*                         window = nullptr;
-    /** @brief Vulkan 应用；必须最后销毁，scene/ui 都引用它。 */
-    std::unique_ptr<vulkan_application> app    = nullptr;
-    /** @brief UI 管理器；持有 ImGui 回调，必须先于窗口与 GLFW 终止销毁。 */
-    std::unique_ptr<ui_manager>         ui     = nullptr;
-    /** @brief 场景管理器；正常析构体在 ui 后显式 reset，构造失败时的成员自动析构顺序则在 ui 前。 */
-    std::unique_ptr<scene_manager>      scene  = nullptr;
+    GLFWwindow*                         window = nullptr;  ///< @brief GLFW 窗口句柄；glfwCreateWindow 成功后即赋值，后续初始化仍可能失败
+    std::unique_ptr<vulkan_application> app    = nullptr;  ///< @brief Vulkan 应用；必须最后销毁，scene/ui 都引用它
+    std::unique_ptr<ui_manager>         ui     = nullptr;  ///< @brief UI 管理器；持有 ImGui 回调，必须先于窗口与 GLFW 终止销毁
+    std::unique_ptr<scene_manager>      scene  = nullptr;  ///< @brief 场景管理器；正常析构体在 ui 后显式 reset，构造失败时的成员自动析构顺序则在 ui 前
 
 #ifndef NDEBUG
     // for renderdoc capture
-    /** @brief 调试构建的首帧标志；本项目的自动抓帧策略跳过首帧。 */
-    bool first_frame   = true;
-    /** @brief 本帧是否已在 scene->update 前开始 RenderDoc 捕获，帧末负责结束。 */
-    bool begin_capture = false;
+    bool first_frame   = true;  ///< @brief 调试构建的首帧标志；本项目的自动抓帧策略跳过首帧
+    bool begin_capture = false;  ///< @brief 本帧是否已在 scene->update 前开始 RenderDoc 捕获，帧末负责结束
 #endif  // !NDEBUG
 };

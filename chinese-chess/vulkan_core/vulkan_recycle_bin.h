@@ -48,12 +48,10 @@ public:
     ~vulkan_recycle_bin();
     /** @brief 禁止拷贝构造：回收站独占条目与其中资源的所有权。 */
     vulkan_recycle_bin(const vulkan_recycle_bin&)            = delete;
-    /** @brief 禁止拷贝赋值：回收站独占条目与其中资源的所有权。 */
-    vulkan_recycle_bin& operator=(const vulkan_recycle_bin&) = delete;
+    vulkan_recycle_bin& operator=(const vulkan_recycle_bin&) = delete;  ///< @brief 禁止拷贝赋值：回收站独占条目与其中资源的所有权
     /** @brief 此容器选择禁止移动构造，生命周期固定由所属管理器维护。 */
     vulkan_recycle_bin(vulkan_recycle_bin&&)                 = delete;
-    /** @brief 此容器选择禁止移动赋值，避免隐式替换仍有待回收条目的容器。 */
-    vulkan_recycle_bin& operator=(vulkan_recycle_bin&&)      = delete;
+    vulkan_recycle_bin& operator=(vulkan_recycle_bin&&)      = delete;  ///< @brief 此容器选择禁止移动赋值，避免隐式替换仍有待回收条目的容器
 
     /**
      * @brief 登记一个队列，供 retire_after_submitted 读取已提交前沿。
@@ -117,21 +115,16 @@ private:
      */
     struct entry
     {
-        /** @brief 最后使用该资源的 token 集合，全部完成才可销毁。 */
-        std::vector<vulkan_submission_token>   last_use;
-        /** @brief 调试与日志标识，output 打开时由 release() 打印。 */
-        std::string                     message;
+        std::vector<vulkan_submission_token>   last_use;  ///< @brief 最后使用该资源的 token 集合，全部完成才可销毁
+        std::string                     message;  ///< @brief 调试与日志标识，output 打开时由 release() 打印
         /** @brief 持有资源所有权的回调；调用体为空，析构时释放资源。 */
         std::move_only_function<void()> destroy;
     };
 
-    /** @brief 调试输出开关：为 true 时 release() 打印每条被销毁资源的 message。 */
-    constexpr inline static bool output = false;
+    constexpr inline static bool output = false;  ///< @brief 调试输出开关：为 true 时 release() 打印每条被销毁资源的 message
 
-    /** @brief 已注册队列的裸指针，只用于 retire_after_submitted 取已提交前沿，不拥有队列。 */
-    std::vector<const vulkan_queue*> queues;
-    /** @brief 按插入顺序保存的待销毁条目。 */
-    std::deque<entry>                resources;
+    std::vector<const vulkan_queue*> queues;  ///< @brief 已注册队列的裸指针，只用于 retire_after_submitted 取已提交前沿，不拥有队列
+    std::deque<entry>                resources;  ///< @brief 按插入顺序保存的待销毁条目
 };
 
 template <typename T>

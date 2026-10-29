@@ -5,7 +5,6 @@
  *          棋盘坐标 x 取 1..9（列）、y 取 0..9（行，己方底线为 0，向前为正），红黑各用一套镜像坐标。
  *          解析分两步：read_record 只负责抽字符串（给 UI 显示），load_records 才真正推演棋局。
  */
-
 #pragma once
 
 #include "string_helper.h"
@@ -65,19 +64,11 @@ enum class PIECE_TYPE : uint8_t
  */
 struct piece_state
 {
-    /** @brief 棋子种类，默认 NONE 表示这个槽位还没有意义。 */
-    PIECE_TYPE piece_type = PIECE_TYPE::NONE;
-    /** @brief 列坐标，1 到 9。 */
-    uint8_t    x          = 0;
-    /** @brief 行坐标，0 到 9；0 是己方底线，数值越大越靠近对方。 */
-    uint8_t    y          = 0;
+    PIECE_TYPE piece_type = PIECE_TYPE::NONE;  ///< @brief 棋子种类，默认 NONE 表示这个槽位还没有意义
+    uint8_t    x          = 0;  ///< @brief 列坐标，1 到 9
+    uint8_t    y          = 0;  ///< @brief 行坐标，0 到 9；0 是己方底线，数值越大越靠近对方
 
-    /**
-     * @brief 按成员逐项比较的默认三路比较，供容器排序或局面判等使用。
-     * @param _other 被比较的另一枚棋子。
-     * @return 三路比较结果。
-     */
-    auto operator<=>(const piece_state& _other) const = default;
+    auto operator<=>(const piece_state& _other) const = default;  ///< @brief 按成员逐项比较的默认三路比较，供容器排序或局面判等使用
 };
 
 /** @brief 一方的棋子列表；开局 16 枚，被吃掉的棋子直接从这个列表里 erase。 */
